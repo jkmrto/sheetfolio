@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__google-sheets__get_multiple_spreadsheet_summary",
+      "Bash(/home/jkmrto/.fly/bin/fly launch:*)",
+      "Skill(keybindings-help)",
+      "Bash(mix compile:*)",
+      "Bash(GOOGLE_APPLICATION_CREDENTIALS=/home/jkmrto/projects/stock-tracker-488219-d1065d1ab004.json mix run:*)",
+      "Bash(mix:*)",
+      "mcp__google-sheets__list_sheets",
+      "Bash(/home/jkmrto/.fly/bin/fly deploy:*)",
+      "Bash(/home/jkmrto/.fly/bin/fly logs:*)",
+      "Bash(fly logs:*)",
+      "WebSearch",
+      "mcp__google-sheets__get_sheet_data"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "google-sheets"
+  ]
+}

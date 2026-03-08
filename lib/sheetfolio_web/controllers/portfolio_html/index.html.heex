@@ -1,0 +1,83 @@
+<div class="chart-container">
+  <canvas id="portfolioChart"></canvas>
+</div>
+
+<script>
+  const totalData = <%= raw Jason.encode!(
+    @chart_data.series
+    |> Enum.filter(& &1.total)
+    |> Enum.map(fn p -> %{x: p.date, y: p.total} end)
+  ) %>;
+  const earningsData = <%= raw Jason.encode!(
+    @chart_data.series
+    |> Enum.filter(& &1.earnings)
+    |> Enum.map(fn p -> %{x: p.date, y: p.earnings} end)
+  ) %>;
+
+  const ctx = document.getElementById("portfolioChart").getContext("2d");
+
+  const gradientTotal = ctx.createLinearGradient(0, 0, 0, 400);
+  gradientTotal.addColorStop(0, "rgba(99, 102, 241, 0.3)");
+  gradientTotal.addColorStop(1, "rgba(99, 102, 241, 0)");
+
+  const gradientEarnings = ctx.createLinearGradient(0, 0, 0, 400);
+  gradientEarnings.addColorStop(0, "rgba(16, 185, 129, 0.3)");
+  gradientEarnings.addColorStop(1, "rgba(16, 185, 129, 0)");
+
+  new Chart(ctx, {
+    type: "line",
+    data: {
+      datasets: [
+        {
+          label: "Total Portfolio (€)",
+          data: totalData,
+          borderColor: "rgb(99, 102, 241)",
+          backgroundColor: gradientTotal,
+          borderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: true,
+          tension: 0.3
+        },
+        {
+          label: "Earnings (€)",
+          data: earningsData,
+          borderColor: "rgb(16, 185, 129)",
+          backgroundColor: gradientEarnings,
+          borderWidth: 2,
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          fill: true,
+          tension: 0.3
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { position: "top" },
+        title: { display: true, text: "Portfolio Evolution", font: { size: 18 } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: €${ctx.parsed.y.toLocaleString("es-ES")}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          type: "time",
+          time: {
+            unit: "month",
+            tooltipFormat: "dd/MM/yyyy",
+            displayFormats: { month: "MMM yyyy" }
+          },
+          title: { display: true, text: "Date" }
+        },
+        y: {
+          ticks: { callback: (v) => "€" + v.toLocaleString("es-ES") }
+        }
+      }
+    }
+  });
+</script>
