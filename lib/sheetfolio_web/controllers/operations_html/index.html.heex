@@ -1,0 +1,41 @@
+<style>
+  .operations-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .operations-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; }
+  .operations-table td { padding: 0.65rem 1rem; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
+  .operations-table tr:last-child td { border-bottom: none; }
+  .operations-table tr:hover td { background: #f8fafc; }
+  .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.78rem; font-weight: 600; }
+  .badge-suscripcion, .badge-compra { background: #dcfce7; color: #166534; }
+  .badge-reembolso, .badge-venta { background: #fee2e2; color: #991b1b; }
+</style>
+
+<%= if @rows == [] do %>
+  <p style="color: #64748b; margin-top: 2rem;">No operations found.</p>
+<% else %>
+  <table class="operations-table">
+    <thead>
+      <tr>
+        <%= for h <- @headers do %>
+          <th><%= h %></th>
+        <% end %>
+      </tr>
+    </thead>
+    <tbody>
+      <%= for row <- @rows do %>
+        <tr>
+          <%= for {cell, idx} <- Enum.with_index(row) do %>
+            <td>
+              <%= if idx == 3 do %>
+                <span class={"badge badge-#{String.downcase(cell)}"}>
+                  <%= cell %>
+                </span>
+              <% else %>
+                <%= cell %>
+              <% end %>
+            </td>
+          <% end %>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+<% end %>

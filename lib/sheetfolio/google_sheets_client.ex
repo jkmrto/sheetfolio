@@ -26,6 +26,20 @@ defmodule Sheetfolio.GoogleSheetsClient do
     end
   end
 
+  def append_rows(spreadsheet_id, sheet_name, rows) do
+    with {:ok, token} <- fetch_token() do
+      range = URI.encode(sheet_name)
+      url = "#{@base_url}/#{spreadsheet_id}/values/#{range}:append"
+      params = [valueInputOption: "USER_ENTERED", insertDataOption: "INSERT_ROWS"]
+
+      case Req.post(url, auth: {:bearer, token}, json: %{"values" => rows}, params: params) do
+        {:ok, %{status: 200} = response} -> {:ok, response.body}
+        {:ok, %{status: status, body: body}} -> {:error, {status, body}}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
   defp fetch_token do
     case Goth.fetch(Sheetfolio.Goth) do
       {:ok, %{token: token}} -> {:ok, token}

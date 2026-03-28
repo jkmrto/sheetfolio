@@ -9,14 +9,24 @@
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; }
-      header { background: #1e293b; color: white; padding: 1rem 2rem; }
+      header { background: #1e293b; color: white; padding: 1rem 2rem; display: flex; align-items: center; gap: 2rem; }
       header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; }
+      nav { display: flex; gap: 1rem; }
+      nav a { color: #94a3b8; text-decoration: none; font-size: 0.95rem; padding: 0.25rem 0.5rem; border-radius: 6px; }
+      nav a:hover { color: white; }
+      nav a.active { color: white; background: rgba(255,255,255,0.1); }
       main { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
       .chart-container { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
     </style>
   </head>
   <body>
-    <header><h1>Sheetfolio</h1></header>
+    <header>
+      <h1>Sheetfolio</h1>
+      <nav>
+        <a href="/" class={if String.starts_with?(@conn.request_path, "/operations"), do: "", else: "active"}>Portfolio</a>
+        <a href="/operations" class={if String.starts_with?(@conn.request_path, "/operations"), do: "active", else: ""}>Operations</a>
+      </nav>
+    </header>
     <main><%= @inner_content %></main>
   </body>
 </html>
