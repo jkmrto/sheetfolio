@@ -25,3 +25,9 @@ sheetfolio-*.tar
 
 # Local secrets
 .env
+
+# Credentials for Google API access, should not be committed to version control
+client_secret_email_app.json
+token.json
+gmail_token.json
+emails_output.txt

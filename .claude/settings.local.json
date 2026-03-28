@@ -12,7 +12,9 @@
       "Bash(/home/jkmrto/.fly/bin/fly logs:*)",
       "Bash(fly logs:*)",
       "WebSearch",
-      "mcp__google-sheets__get_sheet_data"
+      "mcp__google-sheets__get_sheet_data",
+      "mcp__google-sheets__create_sheet",
+      "mcp__google-sheets__update_cells"
     ]
   },
   "enableAllProjectMcpServers": true,

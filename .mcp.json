@@ -1,5 +1,12 @@
 {
   "mcpServers": {
+    "gmail": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@gongrzhe/server-gmail-autoauth-mcp"
+      ]
+    },
     "google-sheets": {
       "type": "stdio",
       "command": "uvx",
