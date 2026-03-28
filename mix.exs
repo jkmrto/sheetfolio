@@ -7,7 +7,8 @@ defmodule Sheetfolio.MixProject do
       version: "0.1.0",
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      aliases: aliases()
     ]
   end
 
@@ -28,7 +29,15 @@ defmodule Sheetfolio.MixProject do
       {:phoenix, "~> 1.7"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_view, "~> 1.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      {:esbuild, "~> 0.8", runtime: Mix.env() == :dev}
+    ]
+  end
+
+  defp aliases do
+    [
+      "assets.build": ["esbuild default"],
+      "assets.deploy": ["esbuild default --minify"]
     ]
   end
 end

@@ -31,3 +31,4 @@ client_secret_email_app.json
 token.json
 gmail_token.json
 emails_output.txt
+/priv/static/assets/

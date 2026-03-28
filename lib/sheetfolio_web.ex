@@ -11,6 +11,7 @@ defmodule SheetfolioWeb do
       use Phoenix.Router, helpers: false
       import Plug.Conn
       import Phoenix.Controller
+      import Phoenix.LiveView.Router
     end
   end
 
@@ -18,6 +19,12 @@ defmodule SheetfolioWeb do
     quote do
       use Phoenix.Component
       import Phoenix.HTML
+    end
+  end
+
+  def live_view do
+    quote do
+      use Phoenix.LiveView, layout: {SheetfolioWeb.Layouts, :root}
     end
   end
 

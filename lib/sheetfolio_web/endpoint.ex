@@ -11,6 +11,14 @@ defmodule SheetfolioWeb.Endpoint do
     same_site: "Lax"
   ]
 
+  socket "/live", Phoenix.LiveView.Socket,
+    websocket: [connect_info: [session: @session_options]]
+
+  plug Plug.Static,
+    at: "/assets",
+    from: {:sheetfolio, "priv/static/assets"},
+    gzip: false
+
   plug Plug.Session, @session_options
 
   plug Plug.Parsers,

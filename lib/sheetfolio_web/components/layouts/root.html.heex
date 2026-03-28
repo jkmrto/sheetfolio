@@ -3,9 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="csrf-token" content={Plug.CSRFProtection.get_csrf_token()} />
     <title>Sheetfolio</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script defer src="/assets/app.js"></script>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; }
@@ -23,8 +25,8 @@
     <header>
       <h1>Sheetfolio</h1>
       <nav>
-        <a href="/" class={if String.starts_with?(@conn.request_path, "/operations"), do: "", else: "active"}>Portfolio</a>
-        <a href="/operations" class={if String.starts_with?(@conn.request_path, "/operations"), do: "active", else: ""}>Operations</a>
+        <a href="/" class={if current_path(assigns) == "/operations", do: "", else: "active"}>Portfolio</a>
+        <a href="/operations" class={if current_path(assigns) == "/operations", do: "active", else: ""}>Operations</a>
       </nav>
     </header>
     <main><%= @inner_content %></main>
