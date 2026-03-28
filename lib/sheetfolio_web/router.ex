@@ -23,6 +23,6 @@ defmodule SheetfolioWeb.Router do
     pipe_through [:browser, :auth]
 
     get "/", PortfolioController, :index
-    get "/operations", OperationsController, :index
+    live "/operations", OperationsLive
   end
 end

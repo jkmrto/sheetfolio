@@ -5,8 +5,8 @@
   .operations-table tr:last-child td { border-bottom: none; }
   .operations-table tr:hover td { background: #f8fafc; }
   .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.78rem; font-weight: 600; }
-  .badge-suscripcion, .badge-compra { background: #dcfce7; color: #166534; }
-  .badge-reembolso, .badge-venta { background: #fee2e2; color: #991b1b; }
+  .badge-suscripcion, .badge-compra { background: #dcfce7; color: #166534; } /* green-100 / green-800 */
+  .badge-reembolso, .badge-venta { background: #fee2e2; color: #991b1b; }   /* red-100 / red-800 */
 </style>
 
 <%= if @rows == [] do %>
@@ -24,7 +24,7 @@
       <%= for row <- @rows do %>
         <tr>
           <%= for {cell, idx} <- Enum.with_index(row) do %>
-            <td>
+            <td style={earnings_style(idx, cell)}>
               <%= if idx == 3 do %>
                 <span class={"badge badge-#{String.downcase(cell)}"}>
                   <%= cell %>
