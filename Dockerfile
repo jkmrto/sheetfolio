@@ -10,6 +10,7 @@ RUN MIX_ENV=prod mix deps.get --only prod
 
 COPY config config
 COPY lib lib
+COPY priv priv
 
 RUN MIX_ENV=prod mix release
 
