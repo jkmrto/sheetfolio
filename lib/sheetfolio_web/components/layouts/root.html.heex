@@ -24,10 +24,12 @@
   <body>
     <header>
       <h1>Sheetfolio</h1>
-      <nav>
-        <a href="/" class={if current_path(assigns) == "/operations", do: "", else: "active"}>Portfolio</a>
-        <a href="/operations" class={if current_path(assigns) == "/operations", do: "active", else: ""}>Operations</a>
-      </nav>
+      <%= if Map.get(assigns, :authenticated) do %>
+        <nav>
+          <a href="/" class={if current_path(assigns) == "/operations", do: "", else: "active"}>Portfolio</a>
+          <a href="/operations" class={if current_path(assigns) == "/operations", do: "active", else: ""}>Operations</a>
+        </nav>
+      <% end %>
     </header>
     <main><%= @inner_content %></main>
   </body>

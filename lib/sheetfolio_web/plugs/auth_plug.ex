@@ -6,7 +6,7 @@ defmodule SheetfolioWeb.AuthPlug do
 
   def call(conn, _opts) do
     if get_session(conn, :authenticated) do
-      conn
+      assign(conn, :authenticated, true)
     else
       conn
       |> redirect(to: "/login")

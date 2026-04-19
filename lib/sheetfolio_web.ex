@@ -24,7 +24,7 @@ defmodule SheetfolioWeb do
 
   def live_view do
     quote do
-      use Phoenix.LiveView, layout: {SheetfolioWeb.Layouts, :root}
+      use Phoenix.LiveView, layout: false
     end
   end
 
