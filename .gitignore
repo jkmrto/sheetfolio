@@ -31,4 +31,4 @@ client_secret_email_app.json
 token.json
 gmail_token.json
 emails_output.txt
-# priv/static/assets is committed — built locally via mix assets.build
+/priv/static/assets/

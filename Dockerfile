@@ -11,7 +11,9 @@ RUN MIX_ENV=prod mix deps.get --only prod
 COPY config config
 COPY lib lib
 COPY priv priv
+COPY assets assets
 
+RUN MIX_ENV=prod mix assets.deploy
 RUN MIX_ENV=prod mix release
 
 FROM elixir:1.19.5-otp-28-alpine AS runtime
