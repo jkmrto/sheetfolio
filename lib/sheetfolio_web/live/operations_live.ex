@@ -12,6 +12,7 @@ defmodule SheetfolioWeb.OperationsLive do
     else
       socket =
         assign(socket,
+          authenticated: true,
           headers: @headers,
           operations: %{},
           order: [],
@@ -70,6 +71,10 @@ defmodule SheetfolioWeb.OperationsLive do
 
   def handle_info(:loading_done, socket) do
     {:noreply, assign(socket, loading: false)}
+  end
+
+  def handle_info({:loading_error, reason}, socket) do
+    {:noreply, assign(socket, loading: false, error: reason)}
   end
 
   def handle_info({:earnings_result, _ref, nil}, socket) do

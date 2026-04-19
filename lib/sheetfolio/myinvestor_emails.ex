@@ -15,13 +15,17 @@ defmodule Sheetfolio.MyinvestorEmails do
         Logger.info("[MyinvestorEmails] Loading email #{idx}/#{total}")
 
         case fetch_and_parse(id) do
-          {:ok, data} -> send(pid, {:email_loaded, data})
+          {:ok, data} -> send(pid, {:email_loaded, Sheetfolio.OperationOverrides.apply(data)})
           {:error, reason} ->
             Logger.warning("[MyinvestorEmails] Failed to parse email #{id}: #{inspect(reason)}")
         end
       end)
 
       send(pid, :loading_done)
+    else
+      error ->
+        Logger.error("[MyinvestorEmails] Failed to fetch emails: #{inspect(error)}")
+        send(pid, {:loading_error, inspect(error)})
     end
   end
 
