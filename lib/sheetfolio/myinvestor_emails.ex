@@ -1,52 +1,29 @@
 defmodule Sheetfolio.MyinvestorEmails do
   require Logger
 
-  @gmail_query "from:notificaciones@myinvestor.es subject:CONFIRMACIÓN DE OPERACIÓN DE VALORES"
-
-  @doc "Sends {:loading_started, total}, {:email_loaded, data}, and :loading_done to pid as emails are parsed."
-  def stream_to(pid) do
-    with {:ok, messages} <- Sheetfolio.GmailClient.search_messages(@gmail_query) do
-      total = length(messages)
-      send(pid, {:loading_started, total})
-
-      messages
-      |> Enum.with_index(1)
-      |> Enum.each(fn {%{"id" => id}, idx} ->
-        Logger.info("[MyinvestorEmails] Loading email #{idx}/#{total}")
-
-        case fetch_and_parse(id) do
-          {:ok, data} -> send(pid, {:email_loaded, Sheetfolio.OperationOverrides.apply(data)})
-          {:error, reason} ->
-            Logger.warning("[MyinvestorEmails] Failed to parse email #{id}: #{inspect(reason)}")
-        end
-      end)
-
-      send(pid, :loading_done)
-    else
-      error ->
-        Logger.error("[MyinvestorEmails] Failed to fetch emails: #{inspect(error)}")
-        send(pid, {:loading_error, inspect(error)})
-    end
-  end
+  @gmail_query_operaciones "from:notificaciones@myinvestor.es subject:CONFIRMACIÓN DE OPERACIÓN DE VALORES"
+  @gmail_query_traspasos "from:notificaciones@myinvestor.es subject:TRASPASO"
 
   @doc "Returns {:ok, [operation_map]} or {:error, reason}."
   def fetch_all do
-    with {:ok, messages} <- Sheetfolio.GmailClient.search_messages(@gmail_query) do
-      total = length(messages)
-      Logger.info("[MyinvestorEmails] Found #{total} emails, loading...")
+    with {:ok, ops} <- fetch_query(@gmail_query_operaciones),
+         {:ok, traspasos} <- fetch_query(@gmail_query_traspasos) do
+      {:ok, ops ++ traspasos}
+    end
+  end
 
+  defp fetch_query(query) do
+    with {:ok, messages} <- Sheetfolio.GmailClient.search_messages(query) do
+      Logger.info("[MyinvestorEmails] Found #{length(messages)} emails for: #{query}")
       operations =
-        messages
-        |> Enum.with_index(1)
-        |> Enum.flat_map(fn {%{"id" => id}, _idx} ->
+        Enum.flat_map(messages, fn %{"id" => id} ->
           case fetch_and_parse(id) do
-            {:ok, data} -> [data]
+            {:ok, ops} -> ops
             {:error, reason} ->
-              Logger.warning("[MyinvestorEmails] Failed to parse email #{id}: #{inspect(reason)}")
+              Logger.warning("[MyinvestorEmails] Failed to parse #{id}: #{inspect(reason)}")
               []
           end
         end)
-
       {:ok, operations}
     end
   end
@@ -54,9 +31,20 @@ defmodule Sheetfolio.MyinvestorEmails do
   defp fetch_and_parse(id) do
     with {:ok, message} <- Sheetfolio.GmailClient.get_message(id),
          {:ok, subject} <- Sheetfolio.GmailClient.extract_subject(message),
-         {:ok, html_body} <- Sheetfolio.GmailClient.extract_html_body(message),
-         {:ok, data} <- Sheetfolio.MyinvestorParser.parse(html_body, subject) do
-      {:ok, Sheetfolio.OperationOverrides.apply(data)}
+         {:ok, html_body} <- Sheetfolio.GmailClient.extract_html_body(message) do
+      result =
+        if String.contains?(subject, "TRASPASO"),
+          do: Sheetfolio.MyinvestorParser.parse_traspaso(html_body, subject),
+          else: Sheetfolio.MyinvestorParser.parse(html_body, subject)
+
+      case result do
+        {:ok, ops} when is_list(ops) ->
+          {:ok, Enum.map(ops, &Sheetfolio.OperationOverrides.apply/1)}
+        {:ok, op} ->
+          {:ok, [Sheetfolio.OperationOverrides.apply(op)]}
+        error ->
+          error
+      end
     end
   end
 end

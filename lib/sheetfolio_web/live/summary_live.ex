@@ -122,7 +122,7 @@ defmodule SheetfolioWeb.SummaryLive do
     )
   end
 
-  defp buy?(tipo), do: tipo in ["Suscripcion", "Compra"]
+  defp buy?(tipo), do: tipo in ["Suscripcion", "Compra", "Traspaso Entrada"]
 
   defp parse_cantidad(str) do
     case Float.parse(String.replace(str, ",", "")) do

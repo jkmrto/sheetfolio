@@ -16,7 +16,8 @@ defmodule SheetfolioWeb.OperationsLive do
         operations: %{},
         order: [],
         asset_counts: %{},
-        selected_assets: MapSet.new()
+        selected_assets: MapSet.new(),
+        show_traspasos_only: false
       )
 
       if connected?(socket) do
@@ -52,6 +53,10 @@ defmodule SheetfolioWeb.OperationsLive do
     {:noreply, assign(socket, selected_assets: selected)}
   end
 
+  def handle_event("toggle_traspasos", _, socket) do
+    {:noreply, assign(socket, show_traspasos_only: !socket.assigns.show_traspasos_only)}
+  end
+
   def render(assigns) do
     ~H"""
     <style>
@@ -61,25 +66,37 @@ defmodule SheetfolioWeb.OperationsLive do
       .operations-table tr:last-child td { border-bottom: none; }
       .operations-table tr:hover td { background: #f8fafc; }
       .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.78rem; font-weight: 600; }
-      .badge-suscripcion, .badge-compra { background: #dcfce7; color: #166534; } /* green-100 / green-800 */
-      .badge-reembolso, .badge-venta { background: #fee2e2; color: #991b1b; }   /* red-100 / red-800 */
-      .positive { color: #16a34a; font-weight: 600; } /* green-700 */
-      .negative { color: #dc2626; font-weight: 600; } /* red-600 */
+      .badge-suscripcion, .badge-compra { background: #dcfce7; color: #166534; }
+      .badge-reembolso, .badge-venta { background: #fee2e2; color: #991b1b; }
+      .positive { color: #16a34a; font-weight: 600; }
+      .negative { color: #dc2626; font-weight: 600; }
       .filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; }
       .filter-btn { padding: 0.3rem 0.75rem; border-radius: 999px; border: 1px solid #cbd5e1; background: white; color: #475569; font-size: 0.82rem; cursor: pointer; }
-      .filter-btn:hover { border-color: #6366f1; color: #6366f1; } /* indigo */
-      .filter-btn.active { background: #6366f1; border-color: #6366f1; color: white; } /* indigo */
+      .filter-btn:hover { border-color: #6366f1; color: #6366f1; }
+      .filter-btn.active { background: #6366f1; border-color: #6366f1; color: white; }
+      .filter-btn.traspaso-btn { border-color: #f59e0b; color: #b45309; }
+      .filter-btn.traspaso-btn:hover { border-color: #d97706; color: #92400e; }
+      .filter-btn.traspaso-btn.active { background: #f59e0b; border-color: #f59e0b; color: white; }
+      .traspaso-row td { background: #fffbeb; }
     </style>
 
-    <%= if @asset_counts != %{} do %>
+    <%= if map_size(@operations) > 0 do %>
       <div class="filters">
+        <%= if has_traspasos?(@operations) do %>
+          <button
+            class={"filter-btn traspaso-btn#{if @show_traspasos_only, do: " active", else: ""}"}
+            phx-click="toggle_traspasos"
+          >
+            Traspasos
+          </button>
+        <% end %>
         <%= for {name, count} <- Enum.sort_by(@asset_counts, fn {_, c} -> c end, :desc) do %>
           <button
             class={"filter-btn#{if MapSet.member?(@selected_assets, name), do: " active", else: ""}"}
             phx-click="toggle_asset"
             phx-value-asset={name}
           >
-            <%= name %> <span style="opacity: 0.65">(#<%= count %>)</span>
+            <%= name %> <span style="opacity: 0.65">(<%= count %>)</span>
           </button>
         <% end %>
       </div>
@@ -95,9 +112,9 @@ defmodule SheetfolioWeb.OperationsLive do
           </tr>
         </thead>
         <tbody>
-          <%= for id <- visible_order(@order, @operations, @selected_assets) do %>
+          <%= for id <- visible_order(@order, @operations, @selected_assets, @show_traspasos_only) do %>
             <% entry = @operations[id] %>
-            <tr>
+            <tr class={if entry.traspaso, do: "traspaso-row", else: ""}>
               <%= for {cell, idx} <- Enum.with_index(entry.row) do %>
                 <td>
                   <%= if idx == 3 do %>
@@ -135,7 +152,8 @@ defmodule SheetfolioWeb.OperationsLive do
                 data.cantidad, data.precio, data.importe_without_comision,
                 data.comision, data.importe_with_comision],
           earnings_abs: nil,
-          earnings_pct: nil
+          earnings_pct: nil,
+          traspaso: Map.get(data, :traspaso, false)
         }
 
         Sheetfolio.EarningsServer.request(ref, data.isin, data.precio, data.cantidad, pid)
@@ -153,12 +171,22 @@ defmodule SheetfolioWeb.OperationsLive do
     assign(socket, operations: ops_map, order: order, asset_counts: asset_counts)
   end
 
-  defp visible_order(order, _operations, selected) when selected == %MapSet{}, do: order
-  defp visible_order(order, operations, selected) do
-    Enum.filter(order, fn id ->
-      asset = operations |> Map.get(id) |> Map.get(:row) |> Enum.at(1)
-      MapSet.member?(selected, asset)
+  defp visible_order(order, operations, selected, show_traspasos) do
+    order
+    |> then(fn o ->
+      if show_traspasos,
+        do: Enum.filter(o, fn id -> operations[id].traspaso end),
+        else: o
     end)
+    |> then(fn o ->
+      if MapSet.size(selected) > 0,
+        do: Enum.filter(o, fn id -> MapSet.member?(selected, operations[id].row |> Enum.at(1)) end),
+        else: o
+    end)
+  end
+
+  defp has_traspasos?(operations) do
+    Enum.any?(operations, fn {_, entry} -> entry.traspaso end)
   end
 
   defp date_sort_key(fecha) do
