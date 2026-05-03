@@ -27,7 +27,8 @@
       <%= if Map.get(assigns, :authenticated) do %>
         <nav>
           <a href="/" class={if current_path(assigns) == "/", do: "active", else: ""}>Portfolio</a>
-          <a href="/summary" class={if current_path(assigns) == "/summary", do: "active", else: ""}>Summary</a>
+          <a href="/summary" class={if current_path(assigns) == "/summary", do: "active", else: ""}>Active</a>
+          <a href="/summary/settled" class={if current_path(assigns) == "/summary/settled", do: "active", else: ""}>Settled</a>
           <a href="/operations" class={if current_path(assigns) == "/operations", do: "active", else: ""}>Operations</a>
         </nav>
       <% end %>

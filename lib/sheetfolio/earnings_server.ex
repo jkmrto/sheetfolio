@@ -38,7 +38,7 @@ defmodule Sheetfolio.EarningsServer do
 
     result =
       with true <- not is_nil(price_eur),
-           {qty, _} <- Float.parse(String.replace(cantidad, ",", "")),
+           {qty, _} <- parse_number(cantidad),
            {purchase_price, currency} <- parse_price_with_currency(precio) do
         purchase_eur = to_eur(purchase_price, currency, state.eur_usd, state.eur_cad)
         cost = purchase_eur * qty
@@ -82,13 +82,33 @@ defmodule Sheetfolio.EarningsServer do
   end
 
   defp parse_price_with_currency(precio_str) do
-    case Regex.run(~r/([\d.]+)\s+([A-Z]+)/, precio_str) do
+    case Regex.run(~r/([\d.,]+)\s+([A-Z]+)/, precio_str) do
       [_, amount, currency] ->
-        case Float.parse(amount) do
+        case parse_number(amount) do
           {val, _} -> {val, currency}
           :error -> :error
         end
       _ -> :error
+    end
+  end
+
+  defp parse_number(str) do
+    cond do
+      String.contains?(str, ".") and String.contains?(str, ",") ->
+        last_dot = str |> :binary.matches(".") |> List.last() |> elem(0)
+        last_comma = str |> :binary.matches(",") |> List.last() |> elem(0)
+        if last_dot > last_comma do
+          str |> String.replace(",", "") |> Float.parse()
+        else
+          str |> String.replace(".", "") |> String.replace(",", ".") |> Float.parse()
+        end
+      String.contains?(str, ",") ->
+        case Regex.run(~r/^[\d,]+,(\d{3})$/, str) do
+          [_, _] -> str |> String.replace(",", "") |> Float.parse()
+          _ -> str |> String.replace(",", ".") |> Float.parse()
+        end
+      true ->
+        Float.parse(str)
     end
   end
 

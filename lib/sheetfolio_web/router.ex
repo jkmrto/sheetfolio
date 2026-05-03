@@ -24,6 +24,7 @@ defmodule SheetfolioWeb.Router do
 
     get "/", PortfolioController, :index
     live "/operations", OperationsLive
-    live "/summary", SummaryLive
+    live "/summary", SummaryLive, :active
+    live "/summary/settled", SummaryLive, :settled
   end
 end

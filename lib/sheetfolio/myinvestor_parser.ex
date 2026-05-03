@@ -8,27 +8,29 @@ defmodule Sheetfolio.MyinvestorParser do
 
     case isins do
       [reemb_isin, suscr_isin | _] ->
-        with {:ok, fecha} <- extract_fecha(html_body),
-             {:ok, suscr_asset} <- extract_traspaso_asset(subject),
+        with {:ok, tipo_raw} <- extract_traspaso_tipo_raw(html_body),
+             {:ok, fecha} <- extract_fecha(html_body),
              {:ok, {cantidad, precio, importe_bruto}} <- extract_traspaso_amounts(html_body),
              {:ok, importe_neto} <- extract_traspaso_importe_neto(html_body) do
-          reemb_asset = extract_reemb_asset(html_body, reemb_isin)
+          case tipo_raw do
+            :suscr ->
+              {:ok, [%{
+                fecha: fecha, asset: extract_traspaso_asset_str(subject),
+                isin: suscr_isin, tipo: "Suscripcion",
+                cantidad: cantidad, precio: precio,
+                importe_without_comision: importe_bruto, comision: "",
+                importe_with_comision: importe_neto, traspaso: true
+              }]}
 
-          compra = %{
-            fecha: fecha, asset: suscr_asset, isin: suscr_isin,
-            tipo: "Suscripcion", cantidad: cantidad, precio: precio,
-            importe_without_comision: importe_bruto, comision: "",
-            importe_with_comision: importe_neto, traspaso: true
-          }
-
-          venta = %{
-            fecha: fecha, asset: reemb_asset, isin: reemb_isin,
-            tipo: "Reembolso", cantidad: "", precio: "",
-            importe_without_comision: importe_bruto, comision: "",
-            importe_with_comision: importe_bruto, traspaso: true
-          }
-
-          {:ok, [compra, venta]}
+            :reemb ->
+              {:ok, [%{
+                fecha: fecha, asset: extract_reemb_asset(html_body, reemb_isin),
+                isin: reemb_isin, tipo: "Reembolso",
+                cantidad: cantidad, precio: precio,
+                importe_without_comision: importe_bruto, comision: "",
+                importe_with_comision: importe_neto, traspaso: true
+              }]}
+          end
         end
 
       _ ->
@@ -133,10 +135,23 @@ defmodule Sheetfolio.MyinvestorParser do
     end
   end
 
-  defp extract_traspaso_asset(subject) do
+  defp extract_traspaso_tipo_raw(html) do
+    pattern = ~r/valign="top">(SUSCR[^<]*|REEMB[^<]*|ALTA[^<]*|BAJA[^<]*)<\/td>/
+    case Regex.run(pattern, html) do
+      [_, tipo] ->
+        tipo = String.trim(tipo)
+        if String.starts_with?(tipo, "SUSCR") or String.starts_with?(tipo, "ALTA"),
+          do: {:ok, :suscr},
+          else: {:ok, :reemb}
+      nil ->
+        {:error, "Could not detect traspaso tipo"}
+    end
+  end
+
+  defp extract_traspaso_asset_str(subject) do
     case Regex.run(~r/TRASPASO DE IIC (.+)$/i, subject) do
-      [_, asset] -> {:ok, String.trim(asset)}
-      nil -> {:error, "Could not extract asset from traspaso subject"}
+      [_, asset] -> String.trim(asset)
+      nil -> "Unknown"
     end
   end
 
@@ -149,8 +164,9 @@ defmodule Sheetfolio.MyinvestorParser do
   end
 
   defp extract_traspaso_amounts(html) do
+    # Importe Bruto cell may lack valign="top", so only require it on participaciones
     pattern =
-      ~r/valign="top">([\d,.]+)<\/td>.*?valign="top">([\d,.]+)&nbsp;([A-Z]+)<\/td>.*?valign="top">([\d,.]+)&nbsp;([A-Z]+)<\/td>/s
+      ~r/Participaciones.*?valign="top">([\d,.]+)<\/td>.*?>([\d,.]+)&nbsp;([A-Z]+)<\/td>.*?>([\d,.]+)&nbsp;([A-Z]+)<\/td>/s
 
     case Regex.run(pattern, html) do
       [_, cantidad, precio, precio_cur, importe, importe_cur] ->
@@ -161,9 +177,18 @@ defmodule Sheetfolio.MyinvestorParser do
   end
 
   defp extract_traspaso_importe_neto(html) do
-    case Regex.run(~r/Importe Neto.*?valign="top">([\d,.]+)&nbsp;([A-Z]+)/s, html) do
-      [_, amount, currency] -> {:ok, amount <> " " <> currency}
-      nil -> {:error, "Could not extract Importe Neto"}
+    # After "Importe Neto" label there are 3 currency values: gestora, distribuidor, neto
+    # We want the last one
+    pattern = ~r/Importe Neto.*?>([\d,.]+)&nbsp;([A-Z]+).*?>([\d,.]+)&nbsp;([A-Z]+).*?>([\d,.]+)&nbsp;([A-Z]+)/s
+
+    case Regex.run(pattern, html) do
+      [_, _, _, _, _, amount, currency] ->
+        {:ok, amount <> " " <> currency}
+      nil ->
+        case Regex.run(~r/Importe Neto.*?>([\d,.]+)&nbsp;([A-Z]+)/s, html) do
+          [_, amount, currency] -> {:ok, amount <> " " <> currency}
+          nil -> {:error, "Could not extract Importe Neto"}
+        end
     end
   end
 

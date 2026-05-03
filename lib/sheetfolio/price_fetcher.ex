@@ -40,15 +40,21 @@ defmodule Sheetfolio.PriceFetcher do
 
   @isin_format ~r/^[A-Z]{2}[A-Z0-9]{10}$/
 
+  @ticker_overrides %{
+    "DE000A1E0HS6" => "XAD6.DE"
+  }
+
   defp resolve_ticker(value) do
-    if Regex.match?(@isin_format, value) do
-      case YahooFinance.resolve_ticker(value) do
-        {:ok, ticker} -> {:ok, ticker}
-        {:error, _} -> OpenFigi.resolve_ticker(value)
-      end
-    else
-      # Value is already a direct Yahoo Finance ticker
-      {:ok, value}
+    cond do
+      Map.has_key?(@ticker_overrides, value) ->
+        {:ok, @ticker_overrides[value]}
+      Regex.match?(@isin_format, value) ->
+        case YahooFinance.resolve_ticker(value) do
+          {:ok, ticker} -> {:ok, ticker}
+          {:error, _} -> OpenFigi.resolve_ticker(value)
+        end
+      true ->
+        {:ok, value}
     end
   end
 
