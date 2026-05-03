@@ -12,6 +12,14 @@ defmodule Sheetfolio.EarningsServer do
     GenServer.cast(__MODULE__, {:compute, ref, isin, precio, cantidad, caller_pid})
   end
 
+  def request_price(isin, caller_pid) do
+    GenServer.cast(__MODULE__, {:fetch_price, isin, caller_pid})
+  end
+
+  def get_fx_rates do
+    GenServer.call(__MODULE__, :get_fx_rates)
+  end
+
   # --- GenServer callbacks ---
 
   def init(_) do
@@ -44,6 +52,16 @@ defmodule Sheetfolio.EarningsServer do
 
     send(caller_pid, {:earnings_result, ref, result})
     {:noreply, state}
+  end
+
+  def handle_cast({:fetch_price, isin, caller_pid}, state) do
+    {price_eur, state} = get_price(isin, state)
+    send(caller_pid, {:price_result, isin, price_eur})
+    {:noreply, state}
+  end
+
+  def handle_call(:get_fx_rates, _from, state) do
+    {:reply, {state.eur_usd, state.eur_cad}, state}
   end
 
   defp get_price(isin, state) do

@@ -26,7 +26,8 @@
       <h1>Sheetfolio</h1>
       <%= if Map.get(assigns, :authenticated) do %>
         <nav>
-          <a href="/" class={if current_path(assigns) == "/operations", do: "", else: "active"}>Portfolio</a>
+          <a href="/" class={if current_path(assigns) == "/", do: "active", else: ""}>Portfolio</a>
+          <a href="/summary" class={if current_path(assigns) == "/summary", do: "active", else: ""}>Summary</a>
           <a href="/operations" class={if current_path(assigns) == "/operations", do: "active", else: ""}>Operations</a>
         </nav>
       <% end %>
