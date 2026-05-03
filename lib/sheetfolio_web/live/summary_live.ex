@@ -10,43 +10,29 @@ defmodule SheetfolioWeb.SummaryLive do
       socket = assign(socket,
         authenticated: true,
         assets: %{},
-        loading: true,
-        total: nil,
-        loaded: 0,
         eur_usd: eur_usd,
         eur_cad: eur_cad
       )
 
       if connected?(socket) do
+        operations = Sheetfolio.OperationsServer.get_operations() || []
+
+        assets =
+          Enum.reduce(operations, %{}, fn data, acc ->
+            update_asset(acc, data, eur_usd, eur_cad)
+          end)
+
         pid = self()
-        Task.start(fn -> Sheetfolio.MyinvestorEmails.stream_to(pid) end)
-        {:ok, socket}
+
+        assets
+        |> Enum.filter(fn {_, a} -> a.net_qty > 0 end)
+        |> Enum.each(fn {isin, _} -> Sheetfolio.EarningsServer.request_price(isin, pid) end)
+
+        {:ok, assign(socket, assets: assets)}
       else
         {:ok, socket}
       end
     end
-  end
-
-  def handle_info({:loading_started, total}, socket) do
-    {:noreply, assign(socket, total: total)}
-  end
-
-  def handle_info({:email_loaded, data}, socket) do
-    assets = update_asset(socket.assigns.assets, data, socket.assigns.eur_usd, socket.assigns.eur_cad)
-    {:noreply, assign(socket, assets: assets, loaded: socket.assigns.loaded + 1)}
-  end
-
-  def handle_info(:loading_done, socket) do
-    pid = self()
-    socket.assigns.assets
-    |> Enum.filter(fn {_, a} -> a.net_qty > 0 end)
-    |> Enum.each(fn {isin, _} -> Sheetfolio.EarningsServer.request_price(isin, pid) end)
-
-    {:noreply, assign(socket, loading: false)}
-  end
-
-  def handle_info({:loading_error, reason}, socket) do
-    {:noreply, assign(socket, loading: false, error: reason)}
   end
 
   def handle_info({:price_result, _isin, nil}, socket) do
@@ -77,19 +63,7 @@ defmodule SheetfolioWeb.SummaryLive do
       .summary-table tfoot td { background: #f8fafc; font-weight: 600; border-top: 2px solid #e2e8f0; }
       .positive { color: #16a34a; font-weight: 600; }
       .negative { color: #dc2626; font-weight: 600; }
-      .status-bar { margin-bottom: 1rem; font-size: 0.9rem; color: #64748b; display: flex; align-items: center; gap: 0.75rem; }
-      .spinner { width: 14px; height: 14px; border: 2px solid #cbd5e1; border-top-color: #6366f1; border-radius: 50%; animation: spin 0.7s linear infinite; }
-      @keyframes spin { to { transform: rotate(360deg); } }
     </style>
-
-    <div class="status-bar">
-      <%= if @loading do %>
-        <div class="spinner"></div>
-        <span>Loading emails<%= if @total do %> — <%= @loaded %>/<%= @total %><% end %></span>
-      <% else %>
-        <span><%= Enum.count(@assets, fn {_, a} -> a.net_qty > 0 end) %> active positions</span>
-      <% end %>
-    </div>
 
     <%= if map_size(@assets) > 0 do %>
       <% active = @assets |> Map.values() |> Enum.filter(& &1.net_qty > 0) |> Enum.sort_by(& &1.cost_basis, :desc) %>

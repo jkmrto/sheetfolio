@@ -10,6 +10,7 @@ defmodule Sheetfolio.Application do
     children = [
       {Goth, name: Sheetfolio.Goth, source: source},
       Sheetfolio.EarningsServer,
+      Sheetfolio.OperationsServer,
       SheetfolioWeb.Endpoint
     ]
 

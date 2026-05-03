@@ -10,71 +10,22 @@ defmodule SheetfolioWeb.OperationsLive do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      socket =
-        assign(socket,
-          authenticated: true,
-          headers: @headers,
-          operations: %{},
-          order: [],
-          next_id: 0,
-          total: nil,
-          loaded: 0,
-          loading: false,
-          asset_counts: %{},
-          selected_assets: MapSet.new()
-        )
+      socket = assign(socket,
+        authenticated: true,
+        headers: @headers,
+        operations: %{},
+        order: [],
+        asset_counts: %{},
+        selected_assets: MapSet.new()
+      )
 
       if connected?(socket) do
-        pid = self()
-        Task.start(fn -> Sheetfolio.MyinvestorEmails.stream_to(pid) end)
-        {:ok, assign(socket, loading: true)}
+        operations = Sheetfolio.OperationsServer.get_operations()
+        {:ok, load_operations(socket, operations || [])}
       else
         {:ok, socket}
       end
     end
-  end
-
-  def handle_info({:loading_started, total}, socket) do
-    {:noreply, assign(socket, total: total)}
-  end
-
-  def handle_info({:email_loaded, data}, socket) do
-    ref = socket.assigns.next_id
-
-    entry = %{
-      row: [
-        data.fecha, data.asset, data.isin, data.tipo,
-        data.cantidad, data.precio, data.importe_without_comision,
-        data.comision, data.importe_with_comision
-      ],
-      earnings_abs: nil,
-      earnings_pct: nil
-    }
-
-    Sheetfolio.EarningsServer.request(ref, data.isin, data.precio, data.cantidad, self())
-
-    operations = Map.put(socket.assigns.operations, ref, entry)
-    order =
-      [ref | socket.assigns.order]
-      |> Enum.sort_by(fn id -> operations |> Map.get(id) |> Map.get(:row) |> hd() |> date_sort_key() end, :desc)
-
-    asset_counts = Map.update(socket.assigns.asset_counts, data.asset, 1, &(&1 + 1))
-
-    {:noreply, assign(socket,
-      operations: operations,
-      order: order,
-      next_id: ref + 1,
-      loaded: socket.assigns.loaded + 1,
-      asset_counts: asset_counts
-    )}
-  end
-
-  def handle_info(:loading_done, socket) do
-    {:noreply, assign(socket, loading: false)}
-  end
-
-  def handle_info({:loading_error, reason}, socket) do
-    {:noreply, assign(socket, loading: false, error: reason)}
   end
 
   def handle_info({:earnings_result, _ref, nil}, socket) do
@@ -112,9 +63,6 @@ defmodule SheetfolioWeb.OperationsLive do
       .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.78rem; font-weight: 600; }
       .badge-suscripcion, .badge-compra { background: #dcfce7; color: #166534; } /* green-100 / green-800 */
       .badge-reembolso, .badge-venta { background: #fee2e2; color: #991b1b; }   /* red-100 / red-800 */
-      .status-bar { margin-bottom: 1rem; font-size: 0.9rem; color: #64748b; display: flex; align-items: center; gap: 0.75rem; }
-      .spinner { width: 14px; height: 14px; border: 2px solid #cbd5e1; border-top-color: #6366f1; border-radius: 50%; animation: spin 0.7s linear infinite; }
-      @keyframes spin { to { transform: rotate(360deg); } }
       .positive { color: #16a34a; font-weight: 600; } /* green-700 */
       .negative { color: #dc2626; font-weight: 600; } /* red-600 */
       .filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; }
@@ -122,15 +70,6 @@ defmodule SheetfolioWeb.OperationsLive do
       .filter-btn:hover { border-color: #6366f1; color: #6366f1; } /* indigo */
       .filter-btn.active { background: #6366f1; border-color: #6366f1; color: white; } /* indigo */
     </style>
-
-    <div class="status-bar">
-      <%= if @loading do %>
-        <div class="spinner"></div>
-        <span>Loading emails<%= if @total do %> — <%= @loaded %>/<%= @total %><% end %></span>
-      <% else %>
-        <span><%= map_size(@operations) %> operations loaded</span>
-      <% end %>
-    </div>
 
     <%= if @asset_counts != %{} do %>
       <div class="filters">
@@ -182,6 +121,36 @@ defmodule SheetfolioWeb.OperationsLive do
       </table>
     <% end %>
     """
+  end
+
+  defp load_operations(socket, operations) do
+    pid = self()
+
+    {ops_map, order, asset_counts} =
+      operations
+      |> Enum.with_index()
+      |> Enum.reduce({%{}, [], %{}}, fn {data, ref}, {ops, ord, counts} ->
+        entry = %{
+          row: [data.fecha, data.asset, data.isin, data.tipo,
+                data.cantidad, data.precio, data.importe_without_comision,
+                data.comision, data.importe_with_comision],
+          earnings_abs: nil,
+          earnings_pct: nil
+        }
+
+        Sheetfolio.EarningsServer.request(ref, data.isin, data.precio, data.cantidad, pid)
+
+        {Map.put(ops, ref, entry),
+         [ref | ord],
+         Map.update(counts, data.asset, 1, &(&1 + 1))}
+      end)
+
+    order =
+      Enum.sort_by(order, fn id ->
+        ops_map |> Map.get(id) |> Map.get(:row) |> hd() |> date_sort_key()
+      end, :desc)
+
+    assign(socket, operations: ops_map, order: order, asset_counts: asset_counts)
   end
 
   defp visible_order(order, _operations, selected) when selected == %MapSet{}, do: order
