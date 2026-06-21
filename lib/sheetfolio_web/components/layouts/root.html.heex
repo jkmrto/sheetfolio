@@ -29,6 +29,7 @@
           <a href="/" class={if current_path(assigns) == "/", do: "active", else: ""}>Portfolio</a>
           <a href="/summary" class={if current_path(assigns) == "/summary", do: "active", else: ""}>Active</a>
           <a href="/summary/settled" class={if current_path(assigns) == "/summary/settled", do: "active", else: ""}>Settled</a>
+          <a href="/summary/dca" class={if current_path(assigns) == "/summary/dca", do: "active", else: ""}>DCA Impact</a>
           <a href="/operations" class={if current_path(assigns) == "/operations", do: "active", else: ""}>Operations</a>
         </nav>
       <% end %>

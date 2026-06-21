@@ -45,6 +45,43 @@ defmodule Sheetfolio.PricesApi.YahooFinance do
     end
   end
 
+  @doc "Fetches daily close prices for a ticker between two Unix timestamps. Returns {:ok, %{Date => price}}."
+  def fetch_historical(ticker, period1, period2) do
+    url = "#{@chart_url}/#{URI.encode(ticker)}"
+
+    case Req.get(url, params: [period1: period1, period2: period2, interval: "1d"]) do
+      {:ok, %{status: 200, body: body}} ->
+        parse_historical(body)
+
+      {:ok, %{status: status}} ->
+        Logger.warning("[YahooFinance] HTTP #{status} fetching historical for #{ticker}")
+        {:error, {:http, status}}
+
+      {:error, reason} ->
+        Logger.warning("[YahooFinance] Error fetching historical for #{ticker}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp parse_historical(body) do
+    try do
+      result = body["chart"]["result"] |> List.first()
+      timestamps = result["timestamp"]
+      closes = result["indicators"]["quote"] |> List.first() |> Map.get("close")
+
+      prices =
+        Enum.zip(timestamps, closes)
+        |> Enum.filter(fn {_, price} -> price != nil end)
+        |> Map.new(fn {ts, price} ->
+          {DateTime.from_unix!(ts) |> DateTime.to_date(), price}
+        end)
+
+      {:ok, prices}
+    rescue
+      e -> {:error, {:parse_error, Exception.message(e)}}
+    end
+  end
+
   defp parse_chart(body) do
     try do
       result = body["chart"]["result"] |> List.first()

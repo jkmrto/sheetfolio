@@ -26,5 +26,6 @@ defmodule SheetfolioWeb.Router do
     live "/operations", OperationsLive
     live "/summary", SummaryLive, :active
     live "/summary/settled", SummaryLive, :settled
+    live "/summary/dca", DcaLive
   end
 end
