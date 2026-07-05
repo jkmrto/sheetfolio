@@ -38,3 +38,4 @@ node_modules/
 .playwright-mcp/
 _build_worktree/
 .claude/worktrees/
+.claude/settings.local.json
