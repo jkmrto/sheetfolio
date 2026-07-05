@@ -24,6 +24,12 @@ spreadsheet_id =
 
 config :sheetfolio, spreadsheet_id: spreadsheet_id
 
+mongodb_uri =
+  System.get_env("MONGODB_URI") ||
+    raise "Missing MONGODB_URI environment variable"
+
+config :sheetfolio, mongodb_uri: mongodb_uri
+
 if config_env() == :prod do
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||

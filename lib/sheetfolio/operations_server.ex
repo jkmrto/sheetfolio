@@ -4,7 +4,7 @@ defmodule Sheetfolio.OperationsServer do
 
   def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
-  def get_operations, do: GenServer.call(__MODULE__, :get_operations, 60_000)
+  def get_operations(timeout \\ 60_000), do: GenServer.call(__MODULE__, :get_operations, timeout)
 
   def init(_) do
     {:ok, nil, {:continue, :load}}

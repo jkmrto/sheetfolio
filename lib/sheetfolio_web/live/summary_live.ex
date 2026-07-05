@@ -17,10 +17,7 @@ defmodule SheetfolioWeb.SummaryLive do
       if connected?(socket) do
         operations = Sheetfolio.OperationsServer.get_operations() || []
 
-        assets =
-          Enum.reduce(operations, %{}, fn data, acc ->
-            update_asset(acc, data, eur_usd, eur_cad)
-          end)
+        assets = Sheetfolio.Positions.build(operations, eur_usd, eur_cad)
 
         ops_by_isin = Enum.group_by(operations, & &1.isin)
 
@@ -57,6 +54,21 @@ defmodule SheetfolioWeb.SummaryLive do
     {:noreply, assign(socket, selected_isin: selected)}
   end
 
+  def handle_event("refresh_prices", _, socket) do
+    Sheetfolio.EarningsServer.clear_price_cache()
+
+    assets = Map.new(socket.assigns.assets, fn {isin, a} ->
+      {isin, %{a | current_value: nil, earnings_abs: nil, earnings_pct: nil}}
+    end)
+
+    pid = self()
+    assets
+    |> Enum.filter(fn {_, a} -> a.net_qty > 0.001 end)
+    |> Enum.each(fn {isin, _} -> Sheetfolio.EarningsServer.request_price(isin, pid) end)
+
+    {:noreply, assign(socket, assets: assets)}
+  end
+
   def render(assigns) do
     ~H"""
     <style>
@@ -71,6 +83,12 @@ defmodule SheetfolioWeb.SummaryLive do
       .positive { color: #16a34a; font-weight: 600; }
       .negative { color: #dc2626; font-weight: 600; }
     </style>
+
+    <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
+      <button phx-click="refresh_prices" style="background: #1e293b; color: white; border: none; padding: 0.4rem 0.9rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer;">
+        ↺ Refresh prices
+      </button>
+    </div>
 
     <%= if @live_action == :active do %>
       <%= render_active(assigns) %>
@@ -228,88 +246,9 @@ defmodule SheetfolioWeb.SummaryLive do
     """
   end
 
-  defp update_asset(assets, data, eur_usd, eur_cad) do
-    qty = parse_cantidad(data.cantidad)
-    cost_eur = amount_in_eur(data.importe_with_comision, data.precio, qty, eur_usd, eur_cad)
-    is_buy = buy?(data.tipo)
-    {qty_delta, cost_delta, bought_delta, received_delta} =
-      if is_buy,
-        do: {qty, cost_eur, cost_eur, 0.0},
-        else: {-qty, -cost_eur, 0.0, cost_eur}
-
-    Map.update(assets, data.isin,
-      %{asset: data.asset, isin: data.isin, net_qty: qty_delta, cost_basis: cost_delta,
-        total_bought: bought_delta, total_received: received_delta,
-        current_value: nil, earnings_abs: nil, earnings_pct: nil},
-      fn a -> %{a |
-        net_qty: a.net_qty + qty_delta,
-        cost_basis: a.cost_basis + cost_delta,
-        total_bought: a.total_bought + bought_delta,
-        total_received: a.total_received + received_delta
-      } end
-    )
-  end
-
-  defp buy?(tipo), do: tipo in ["Suscripcion", "Compra", "Traspaso Entrada"]
-
-  defp parse_cantidad(str) do
-    case parse_number(str) do
-      {val, _} -> val
-      :error -> 0.0
-    end
-  end
-
-  # Prefers importe_with_comision (actual EUR amount) over precio×qty when available in EUR.
-  defp amount_in_eur(importe_str, precio_str, qty, eur_usd, eur_cad) do
-    case Regex.run(~r/([\d.,]+)\s+EUR\b/, String.trim(importe_str)) do
-      [_, amount] ->
-        case parse_number(amount) do
-          {val, _} when val > 0 -> val
-          _ -> cost_in_eur(precio_str, qty, eur_usd, eur_cad)
-        end
-      _ -> cost_in_eur(precio_str, qty, eur_usd, eur_cad)
-    end
-  end
-
-  defp cost_in_eur(precio_str, qty, eur_usd, eur_cad) do
-    case Regex.run(~r/([\d.,]+)\s+([A-Z]+)/, precio_str) do
-      [_, amount, currency] ->
-        case parse_number(amount) do
-          {price, _} -> to_eur(price, currency, eur_usd, eur_cad) * qty
-          :error -> 0.0
-        end
-      _ -> 0.0
-    end
-  end
-
-  defp parse_number(str) do
-    cond do
-      String.contains?(str, ".") and String.contains?(str, ",") ->
-        # Determine format by which separator appears last.
-        # "1,000.34" → dot last → English (comma=thousands) → 1000.34
-        # "1.418,996" → comma last → Spanish (dot=thousands) → 1418.996
-        last_dot = str |> :binary.matches(".") |> List.last() |> elem(0)
-        last_comma = str |> :binary.matches(",") |> List.last() |> elem(0)
-        if last_dot > last_comma do
-          str |> String.replace(",", "") |> Float.parse()
-        else
-          str |> String.replace(".", "") |> String.replace(",", ".") |> Float.parse()
-        end
-      String.contains?(str, ",") ->
-        # If exactly 3 digits follow the last comma: English thousands separator.
-        # "1,188" → 1188 | "14,2592" → 14.2592
-        case Regex.run(~r/^[\d,]+,(\d{3})$/, str) do
-          [_, _] -> str |> String.replace(",", "") |> Float.parse()
-          _ -> str |> String.replace(",", ".") |> Float.parse()
-        end
-      true ->
-        Float.parse(str)
-    end
-  end
-
-  defp to_eur(price, "USD", eur_usd, _), do: price / eur_usd
-  defp to_eur(price, "CAD", _, eur_cad), do: price / eur_cad
-  defp to_eur(price, _, _, _), do: price
+  defdelegate buy?(tipo), to: Sheetfolio.Positions
+  defdelegate parse_cantidad(str), to: Sheetfolio.Positions
+  defdelegate amount_in_eur(importe, precio, qty, eur_usd, eur_cad), to: Sheetfolio.Positions
 
   defp earnings_class(nil), do: ""
   defp earnings_class(val) when val >= 0, do: "positive"

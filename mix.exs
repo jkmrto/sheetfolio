@@ -24,6 +24,7 @@ defmodule Sheetfolio.MixProject do
   defp deps do
     [
       {:goth, "~> 1.4"},
+      {:mongodb_driver, "~> 1.5"},
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
       {:phoenix, "~> 1.7"},
