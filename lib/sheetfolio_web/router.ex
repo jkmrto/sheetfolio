@@ -27,6 +27,7 @@ defmodule SheetfolioWeb.Router do
     live "/control", ControlLive
     live "/history", HistoryLive
     live "/evolution", EvolutionLive
+    live "/cash", CashLive
 
     live_session :authenticated, on_mount: [{SheetfolioWeb.LoadingHook, :default}] do
       live "/operations", OperationsLive
