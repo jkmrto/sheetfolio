@@ -8,7 +8,7 @@ defmodule Sheetfolio.MyinvestorEmails do
   def fetch_all do
     with {:ok, ops} <- fetch_query(@gmail_query_operaciones),
          {:ok, traspasos} <- fetch_query(@gmail_query_traspasos) do
-      {:ok, ops ++ traspasos}
+      {:ok, ops ++ traspasos ++ Sheetfolio.SyntheticOperations.all()}
     end
   end
 

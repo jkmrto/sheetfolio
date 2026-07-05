@@ -31,7 +31,7 @@ defmodule Sheetfolio.PricesApi.YahooFinance do
 
     case Req.get(url, params: [range: "1d", interval: "1d"]) do
       {:ok, %{status: 200, body: body}} ->
-        result = parse_chart(body)
+        result = parse_chart_current(body)
         Logger.debug("[YahooFinance] Price for #{ticker}: #{inspect(result)}")
         result
 
@@ -45,18 +45,53 @@ defmodule Sheetfolio.PricesApi.YahooFinance do
     end
   end
 
-  defp parse_chart(body) do
-    try do
-      result = body["chart"]["result"] |> List.first()
-      currency = result["meta"]["currency"]
+  @doc "Fetches the closing price on or before `date` for a ticker."
+  def fetch_price_at(ticker, %Date{} = date) do
+    url = "#{@chart_url}/#{URI.encode(ticker)}"
+    # Look back 7 days to handle weekends/holidays; take the last available close.
+    period1 = date_to_unix(Date.add(date, -7))
+    period2 = date_to_unix(Date.add(date, 1))
 
+    case Req.get(url, params: [period1: period1, period2: period2, interval: "1d"]) do
+      {:ok, %{status: 200, body: body}} ->
+        result = parse_chart_historical(body)
+        Logger.debug("[YahooFinance] Historical price for #{ticker} at #{date}: #{inspect(result)}")
+        result
+
+      {:ok, %{status: status}} ->
+        Logger.warning("[YahooFinance] HTTP #{status} fetching historical price for #{ticker}")
+        {:error, {:http, status}}
+
+      {:error, reason} ->
+        Logger.warning("[YahooFinance] Error fetching historical price for #{ticker}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp parse_chart_current(body) do
+    with %{"chart" => %{"result" => [result | _]}} <- body,
+         %{"meta" => %{"currency" => currency}} <- result do
       price =
-        result["meta"]["regularMarketPrice"] ||
-          result["indicators"]["quote"] |> List.first() |> Map.get("close") |> List.last()
+        get_in(result, ["meta", "regularMarketPrice"]) ||
+          (result["indicators"]["quote"] |> List.first() |> Map.get("close", []) |> List.last())
 
       if price, do: {:ok, price, currency}, else: {:error, :no_price}
-    rescue
-      e -> {:error, {:parse_error, Exception.message(e)}}
+    else
+      _ -> {:error, :no_price}
     end
+  end
+
+  defp parse_chart_historical(body) do
+    with %{"chart" => %{"result" => [result | _]}} <- body,
+         %{"meta" => %{"currency" => currency}, "indicators" => %{"quote" => [%{"close" => closes} | _]}} <- result,
+         price when not is_nil(price) <- closes |> Enum.filter(& &1) |> List.last() do
+      {:ok, price, currency}
+    else
+      _ -> {:error, :no_price}
+    end
+  end
+
+  defp date_to_unix(%Date{} = date) do
+    Date.diff(date, ~D[1970-01-01]) * 86400
   end
 end

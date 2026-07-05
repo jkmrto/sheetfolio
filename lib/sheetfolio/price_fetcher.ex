@@ -5,7 +5,50 @@ defmodule Sheetfolio.PriceFetcher do
   Returns prices converted to EUR.
   """
 
-  alias Sheetfolio.PricesApi.{OpenFigi, YahooFinance}
+  alias Sheetfolio.PricesApi.{OpenFigi, YahooFinance, Stooq}
+
+  @isin_format ~r/^[A-Z]{2}[A-Z0-9]{10}$/
+
+  @ticker_overrides %{
+    "DE000A1E0HS6" => "XAD6.DE",
+    "GB00BJYDH287" => "BTCW.L",
+    "LU0080237943" => "DI4C.F"
+  }
+
+  # ISINs where Yahoo Finance has no historical data — fall back to Stooq (Frankfurt tickers)
+  @stooq_overrides %{
+    "LU0080237943" => "di4c.de",
+    "IE000RHYOR04" => "ie000rhyor04.de"
+  }
+
+  def fetch_price_at("Bitcoin", %Date{} = date, eur_usd, _eur_cad) do
+    case YahooFinance.fetch_price_at("BTC-USD", date) do
+      {:ok, price, "USD"} -> {:ok, price / eur_usd}
+      {:ok, price, _} -> {:ok, price}
+      err -> err
+    end
+  end
+
+  def fetch_price_at(isin, %Date{} = date, eur_usd, eur_cad) do
+    with {:ok, ticker} <- resolve_ticker(isin),
+         {:ok, price, currency} <- fetch_historical(isin, ticker, date) do
+      {:ok, to_eur(price, currency, eur_usd, eur_cad)}
+    end
+  end
+
+  defp fetch_historical(isin, ticker, date) do
+    case YahooFinance.fetch_price_at(ticker, date) do
+      {:ok, _, _} = ok -> ok
+      _ -> fetch_stooq_fallback(isin, date)
+    end
+  end
+
+  defp fetch_stooq_fallback(isin, date) do
+    case Map.get(@stooq_overrides, isin) do
+      nil -> {:error, :no_price}
+      stooq_ticker -> Stooq.fetch_price_at(stooq_ticker, date)
+    end
+  end
 
   def fetch_prices(assets_map) do
     eur_usd = fetch_fx("EURUSD=X") || 1.0
@@ -37,12 +80,6 @@ defmodule Sheetfolio.PriceFetcher do
       {:ok, to_eur(price, currency, eur_usd, eur_cad)}
     end
   end
-
-  @isin_format ~r/^[A-Z]{2}[A-Z0-9]{10}$/
-
-  @ticker_overrides %{
-    "DE000A1E0HS6" => "XAD6.DE"
-  }
 
   defp resolve_ticker(value) do
     cond do
