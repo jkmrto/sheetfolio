@@ -56,6 +56,11 @@ defmodule SheetfolioWeb.PortfolioLive do
         %{x: s["date"], y: Float.round(s["total_value"] + amount, 2)}
       end
 
+    invested =
+      for s <- snapshots, is_number(s["total_invested"]) do
+        %{x: s["date"], y: s["total_invested"]}
+      end
+
     cash_points =
       for s <- snapshots, amount = cash_at(cash, s["date"]) do
         %{x: s["date"], y: amount}
@@ -72,6 +77,7 @@ defmodule SheetfolioWeb.PortfolioLive do
       datasets: [
         %{label: "Total + Cash (€)", color: "#4a3aa7", data: total_with_cash},
         %{label: "Total Portfolio (€)", color: "#2a78d6", fill: true, data: total},
+        %{label: "Invested (€)", color: "#94a3b8", data: invested},
         %{label: "Cash (€)", color: "#eda100", data: cash_points},
         %{label: "Earnings (€)", color: "#008300", fill: true, data: earnings}
       ]
