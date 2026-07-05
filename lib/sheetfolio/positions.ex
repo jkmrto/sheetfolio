@@ -4,6 +4,21 @@ defmodule Sheetfolio.Positions do
   """
 
   def build(operations, eur_usd, eur_cad) do
+    {assets, _events} = replay(operations, eur_usd, eur_cad)
+    assets
+  end
+
+  @doc """
+  One event per sell operation with the realized P&L over the covered units
+  (those with a known cost basis), oldest first. Units sold beyond the
+  recorded buy history are reported as uncovered and realize nothing.
+  """
+  def realized_events(operations, eur_usd, eur_cad) do
+    {_assets, events} = replay(operations, eur_usd, eur_cad)
+    Enum.reverse(events)
+  end
+
+  defp replay(operations, eur_usd, eur_cad) do
     operations
     |> Enum.sort_by(fn %{fecha: f} ->
       case String.split(f, "/") do
@@ -11,35 +26,44 @@ defmodule Sheetfolio.Positions do
         _ -> {"", "", ""}
       end
     end)
-    |> Enum.reduce(%{}, fn data, acc ->
-      update_asset(acc, data, eur_usd, eur_cad)
+    |> Enum.reduce({%{}, []}, fn data, {assets, events} ->
+      case update_asset(assets, data, eur_usd, eur_cad) do
+        {assets, nil} -> {assets, events}
+        {assets, event} -> {assets, [event | events]}
+      end
     end)
   end
 
   defp update_asset(assets, data, eur_usd, eur_cad) do
     qty = parse_cantidad(data.cantidad)
     cost_eur = amount_in_eur(data.importe_with_comision, data.precio, qty, eur_usd, eur_cad)
-    is_buy = buy?(data.tipo)
 
-    initial = %{
-      asset: data.asset, isin: data.isin,
-      net_qty: if(is_buy, do: qty, else: -qty),
-      cost_basis: if(is_buy, do: cost_eur, else: 0.0),
-      total_bought: if(is_buy, do: cost_eur, else: 0.0),
-      total_received: if(is_buy, do: 0.0, else: cost_eur),
-      realized: if(is_buy, do: 0.0, else: cost_eur),
-      current_value: nil, earnings_abs: nil, earnings_pct: nil
-    }
+    a =
+      Map.get(assets, data.isin, %{
+        asset: data.asset, isin: data.isin,
+        net_qty: 0.0, cost_basis: 0.0, total_bought: 0.0, total_received: 0.0, realized: 0.0,
+        current_value: nil, earnings_abs: nil, earnings_pct: nil
+      })
 
-    Map.update(assets, data.isin, initial, fn a ->
-      if is_buy do
-        %{a | net_qty: a.net_qty + qty, cost_basis: a.cost_basis + cost_eur, total_bought: a.total_bought + cost_eur}
-      else
-        avg_cost = if a.net_qty > 0, do: a.cost_basis / a.net_qty, else: 0.0
-        %{a | net_qty: a.net_qty - qty, cost_basis: a.cost_basis - qty * avg_cost,
-              total_received: a.total_received + cost_eur, realized: a.realized + (cost_eur - qty * avg_cost)}
-      end
-    end)
+    if buy?(data.tipo) do
+      a = %{a | net_qty: a.net_qty + qty, cost_basis: a.cost_basis + cost_eur, total_bought: a.total_bought + cost_eur}
+      {Map.put(assets, data.isin, a), nil}
+    else
+      avg_cost = if a.net_qty > 0, do: a.cost_basis / a.net_qty, else: 0.0
+      covered = min(qty, max(a.net_qty, 0.0))
+      cost = covered * avg_cost
+      realized = if qty > 0, do: covered * (cost_eur / qty) - cost, else: 0.0
+
+      a = %{a | net_qty: a.net_qty - qty, cost_basis: a.cost_basis - cost,
+            total_received: a.total_received + cost_eur, realized: a.realized + realized}
+
+      event = %{
+        fecha: data.fecha, asset: data.asset, isin: data.isin, tipo: data.tipo,
+        qty: qty, uncovered: qty - covered, proceeds: cost_eur, cost: cost, realized: realized
+      }
+
+      {Map.put(assets, data.isin, a), event}
+    end
   end
 
   def buy?(tipo), do: tipo in ["Suscripcion", "Compra", "Traspaso Entrada"]
