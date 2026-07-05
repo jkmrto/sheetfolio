@@ -43,10 +43,12 @@ defmodule Sheetfolio.SnapshotRecorder do
       %{key: %{date: 1}, name: "date_unique", unique: true}
     ])
 
-    positions =
-      Sheetfolio.Positions.build(operations, eur_usd, eur_cad)
-      |> Map.values()
-      |> Enum.filter(&(&1.net_qty > 0.001 and &1.cost_basis > 0))
+    assets = Sheetfolio.Positions.build(operations, eur_usd, eur_cad) |> Map.values()
+
+    # Cumulative realized P&L, including fully settled positions.
+    total_realized = Enum.reduce(assets, 0.0, &(&1.realized + &2)) |> Float.round(2)
+
+    positions = Enum.filter(assets, &(&1.net_qty > 0.001 and &1.cost_basis > 0))
 
     prices =
       positions
@@ -82,6 +84,7 @@ defmodule Sheetfolio.SnapshotRecorder do
       recorded_at: DateTime.utc_now(),
       total_invested: total_invested,
       total_value: total_value,
+      total_realized: total_realized,
       positions: position_docs
     }
 

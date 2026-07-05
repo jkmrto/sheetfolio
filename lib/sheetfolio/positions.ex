@@ -27,6 +27,7 @@ defmodule Sheetfolio.Positions do
       cost_basis: if(is_buy, do: cost_eur, else: 0.0),
       total_bought: if(is_buy, do: cost_eur, else: 0.0),
       total_received: if(is_buy, do: 0.0, else: cost_eur),
+      realized: if(is_buy, do: 0.0, else: cost_eur),
       current_value: nil, earnings_abs: nil, earnings_pct: nil
     }
 
@@ -35,7 +36,8 @@ defmodule Sheetfolio.Positions do
         %{a | net_qty: a.net_qty + qty, cost_basis: a.cost_basis + cost_eur, total_bought: a.total_bought + cost_eur}
       else
         avg_cost = if a.net_qty > 0, do: a.cost_basis / a.net_qty, else: 0.0
-        %{a | net_qty: a.net_qty - qty, cost_basis: a.cost_basis - qty * avg_cost, total_received: a.total_received + cost_eur}
+        %{a | net_qty: a.net_qty - qty, cost_basis: a.cost_basis - qty * avg_cost,
+              total_received: a.total_received + cost_eur, realized: a.realized + (cost_eur - qty * avg_cost)}
       end
     end)
   end

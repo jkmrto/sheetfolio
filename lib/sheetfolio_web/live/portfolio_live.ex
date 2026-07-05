@@ -15,6 +15,7 @@ defmodule SheetfolioWeb.PortfolioLive do
               date: 1,
               total_value: 1,
               total_invested: 1,
+              total_realized: 1,
               positions: %{"$elemMatch" => %{isin: "URBANITAE"}}
             }
           )
@@ -78,7 +79,8 @@ defmodule SheetfolioWeb.PortfolioLive do
 
     earnings =
       for s <- snapshots, is_number(s["total_value"]) and is_number(s["total_invested"]) do
-        %{x: s["date"], y: Float.round(s["total_value"] - s["total_invested"], 2)}
+        unrealized = s["total_value"] - s["total_invested"]
+        %{x: s["date"], y: Float.round(unrealized + (s["total_realized"] || 0.0), 2)}
       end
 
     %{
@@ -90,7 +92,7 @@ defmodule SheetfolioWeb.PortfolioLive do
         %{label: "Invested (€)", color: "#94a3b8", data: invested},
         %{label: "Urbanitae (€)", color: "#e34948", data: urbanitae},
         %{label: "Cash (€)", color: "#eda100", data: cash_points},
-        %{label: "Earnings (€)", color: "#008300", fill: true, data: earnings}
+        %{label: "Earnings, realized + unrealized (€)", color: "#008300", fill: true, data: earnings}
       ]
     }
   end
