@@ -23,10 +23,16 @@ defmodule SheetfolioWeb.Router do
     pipe_through [:browser, :auth]
 
     get "/", PortfolioController, :index
-    live "/operations", OperationsLive
-    live "/summary", SummaryLive, :active
-    live "/summary/settled", SummaryLive, :settled
-    live "/snapshot", SnapshotLive
+    live "/loading", LoadingLive
+    live "/control", ControlLive
     live "/history", HistoryLive
+
+    live_session :authenticated, on_mount: [{SheetfolioWeb.LoadingHook, :default}] do
+      live "/operations", OperationsLive
+      live "/summary", SummaryLive, :active
+      live "/summary/settled", SummaryLive, :settled
+      live "/summary/dca", DcaLive
+      live "/snapshot", SnapshotLive
+    end
   end
 end

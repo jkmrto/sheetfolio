@@ -4,19 +4,19 @@ defmodule Sheetfolio.MyinvestorEmails do
   @gmail_query_operaciones "from:notificaciones@myinvestor.es subject:CONFIRMACIÓN DE OPERACIÓN DE VALORES"
   @gmail_query_traspasos "from:notificaciones@myinvestor.es subject:TRASPASO"
 
-  @doc "Returns {:ok, [operation_map]} or {:error, reason}."
-  def fetch_all do
-    with {:ok, ops} <- fetch_query(@gmail_query_operaciones),
-         {:ok, traspasos} <- fetch_query(@gmail_query_traspasos) do
-      {:ok, ops ++ traspasos ++ Sheetfolio.SyntheticOperations.all()}
-    end
-  end
+  @doc "Returns {:ok, [operation_map]} or {:error, reason}. Optional progress/2 callback called with (current, total)."
+  def fetch_all(progress \\ nil) do
+    with {:ok, op_ids} <- list_ids(@gmail_query_operaciones),
+         {:ok, traspaso_ids} <- list_ids(@gmail_query_traspasos) do
+      all_ids = op_ids ++ traspaso_ids
+      total = length(all_ids)
 
-  defp fetch_query(query) do
-    with {:ok, messages} <- Sheetfolio.GmailClient.search_messages(query) do
-      Logger.info("[MyinvestorEmails] Found #{length(messages)} emails for: #{query}")
-      operations =
-        Enum.flat_map(messages, fn %{"id" => id} ->
+      ops =
+        all_ids
+        |> Enum.with_index(1)
+        |> Enum.flat_map(fn {id, current} ->
+          if progress, do: progress.(current, total)
+
           case fetch_and_parse(id) do
             {:ok, ops} -> ops
             {:error, reason} ->
@@ -24,7 +24,15 @@ defmodule Sheetfolio.MyinvestorEmails do
               []
           end
         end)
-      {:ok, operations}
+
+      {:ok, ops}
+    end
+  end
+
+  defp list_ids(query) do
+    with {:ok, messages} <- Sheetfolio.GmailClient.search_messages(query) do
+      Logger.info("[MyinvestorEmails] Found #{length(messages)} emails for: #{query}")
+      {:ok, Enum.map(messages, & &1["id"])}
     end
   end
 
