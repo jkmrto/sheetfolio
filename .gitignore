@@ -32,3 +32,9 @@ token.json
 gmail_token.json
 emails_output.txt
 /priv/static/assets/
+
+# Local tooling artifacts
+node_modules/
+.playwright-mcp/
+_build_worktree/
+.claude/worktrees/
