@@ -16,11 +16,11 @@ Hooks.HistoryChart = {
       label: ds.label,
       data: ds.data,
       borderColor: ds.color,
-      backgroundColor: ds.color,
+      backgroundColor: ds.fill ? ds.color + "26" : ds.color,
       borderWidth: 2,
       pointRadius: ds.data.length > 60 ? 0 : 3,
       pointHoverRadius: 6,
-      fill: false,
+      fill: !!ds.fill,
       tension: 0.3
     }))
 
@@ -35,7 +35,7 @@ Hooks.HistoryChart = {
         interaction: {mode: "index", intersect: false},
         plugins: {
           legend: {position: "top"},
-          title: {display: true, text: isPct ? "Gain/Loss evolution (%)" : "Value evolution (€)", font: {size: 18}},
+          title: {display: true, text: payload.title || (isPct ? "Gain/Loss evolution (%)" : "Value evolution (€)"), font: {size: 18}},
           tooltip: {
             callbacks: {
               label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`

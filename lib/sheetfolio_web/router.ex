@@ -22,7 +22,7 @@ defmodule SheetfolioWeb.Router do
   scope "/", SheetfolioWeb do
     pipe_through [:browser, :auth]
 
-    get "/", PortfolioController, :index
+    live "/", PortfolioLive
     live "/loading", LoadingLive
     live "/control", ControlLive
     live "/history", HistoryLive
