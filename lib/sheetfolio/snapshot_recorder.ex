@@ -68,9 +68,10 @@ defmodule Sheetfolio.SnapshotRecorder do
           invested: Float.round(p.cost_basis, 2),
           value: value
         }
-      end)
+      end) ++ urbanitae_positions()
 
-    valued = Enum.filter(position_docs, & &1.value)
+    # Urbanitae is charted as its own line; totals track only market positions.
+    valued = Enum.filter(position_docs, &(&1.value && &1.isin != "URBANITAE"))
     total_invested = Enum.reduce(valued, 0.0, &(&1.invested + &2)) |> Float.round(2)
     total_value = Enum.reduce(valued, 0.0, &(&1.value + &2)) |> Float.round(2)
 
@@ -92,6 +93,21 @@ defmodule Sheetfolio.SnapshotRecorder do
       {:error, reason} = err ->
         Logger.error("SnapshotRecorder: failed to record #{date}: #{inspect(reason)}")
         err
+    end
+  end
+
+  defp urbanitae_positions do
+    with {:ok, history} <- Sheetfolio.Urbanitae.fetch_history(),
+         position when not is_nil(position) <-
+           Sheetfolio.Urbanitae.position_at(history, Date.utc_today()) do
+      [position]
+    else
+      nil ->
+        []
+
+      {:error, reason} ->
+        Logger.warning("SnapshotRecorder: Urbanitae sheet read failed: #{inspect(reason)}")
+        []
     end
   end
 

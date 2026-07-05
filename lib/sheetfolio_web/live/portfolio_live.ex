@@ -11,7 +11,12 @@ defmodule SheetfolioWeb.PortfolioLive do
         snapshots =
           Mongo.find(:mongo, "portfolio_snapshots", %{},
             sort: %{date: 1},
-            projection: %{date: 1, total_value: 1, total_invested: 1}
+            projection: %{
+              date: 1,
+              total_value: 1,
+              total_invested: 1,
+              positions: %{"$elemMatch" => %{isin: "URBANITAE"}}
+            }
           )
           |> Enum.to_list()
 
@@ -53,7 +58,12 @@ defmodule SheetfolioWeb.PortfolioLive do
 
     total_with_cash =
       for s <- snapshots, is_number(s["total_value"]), amount = cash_at(cash, s["date"]) do
-        %{x: s["date"], y: Float.round(s["total_value"] + amount, 2)}
+        %{x: s["date"], y: Float.round(s["total_value"] + amount + (urbanitae_value(s) || 0.0), 2)}
+      end
+
+    urbanitae =
+      for s <- snapshots, value = urbanitae_value(s) do
+        %{x: s["date"], y: value}
       end
 
     invested =
@@ -75,13 +85,21 @@ defmodule SheetfolioWeb.PortfolioLive do
       metric: "value",
       title: "Portfolio Evolution",
       datasets: [
-        %{label: "Total + Cash (€)", color: "#4a3aa7", data: total_with_cash},
-        %{label: "Total Portfolio (€)", color: "#2a78d6", fill: true, data: total},
+        %{label: "Portfolio + Cash + Urbanitae (€)", color: "#4a3aa7", data: total_with_cash},
+        %{label: "Portfolio (€)", color: "#2a78d6", fill: true, data: total},
         %{label: "Invested (€)", color: "#94a3b8", data: invested},
+        %{label: "Urbanitae (€)", color: "#e34948", data: urbanitae},
         %{label: "Cash (€)", color: "#eda100", data: cash_points},
         %{label: "Earnings (€)", color: "#008300", fill: true, data: earnings}
       ]
     }
+  end
+
+  defp urbanitae_value(snapshot) do
+    case snapshot["positions"] do
+      [%{"value" => value} | _] -> value
+      _ -> nil
+    end
   end
 
   # Latest cash total recorded on or before the given date.
