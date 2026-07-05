@@ -68,6 +68,43 @@ defmodule Sheetfolio.PricesApi.YahooFinance do
     end
   end
 
+  @doc "Fetches the daily close series between two dates. Returns {:ok, %{Date => close}, currency}."
+  def fetch_series(ticker, %Date{} = from, %Date{} = to) do
+    url = "#{@chart_url}/#{URI.encode(ticker)}"
+    period1 = date_to_unix(from)
+    period2 = date_to_unix(Date.add(to, 1))
+
+    case Req.get(url, params: [period1: period1, period2: period2, interval: "1d"]) do
+      {:ok, %{status: 200, body: body}} ->
+        parse_chart_series(body)
+
+      {:ok, %{status: status}} ->
+        Logger.warning("[YahooFinance] HTTP #{status} fetching series for #{ticker}")
+        {:error, {:http, status}}
+
+      {:error, reason} ->
+        Logger.warning("[YahooFinance] Error fetching series for #{ticker}: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp parse_chart_series(body) do
+    with %{"chart" => %{"result" => [result | _]}} <- body,
+         %{"meta" => %{"currency" => currency}, "timestamp" => timestamps,
+           "indicators" => %{"quote" => [%{"close" => closes} | _]}} <- result do
+      series =
+        Enum.zip(timestamps, closes)
+        |> Enum.filter(fn {_ts, close} -> close end)
+        |> Map.new(fn {ts, close} ->
+          {DateTime.from_unix!(ts) |> DateTime.to_date(), close}
+        end)
+
+      {:ok, series, currency}
+    else
+      _ -> {:error, :no_price}
+    end
+  end
+
   defp parse_chart_current(body) do
     with %{"chart" => %{"result" => [result | _]}} <- body,
          %{"meta" => %{"currency" => currency}} <- result do

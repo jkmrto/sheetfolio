@@ -81,7 +81,9 @@ defmodule Sheetfolio.PriceFetcher do
     end
   end
 
-  defp resolve_ticker(value) do
+  def stooq_ticker(isin), do: Map.get(@stooq_overrides, isin)
+
+  def resolve_ticker(value) do
     cond do
       Map.has_key?(@ticker_overrides, value) ->
         {:ok, @ticker_overrides[value]}
