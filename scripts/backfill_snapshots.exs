@@ -17,6 +17,16 @@ defmodule BackfillSnapshots do
   # Carry a close forward at most this many days (weekends/holidays).
   @max_carry_days 10
 
+  # Funds with no historical series anywhere: synthesize daily prices by geometric
+  # interpolation from NAV + YTD/2025 returns (MyInvestor fact sheets, 2026-07-03).
+  # iShares ERNE is not in the MyInvestor catalog (ETF): anchor is its price in the
+  # 2026-07-05 snapshot, rates proxied from DWS (same category, RF Ultra Corto Plazo EUR).
+  @synthetic %{
+    "LU0080237943" => %{nav: 85.2, nav_date: ~D[2026-07-03], ytd: 1.24, y2025: 2.77},
+    "LU0090865873" => %{nav: 478.5963, nav_date: ~D[2026-07-03], ytd: 0.94, y2025: 2.05},
+    "IE000RHYOR04" => %{nav: 5.5865, nav_date: ~D[2026-07-05], ytd: 1.24, y2025: 2.77}
+  }
+
   def run do
     to = Date.utc_today()
 
@@ -98,6 +108,9 @@ defmodule BackfillSnapshots do
 
   defp fetch_series("Bitcoin", from, to), do: yahoo_series("BTC-USD", from, to)
 
+  defp fetch_series(isin, from, to) when is_map_key(@synthetic, isin),
+    do: {synthetic_series(@synthetic[isin], from, to), "EUR"}
+
   defp fetch_series(isin, from, to) do
     yahoo =
       case PriceFetcher.resolve_ticker(isin) do
@@ -122,6 +135,23 @@ defmodule BackfillSnapshots do
     else
       _ -> nil
     end
+  end
+
+  defp synthetic_series(%{nav: nav, nav_date: nav_date, ytd: ytd, y2025: y2025}, from, to) do
+    nav_dec25 = nav / (1 + ytd / 100)
+    nav_dec24 = nav_dec25 / (1 + y2025 / 100)
+    ytd_days = Date.diff(nav_date, ~D[2025-12-31])
+
+    Map.new(Date.range(from, to), fn date ->
+      price =
+        if Date.compare(date, ~D[2025-12-31]) == :gt do
+          nav_dec25 * :math.pow(1 + ytd / 100, Date.diff(date, ~D[2025-12-31]) / ytd_days)
+        else
+          nav_dec24 * :math.pow(1 + y2025 / 100, Date.diff(date, ~D[2024-12-31]) / 365)
+        end
+
+      {date, price}
+    end)
   end
 
   defp fx_series(pair, from, to) do
