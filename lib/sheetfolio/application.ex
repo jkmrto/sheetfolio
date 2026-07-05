@@ -8,7 +8,9 @@ defmodule Sheetfolio.Application do
     source = {:service_account, credentials, scopes: ["https://www.googleapis.com/auth/spreadsheets"]}
 
     children = [
+      # Google service-account auth for the Sheets API
       {Goth, name: Sheetfolio.Goth, source: source},
+      # MongoDB Atlas connection, used for portfolio snapshot history
       {Mongo,
        [
          name: :mongo,
@@ -20,9 +22,13 @@ defmodule Sheetfolio.Application do
            customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
          ]
        ]},
+      # Caches current/historical prices and FX rates, computes earnings on demand
       Sheetfolio.EarningsServer,
+      # Loads all operations from MyInvestor Gmail emails at boot, serves them from memory
       Sheetfolio.OperationsServer,
+      # Writes a daily portfolio snapshot to MongoDB (boot + 22:00 UTC)
       Sheetfolio.SnapshotRecorder,
+      # Phoenix HTTP endpoint
       SheetfolioWeb.Endpoint
     ]
 
