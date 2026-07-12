@@ -1,6 +1,9 @@
 run:
 	export $$(sed 's|~/|$(HOME)/|g' .env | xargs) && iex -S mix phx.server
 
+wise-operations:
+	export $$(sed 's|~/|$(HOME)/|g' .env | xargs) && mix wise_operations
+
 docker-build:
 	docker build -t sheetfolio .
 
