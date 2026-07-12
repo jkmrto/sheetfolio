@@ -78,25 +78,29 @@ defmodule Sheetfolio.Positions do
   # Prefers importe_with_comision (actual EUR amount) over precio×qty when available in EUR.
   def amount_in_eur(importe_str, precio_str, qty, eur_usd, eur_cad) do
     case Regex.run(~r/([\d.,]+)\s+EUR\b/, String.trim(importe_str)) do
-      [_, amount] ->
-        case parse_number(amount) do
-          {val, _} when val > 0 -> val
-          _ -> cost_in_eur(precio_str, qty, eur_usd, eur_cad)
-        end
+      [_, amount] -> importe_or_cost(parse_number(amount), precio_str, qty, eur_usd, eur_cad)
       _ -> cost_in_eur(precio_str, qty, eur_usd, eur_cad)
     end
   end
 
+  defp importe_or_cost({val, _}, _precio_str, _qty, _eur_usd, _eur_cad) when val > 0, do: val
+
+  defp importe_or_cost(_parsed, precio_str, qty, eur_usd, eur_cad) do
+    cost_in_eur(precio_str, qty, eur_usd, eur_cad)
+  end
+
   defp cost_in_eur(precio_str, qty, eur_usd, eur_cad) do
     case Regex.run(~r/([\d.,]+)\s+([A-Z]+)/, precio_str) do
-      [_, amount, currency] ->
-        case parse_number(amount) do
-          {price, _} -> to_eur(price, currency, eur_usd, eur_cad) * qty
-          :error -> 0.0
-        end
+      [_, amount, currency] -> price_cost(parse_number(amount), currency, qty, eur_usd, eur_cad)
       _ -> 0.0
     end
   end
+
+  defp price_cost({price, _}, currency, qty, eur_usd, eur_cad) do
+    to_eur(price, currency, eur_usd, eur_cad) * qty
+  end
+
+  defp price_cost(:error, _currency, _qty, _eur_usd, _eur_cad), do: 0.0
 
   def parse_number(str) do
     cond do

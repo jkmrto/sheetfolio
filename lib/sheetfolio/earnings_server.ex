@@ -139,14 +139,13 @@ defmodule Sheetfolio.EarningsServer do
 
   defp parse_price_with_currency(precio_str) do
     case Regex.run(~r/([\d.,]+)\s+([A-Z]+)/, precio_str) do
-      [_, amount, currency] ->
-        case parse_number(amount) do
-          {val, _} -> {val, currency}
-          :error -> :error
-        end
+      [_, amount, currency] -> amount_with_currency(parse_number(amount), currency)
       _ -> :error
     end
   end
+
+  defp amount_with_currency({val, _}, currency), do: {val, currency}
+  defp amount_with_currency(:error, _currency), do: :error
 
   defp parse_number(str) do
     cond do

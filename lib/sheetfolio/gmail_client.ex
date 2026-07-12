@@ -14,12 +14,7 @@ defmodule Sheetfolio.GmailClient do
     case Req.get(url, auth: {:bearer, token}, params: params) do
       {:ok, %{status: 200, body: body}} ->
         messages = body["messages"] || []
-        all = acc ++ messages
-
-        case body["nextPageToken"] do
-          nil -> {:ok, all}
-          next_token -> fetch_all_pages(query, token, next_token, all)
-        end
+        fetch_next_page(body["nextPageToken"], query, token, acc ++ messages)
 
       {:ok, %{status: status, body: body}} ->
         {:error, {status, body}}
@@ -28,6 +23,9 @@ defmodule Sheetfolio.GmailClient do
         {:error, reason}
     end
   end
+
+  defp fetch_next_page(nil, _query, _token, acc), do: {:ok, acc}
+  defp fetch_next_page(next_token, query, token, acc), do: fetch_all_pages(query, token, next_token, acc)
 
   def get_message(id) do
     with {:ok, token} <- fetch_token() do

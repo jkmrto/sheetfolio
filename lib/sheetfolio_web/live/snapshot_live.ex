@@ -113,14 +113,15 @@ defmodule SheetfolioWeb.SnapshotLive do
 
   defp parse_op_date(str) do
     case String.split(str, "/") do
-      [d, m, y] ->
-        case Date.from_iso8601("#{y}-#{m}-#{d}") do
-          {:ok, date} -> date
-          _ -> ~D[9999-12-31]
-        end
+      [d, m, y] -> iso_date_or_max("#{y}-#{m}-#{d}")
+      _ -> ~D[9999-12-31]
+    end
+  end
 
-      _ ->
-        ~D[9999-12-31]
+  defp iso_date_or_max(str) do
+    case Date.from_iso8601(str) do
+      {:ok, date} -> date
+      _ -> ~D[9999-12-31]
     end
   end
 
@@ -217,8 +218,8 @@ defmodule SheetfolioWeb.SnapshotLive do
   end
 
   defp update_asset(assets, data, eur_usd, eur_cad) do
-    qty = parse_cantidad(data.cantidad)
-    cost_eur = amount_in_eur(data.importe_with_comision, data.precio, qty, eur_usd, eur_cad)
+    qty = Sheetfolio.Positions.parse_cantidad(data.cantidad)
+    cost_eur = Sheetfolio.Positions.amount_in_eur(data.importe_with_comision, data.precio, qty, eur_usd, eur_cad)
     is_buy = buy?(data.tipo)
 
     initial = %{
@@ -246,65 +247,6 @@ defmodule SheetfolioWeb.SnapshotLive do
 
   defp buy?(tipo), do: tipo in ["Suscripcion", "Compra", "Traspaso Entrada"]
 
-  defp parse_cantidad(str) do
-    case parse_number(str) do
-      {val, _} -> val
-      :error -> 0.0
-    end
-  end
-
-  defp amount_in_eur(importe_str, precio_str, qty, eur_usd, eur_cad) do
-    case Regex.run(~r/([\d.,]+)\s+EUR\b/, String.trim(importe_str)) do
-      [_, amount] ->
-        case parse_number(amount) do
-          {val, _} when val > 0 -> val
-          _ -> cost_in_eur(precio_str, qty, eur_usd, eur_cad)
-        end
-
-      _ ->
-        cost_in_eur(precio_str, qty, eur_usd, eur_cad)
-    end
-  end
-
-  defp cost_in_eur(precio_str, qty, eur_usd, eur_cad) do
-    case Regex.run(~r/([\d.,]+)\s+([A-Z]+)/, precio_str) do
-      [_, amount, currency] ->
-        case parse_number(amount) do
-          {price, _} -> to_eur(price, currency, eur_usd, eur_cad) * qty
-          :error -> 0.0
-        end
-
-      _ ->
-        0.0
-    end
-  end
-
-  defp parse_number(str) do
-    cond do
-      String.contains?(str, ".") and String.contains?(str, ",") ->
-        last_dot = str |> :binary.matches(".") |> List.last() |> elem(0)
-        last_comma = str |> :binary.matches(",") |> List.last() |> elem(0)
-
-        if last_dot > last_comma do
-          str |> String.replace(",", "") |> Float.parse()
-        else
-          str |> String.replace(".", "") |> String.replace(",", ".") |> Float.parse()
-        end
-
-      String.contains?(str, ",") ->
-        case Regex.run(~r/^[\d,]+,(\d{3})$/, str) do
-          [_, _] -> str |> String.replace(",", "") |> Float.parse()
-          _ -> str |> String.replace(",", ".") |> Float.parse()
-        end
-
-      true ->
-        Float.parse(str)
-    end
-  end
-
-  defp to_eur(price, "USD", eur_usd, _), do: price / eur_usd
-  defp to_eur(price, "CAD", _, eur_cad), do: price / eur_cad
-  defp to_eur(price, _, _, _), do: price
 
   defp earnings_class(nil), do: ""
   defp earnings_class(val) when val >= 0, do: "positive"

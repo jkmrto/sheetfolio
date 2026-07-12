@@ -71,20 +71,20 @@ defmodule Sheetfolio.PricesApi.Stooq do
 
     case List.last(rows) do
       [_date, _open, _high, _low, close | _] ->
-        case Float.parse(String.trim(close)) do
-          {price, _} ->
-            Logger.debug("[Stooq] Price for #{ticker}: #{price}")
-            {:ok, price, "EUR"}
-
-          :error ->
-            {:error, :no_price}
-        end
+        close_price(Float.parse(String.trim(close)), ticker)
 
       _ ->
         Logger.warning("[Stooq] No data rows for ticker #{ticker}")
         {:error, :no_price}
     end
   end
+
+  defp close_price({price, _}, ticker) do
+    Logger.debug("[Stooq] Price for #{ticker}: #{price}")
+    {:ok, price, "EUR"}
+  end
+
+  defp close_price(:error, _ticker), do: {:error, :no_price}
 
   defp format_date(%Date{} = date) do
     Calendar.strftime(date, "%Y%m%d")

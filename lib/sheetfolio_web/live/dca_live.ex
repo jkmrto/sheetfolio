@@ -254,8 +254,8 @@ defmodule SheetfolioWeb.DcaLive do
     |> Enum.map(fn {{fecha, isin}, ops} ->
       {total_qty, total_amount} =
         Enum.reduce(ops, {0.0, 0.0}, fn op, {qty_acc, amt_acc} ->
-          qty = parse_cantidad(op.cantidad)
-          amt = amount_in_eur(op.importe_with_comision, op.precio, qty, eur_usd, eur_cad)
+          qty = Sheetfolio.Positions.parse_cantidad(op.cantidad)
+          amt = Sheetfolio.Positions.amount_in_eur(op.importe_with_comision, op.precio, qty, eur_usd, eur_cad)
           {qty_acc + qty, amt_acc + amt}
         end)
 
@@ -361,58 +361,6 @@ defmodule SheetfolioWeb.DcaLive do
     |> then(fn s -> if String.length(s) > 24, do: String.slice(s, 0, 24) <> "…", else: s end)
   end
 
-  defp parse_cantidad(str) do
-    case parse_number(str) do
-      {val, _} -> val
-      :error -> 0.0
-    end
-  end
-
-  defp amount_in_eur(importe_str, precio_str, qty, eur_usd, eur_cad) do
-    case Regex.run(~r/([\d.,]+)\s+EUR\b/, String.trim(importe_str)) do
-      [_, amount] ->
-        case parse_number(amount) do
-          {val, _} when val > 0 -> val
-          _ -> cost_in_eur(precio_str, qty, eur_usd, eur_cad)
-        end
-      _ -> cost_in_eur(precio_str, qty, eur_usd, eur_cad)
-    end
-  end
-
-  defp cost_in_eur(precio_str, qty, eur_usd, eur_cad) do
-    case Regex.run(~r/([\d.,]+)\s+([A-Z]+)/, precio_str) do
-      [_, amount, currency] ->
-        case parse_number(amount) do
-          {price, _} -> to_eur(price, currency, eur_usd, eur_cad) * qty
-          :error -> 0.0
-        end
-      _ -> 0.0
-    end
-  end
-
-  defp parse_number(str) do
-    cond do
-      String.contains?(str, ".") and String.contains?(str, ",") ->
-        last_dot = str |> :binary.matches(".") |> List.last() |> elem(0)
-        last_comma = str |> :binary.matches(",") |> List.last() |> elem(0)
-        if last_dot > last_comma do
-          str |> String.replace(",", "") |> Float.parse()
-        else
-          str |> String.replace(".", "") |> String.replace(",", ".") |> Float.parse()
-        end
-      String.contains?(str, ",") ->
-        case Regex.run(~r/^[\d,]+,(\d{3})$/, str) do
-          [_, _] -> str |> String.replace(",", "") |> Float.parse()
-          _ -> str |> String.replace(",", ".") |> Float.parse()
-        end
-      true ->
-        Float.parse(str)
-    end
-  end
-
-  defp to_eur(price, "USD", eur_usd, _), do: price / eur_usd
-  defp to_eur(price, "CAD", _, eur_cad), do: price / eur_cad
-  defp to_eur(price, _, _, _), do: price
 
   defp earnings_class(nil), do: ""
   defp earnings_class(val) when val >= 0, do: "positive"

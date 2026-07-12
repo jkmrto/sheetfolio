@@ -12,25 +12,14 @@ defmodule Sheetfolio.MyinvestorParser do
              {:ok, fecha} <- extract_fecha(html_body),
              {:ok, {cantidad, precio, importe_bruto}} <- extract_traspaso_amounts(html_body),
              {:ok, importe_neto} <- extract_traspaso_importe_neto(html_body) do
-          case tipo_raw do
-            :suscr ->
-              {:ok, [%{
-                fecha: fecha, asset: extract_traspaso_asset_str(subject),
-                isin: suscr_isin, tipo: "Suscripcion",
-                cantidad: cantidad, precio: precio,
-                importe_without_comision: importe_bruto, comision: "",
-                importe_with_comision: importe_neto, traspaso: true
-              }]}
+          base = %{
+            fecha: fecha,
+            cantidad: cantidad, precio: precio,
+            importe_without_comision: importe_bruto, comision: "",
+            importe_with_comision: importe_neto, traspaso: true
+          }
 
-            :reemb ->
-              {:ok, [%{
-                fecha: fecha, asset: extract_reemb_asset(html_body, reemb_isin),
-                isin: reemb_isin, tipo: "Reembolso",
-                cantidad: cantidad, precio: precio,
-                importe_without_comision: importe_bruto, comision: "",
-                importe_with_comision: importe_neto, traspaso: true
-              }]}
-          end
+          {:ok, [traspaso_operation(tipo_raw, base, html_body, subject, reemb_isin, suscr_isin)]}
         end
 
       _ ->
@@ -69,12 +58,12 @@ defmodule Sheetfolio.MyinvestorParser do
         {:ok, html_decode(String.trim(asset))}
 
       nil ->
-        case subject_parts(subject) do
-          {_, _, asset} -> {:ok, String.trim(asset)}
-          nil -> {:error, "Could not extract asset name"}
-        end
+        asset_from_subject(subject_parts(subject))
     end
   end
+
+  defp asset_from_subject({_, _, asset}), do: {:ok, String.trim(asset)}
+  defp asset_from_subject(nil), do: {:error, "Could not extract asset name"}
 
   defp extract_isin(html) do
     case Regex.run(~r/C&oacute;digo ISIN: ([A-Z0-9]{12})/, html) do
@@ -91,12 +80,12 @@ defmodule Sheetfolio.MyinvestorParser do
         {:ok, normalize_tipo(String.trim(tipo))}
 
       nil ->
-        case subject_parts(subject) do
-          {_, tipo, _} -> {:ok, normalize_tipo(String.trim(tipo))}
-          nil -> {:error, "Could not extract operation type"}
-        end
+        tipo_from_subject(subject_parts(subject))
     end
   end
+
+  defp tipo_from_subject({_, tipo, _}), do: {:ok, normalize_tipo(String.trim(tipo))}
+  defp tipo_from_subject(nil), do: {:error, "Could not extract operation type"}
 
   defp extract_fecha(html) do
     case Regex.run(~r/valign="top">(\d{2}\/\d{2}\/\d{4})<\/td>/, html) do
@@ -148,6 +137,14 @@ defmodule Sheetfolio.MyinvestorParser do
     end
   end
 
+  defp traspaso_operation(:suscr, base, _html_body, subject, _reemb_isin, suscr_isin) do
+    Map.merge(base, %{asset: extract_traspaso_asset_str(subject), isin: suscr_isin, tipo: "Suscripcion"})
+  end
+
+  defp traspaso_operation(:reemb, base, html_body, _subject, reemb_isin, _suscr_isin) do
+    Map.merge(base, %{asset: extract_reemb_asset(html_body, reemb_isin), isin: reemb_isin, tipo: "Reembolso"})
+  end
+
   defp extract_traspaso_asset_str(subject) do
     case Regex.run(~r/TRASPASO DE IIC (.+)$/i, subject) do
       [_, asset] -> String.trim(asset)
@@ -185,10 +182,14 @@ defmodule Sheetfolio.MyinvestorParser do
       [_, _, _, _, _, amount, currency] ->
         {:ok, amount <> " " <> currency}
       nil ->
-        case Regex.run(~r/Importe Neto.*?>([\d,.]+)&nbsp;([A-Z]+)/s, html) do
-          [_, amount, currency] -> {:ok, amount <> " " <> currency}
-          nil -> {:error, "Could not extract Importe Neto"}
-        end
+        importe_neto_fallback(html)
+    end
+  end
+
+  defp importe_neto_fallback(html) do
+    case Regex.run(~r/Importe Neto.*?>([\d,.]+)&nbsp;([A-Z]+)/s, html) do
+      [_, amount, currency] -> {:ok, amount <> " " <> currency}
+      nil -> {:error, "Could not extract Importe Neto"}
     end
   end
 
