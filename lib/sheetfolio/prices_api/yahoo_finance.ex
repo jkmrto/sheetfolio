@@ -129,6 +129,6 @@ defmodule Sheetfolio.PricesApi.YahooFinance do
   end
 
   defp date_to_unix(%Date{} = date) do
-    Date.diff(date, ~D[1970-01-01]) * 86400
+    Date.diff(date, ~D[1970-01-01]) * 86_400
   end
 end

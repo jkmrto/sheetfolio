@@ -32,7 +32,8 @@ defmodule Sheetfolio.MixProject do
       {:phoenix_live_view, "~> 1.0"},
       {:bandit, "~> 1.5"},
       {:esbuild, "~> 0.8", runtime: Mix.env() == :dev},
-      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false}
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 

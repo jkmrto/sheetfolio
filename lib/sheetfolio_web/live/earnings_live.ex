@@ -15,18 +15,7 @@ defmodule SheetfolioWeb.EarningsLive do
           Sheetfolio.Positions.realized_events(operations, eur_usd, eur_cad)
           |> Enum.reverse()
 
-        unrealized =
-          case Mongo.find_one(:mongo, "portfolio_snapshots", %{}, sort: %{date: -1}) do
-            nil ->
-              []
-
-            doc ->
-              for p <- doc["positions"], p["isin"] != "URBANITAE", is_number(p["value"]) do
-                %{asset: p["asset"], invested: p["invested"], value: p["value"]}
-              end
-          end
-
-        {:ok, assign(socket, realized_events: realized_events, unrealized: unrealized)}
+        {:ok, assign(socket, realized_events: realized_events, unrealized: unrealized_positions())}
       else
         {:ok, socket}
       end
@@ -110,6 +99,18 @@ defmodule SheetfolioWeb.EarningsLive do
       </tr>
     </table>
     """
+  end
+
+  defp unrealized_positions do
+    case Mongo.find_one(:mongo, "portfolio_snapshots", %{}, sort: %{date: -1}) do
+      nil ->
+        []
+
+      doc ->
+        for p <- doc["positions"], p["isin"] != "URBANITAE", is_number(p["value"]) do
+          %{asset: p["asset"], invested: p["invested"], value: p["value"]}
+        end
+    end
   end
 
   defp eur(value) do

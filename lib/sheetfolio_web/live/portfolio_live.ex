@@ -52,49 +52,55 @@ defmodule SheetfolioWeb.PortfolioLive do
   end
 
   defp chart_payload(snapshots, cash) do
-    total =
-      for s <- snapshots, is_number(s["total_value"]) do
-        %{x: s["date"], y: s["total_value"]}
-      end
-
-    total_with_cash =
-      for s <- snapshots, is_number(s["total_value"]), amount = cash_at(cash, s["date"]) do
-        %{x: s["date"], y: Float.round(s["total_value"] + amount + (urbanitae_value(s) || 0.0), 2)}
-      end
-
-    urbanitae =
-      for s <- snapshots, value = urbanitae_value(s) do
-        %{x: s["date"], y: value}
-      end
-
-    invested =
-      for s <- snapshots, is_number(s["total_invested"]) do
-        %{x: s["date"], y: s["total_invested"]}
-      end
-
-    cash_points =
-      for s <- snapshots, amount = cash_at(cash, s["date"]) do
-        %{x: s["date"], y: amount}
-      end
-
-    earnings =
-      for s <- snapshots, is_number(s["total_value"]) and is_number(s["total_invested"]) do
-        unrealized = s["total_value"] - s["total_invested"]
-        %{x: s["date"], y: Float.round(unrealized + (s["total_realized"] || 0.0), 2)}
-      end
-
     %{
       metric: "value",
       title: "Portfolio Evolution",
       datasets: [
-        %{label: "Portfolio + Cash + Urbanitae (€)", color: "#4a3aa7", data: total_with_cash},
-        %{label: "Portfolio (€)", color: "#2a78d6", fill: true, data: total},
-        %{label: "Invested (€)", color: "#94a3b8", data: invested},
-        %{label: "Urbanitae (€)", color: "#e34948", data: urbanitae},
-        %{label: "Cash (€)", color: "#eda100", data: cash_points},
-        %{label: "Earnings, realized + unrealized (€)", color: "#008300", fill: true, data: earnings}
+        %{label: "Portfolio + Cash + Urbanitae (€)", color: "#4a3aa7", data: total_with_cash_points(snapshots, cash)},
+        %{label: "Portfolio (€)", color: "#2a78d6", fill: true, data: total_points(snapshots)},
+        %{label: "Invested (€)", color: "#94a3b8", data: invested_points(snapshots)},
+        %{label: "Urbanitae (€)", color: "#e34948", data: urbanitae_points(snapshots)},
+        %{label: "Cash (€)", color: "#eda100", data: cash_points(snapshots, cash)},
+        %{label: "Earnings, realized + unrealized (€)", color: "#008300", fill: true, data: earnings_points(snapshots)}
       ]
     }
+  end
+
+  defp total_points(snapshots) do
+    for s <- snapshots, is_number(s["total_value"]) do
+      %{x: s["date"], y: s["total_value"]}
+    end
+  end
+
+  defp total_with_cash_points(snapshots, cash) do
+    for s <- snapshots, is_number(s["total_value"]), amount = cash_at(cash, s["date"]) do
+      %{x: s["date"], y: Float.round(s["total_value"] + amount + (urbanitae_value(s) || 0.0), 2)}
+    end
+  end
+
+  defp urbanitae_points(snapshots) do
+    for s <- snapshots, value = urbanitae_value(s) do
+      %{x: s["date"], y: value}
+    end
+  end
+
+  defp invested_points(snapshots) do
+    for s <- snapshots, is_number(s["total_invested"]) do
+      %{x: s["date"], y: s["total_invested"]}
+    end
+  end
+
+  defp cash_points(snapshots, cash) do
+    for s <- snapshots, amount = cash_at(cash, s["date"]) do
+      %{x: s["date"], y: amount}
+    end
+  end
+
+  defp earnings_points(snapshots) do
+    for s <- snapshots, is_number(s["total_value"]) and is_number(s["total_invested"]) do
+      unrealized = s["total_value"] - s["total_invested"]
+      %{x: s["date"], y: Float.round(unrealized + (s["total_realized"] || 0.0), 2)}
+    end
   end
 
   defp urbanitae_value(snapshot) do
