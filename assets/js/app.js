@@ -45,7 +45,7 @@ Hooks.HistoryChart = {
         scales: {
           x: {
             type: "time",
-            time: {minUnit: "day", tooltipFormat: "dd/MM/yyyy", displayFormats: {day: "dd MMM", month: "MMM yyyy"}},
+            time: {minUnit: "day", unit: payload.timeUnit, tooltipFormat: "dd/MM/yyyy", displayFormats: {day: "dd MMM", month: "MMM yyyy"}},
             title: {display: true, text: "Date"}
           },
           y: {
