@@ -38,6 +38,8 @@ defmodule SheetfolioWeb.ExpensesLive do
       .expenses-table thead th { color: #64748b; border-bottom: 1px solid #e2e8f0; }
       .expenses-table tbody tr:nth-child(even) { background: #f8fafc; }
       .expenses-table td.total { font-weight: 600; }
+      .expenses-table tfoot td { font-weight: 600; background: #f1f5f9; }
+      .expenses-table tfoot tr:first-child td { border-top: 2px solid #1e293b; }
       .expenses-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.35rem; }
     </style>
 
@@ -82,6 +84,22 @@ defmodule SheetfolioWeb.ExpensesLive do
               </tr>
             <% end %>
           </tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <%= for category <- @categories do %>
+                <td><%= format(category_total(@expenses, @year, category)) %></td>
+              <% end %>
+              <td><%= format(year_total(@expenses, @year)) %></td>
+            </tr>
+            <tr>
+              <td>Avg / month</td>
+              <%= for category <- @categories do %>
+                <td><%= format(monthly_average(@expenses, @year, category_total(@expenses, @year, category))) %></td>
+              <% end %>
+              <td><%= format(monthly_average(@expenses, @year, year_total(@expenses, @year))) %></td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     <% end %>
@@ -105,6 +123,24 @@ defmodule SheetfolioWeb.ExpensesLive do
       end)
 
     %{metric: "value", title: "Monthly expenses by category #{year} (€)", timeUnit: "month", datasets: datasets}
+  end
+
+  defp category_total({_months, totals} = expenses, year, category) do
+    expenses
+    |> year_months(year)
+    |> Enum.map(&(totals[{&1, category}] || 0.0))
+    |> Enum.sum()
+  end
+
+  defp year_total(expenses, year) do
+    expenses
+    |> year_months(year)
+    |> Enum.map(&month_total(expenses, &1))
+    |> Enum.sum()
+  end
+
+  defp monthly_average(expenses, year, total) do
+    total / max(length(year_months(expenses, year)), 1)
   end
 
   defp month_total({_months, totals}, month) do
