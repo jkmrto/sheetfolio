@@ -19,6 +19,10 @@ defmodule SheetfolioWeb.Endpoint do
     from: {:sheetfolio, "priv/static/assets"},
     gzip: false
 
+  if code_reloading? do
+    plug Phoenix.CodeReloader
+  end
+
   plug Plug.Session, @session_options
 
   plug Plug.Parsers,
