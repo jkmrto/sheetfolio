@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); [ \"$(printf %s \"$input\" | jq -r \".stop_hook_active // false\")\" = \"true\" ] && exit 0; [ -n \"$(git status --porcelain 2>/dev/null)\" ] && printf \"%s\" \"{\\\"decision\\\":\\\"block\\\",\\\"reason\\\":\\\"Standing rule for this project: the working tree has uncommitted changes. If the task is complete, finish with exactly one git commit and then run fly deploy. If these are leftovers, commit or clean them before stopping.\\\"}\"; exit 0",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}
