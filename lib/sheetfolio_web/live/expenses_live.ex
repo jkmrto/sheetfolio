@@ -9,7 +9,7 @@ defmodule SheetfolioWeb.ExpensesLive do
     else
       if connected?(socket), do: send(self(), :load)
       year = Integer.to_string(Date.utc_today().year)
-      {:ok, assign(socket, authenticated: true, expenses: nil, year: year)}
+      {:ok, assign(socket, authenticated: true, expenses: nil, year: year, view: "months", mode: "total")}
     end
   end
 
@@ -21,16 +21,28 @@ defmodule SheetfolioWeb.ExpensesLive do
     {:noreply, assign(socket, year: year)}
   end
 
+  def handle_event("select_view", %{"view" => view}, socket) do
+    {:noreply, assign(socket, view: view)}
+  end
+
+  def handle_event("select_mode", %{"mode" => mode}, socket) do
+    {:noreply, assign(socket, mode: mode)}
+  end
+
   def render(assigns) do
     assigns = assign(assigns, categories: WiseExpenses.categories(), years: WiseExpenses.years())
 
     ~H"""
     <style>
       .expenses-loading { color: #64748b; padding: 2rem; text-align: center; }
-      .expenses-years { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
-      .expenses-years button { border: 1px solid #e2e8f0; background: white; color: #64748b; border-radius: 6px; padding: 0.4rem 1.1rem; font-size: 0.9rem; cursor: pointer; }
-      .expenses-years button:hover { color: #1e293b; }
-      .expenses-years button.active { background: #1e293b; border-color: #1e293b; color: white; }
+      .expenses-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+      .expenses-subtabs button { border: none; background: none; color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+      .expenses-subtabs button:hover { color: #1e293b; }
+      .expenses-subtabs button.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
+      .expenses-buttons { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+      .expenses-buttons button { border: 1px solid #e2e8f0; background: white; color: #64748b; border-radius: 6px; padding: 0.4rem 1.1rem; font-size: 0.9rem; cursor: pointer; }
+      .expenses-buttons button:hover { color: #1e293b; }
+      .expenses-buttons button.active { background: #1e293b; border-color: #1e293b; color: white; }
       .expenses-table { background: white; border-radius: 12px; padding: 1.5rem 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-top: 1.5rem; overflow-x: auto; }
       .expenses-table table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
       .expenses-table th, .expenses-table td { padding: 0.4rem 0.8rem; text-align: right; white-space: nowrap; }
@@ -46,65 +58,115 @@ defmodule SheetfolioWeb.ExpensesLive do
     <%= if @expenses == nil do %>
       <div class="expenses-loading">Loading Wise activities…</div>
     <% else %>
-      <div class="expenses-years">
-        <%= for year <- @years do %>
-          <button type="button" class={if year == @year, do: "active", else: ""} phx-click="select_year" phx-value-year={year}>
-            <%= year %>
-          </button>
-        <% end %>
+      <div class="expenses-subtabs">
+        <button type="button" class={if @view == "months", do: "active", else: ""} phx-click="select_view" phx-value-view="months">
+          Months
+        </button>
+        <button type="button" class={if @view == "years", do: "active", else: ""} phx-click="select_view" phx-value-view="years">
+          Years
+        </button>
       </div>
 
-      <div class="chart-container" id="expenses-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(@expenses, @categories, @year))}>
-        <div id="expenses-chart-canvas" phx-update="ignore">
-          <canvas id="expensesChartCanvas"></canvas>
+      <%= if @view == "months" do %>
+        <div class="expenses-buttons">
+          <%= for year <- @years do %>
+            <button type="button" class={if year == @year, do: "active", else: ""} phx-click="select_year" phx-value-year={year}>
+              <%= year %>
+            </button>
+          <% end %>
         </div>
-      </div>
 
-      <div class="expenses-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Month</th>
-              <%= for category <- @categories do %>
-                <th>
-                  <span class="expenses-dot" style={"background: #{WiseExpenses.color(category)}"}></span><%= category %>
-                </th>
-              <% end %>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for month <- year_months(@expenses, @year) |> Enum.reverse() do %>
+        <div class="chart-container" id="expenses-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(@expenses, @categories, @year))}>
+          <div id="expenses-chart-canvas" phx-update="ignore">
+            <canvas id="expensesChartCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="expenses-table">
+          <table>
+            <thead>
               <tr>
-                <td><%= String.slice(month, 0, 7) %></td>
+                <th>Month</th>
                 <%= for category <- @categories do %>
-                  <td><%= format(elem(@expenses, 1)[{month, category}]) %></td>
+                  <th>
+                    <span class="expenses-dot" style={"background: #{WiseExpenses.color(category)}"}></span><%= category %>
+                  </th>
                 <% end %>
-                <td class="total"><%= format(month_total(@expenses, month)) %></td>
+                <th>Total</th>
               </tr>
-            <% end %>
-          </tbody>
-          <tfoot>
-            <tr>
-              <td>Total</td>
-              <%= for category <- @categories do %>
-                <td><%= format(category_total(@expenses, @year, category)) %></td>
+            </thead>
+            <tbody>
+              <%= for month <- year_months(@expenses, @year) |> Enum.reverse() do %>
+                <tr>
+                  <td><%= String.slice(month, 0, 7) %></td>
+                  <%= for category <- @categories do %>
+                    <td><%= format(elem(@expenses, 1)[{month, category}]) %></td>
+                  <% end %>
+                  <td class="total"><%= format(month_total(@expenses, month)) %></td>
+                </tr>
               <% end %>
-              <td><%= format(year_total(@expenses, @year)) %></td>
-            </tr>
-            <tr>
-              <td>Avg / month</td>
-              <%= for category <- @categories do %>
-                <td><%= format(monthly_average(@expenses, @year, category_total(@expenses, @year, category))) %></td>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Total</td>
+                <%= for category <- @categories do %>
+                  <td><%= format(category_total(@expenses, @year, category)) %></td>
+                <% end %>
+                <td><%= format(year_total(@expenses, @year)) %></td>
+              </tr>
+              <tr>
+                <td>Avg / month</td>
+                <%= for category <- @categories do %>
+                  <td><%= format(monthly_average(@expenses, @year, category_total(@expenses, @year, category))) %></td>
+                <% end %>
+                <td><%= format(monthly_average(@expenses, @year, year_total(@expenses, @year))) %></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      <% else %>
+        <div class="expenses-buttons">
+          <button type="button" class={if @mode == "total", do: "active", else: ""} phx-click="select_mode" phx-value-mode="total">
+            Total per year
+          </button>
+          <button type="button" class={if @mode == "avg", do: "active", else: ""} phx-click="select_mode" phx-value-mode="avg">
+            Avg per month
+          </button>
+        </div>
+
+        <div class="expenses-table" style="margin-top: 0;">
+          <table>
+            <thead>
+              <tr>
+                <th>Year</th>
+                <%= for category <- @categories do %>
+                  <th>
+                    <span class="expenses-dot" style={"background: #{WiseExpenses.color(category)}"}></span><%= category %>
+                  </th>
+                <% end %>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for year <- @years do %>
+                <tr>
+                  <td><%= year %> <%= if @mode == "avg", do: "(#{length(year_months(@expenses, year))}m)" %></td>
+                  <%= for category <- @categories do %>
+                    <td><%= format(year_value(@expenses, year, category_total(@expenses, year, category), @mode)) %></td>
+                  <% end %>
+                  <td class="total"><%= format(year_value(@expenses, year, year_total(@expenses, year), @mode)) %></td>
+                </tr>
               <% end %>
-              <td><%= format(monthly_average(@expenses, @year, year_total(@expenses, @year))) %></td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
     <% end %>
     """
   end
+
+  defp year_value(_expenses, _year, total, "total"), do: total
+  defp year_value(expenses, year, total, "avg"), do: monthly_average(expenses, year, total)
 
   defp year_months({months, _totals}, year) do
     Enum.filter(months, &String.starts_with?(&1, year <> "-"))
