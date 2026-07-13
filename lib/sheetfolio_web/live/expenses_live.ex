@@ -244,7 +244,7 @@ defmodule SheetfolioWeb.ExpensesLive do
                   <td class="left">
                     <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= row.category %>
                   </td>
-                  <td class="left"><%= row.title %></td>
+                  <td class="left"><%= if row.note != "", do: row.note, else: row.title %></td>
                   <td><%= format(row.amount) %></td>
                 </tr>
               <% end %>
