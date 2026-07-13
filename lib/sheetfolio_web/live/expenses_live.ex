@@ -3,6 +3,9 @@ defmodule SheetfolioWeb.ExpensesLive do
 
   alias Sheetfolio.WiseExpenses
 
+  @month_labels ~w(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec)
+  @year_colors ["#2a78d6", "#eda100", "#1baf7a", "#4a3aa7", "#e34948", "#e87ba4"]
+
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
@@ -134,7 +137,13 @@ defmodule SheetfolioWeb.ExpensesLive do
           </button>
         </div>
 
-        <div class="expenses-table" style="margin-top: 0;">
+        <div class="chart-container" id="expenses-years-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(years_chart_payload(@expenses, @years))}>
+          <div id="expenses-years-chart-canvas" phx-update="ignore">
+            <canvas id="expensesYearsChartCanvas"></canvas>
+          </div>
+        </div>
+
+        <div class="expenses-table">
           <table>
             <thead>
               <tr>
@@ -163,6 +172,23 @@ defmodule SheetfolioWeb.ExpensesLive do
       <% end %>
     <% end %>
     """
+  end
+
+  defp years_chart_payload({months, _totals} = expenses, years) do
+    datasets =
+      years
+      |> Enum.with_index()
+      |> Enum.map(fn {year, index} ->
+        data =
+          for m <- 1..12 do
+            month = "#{year}-#{String.pad_leading(Integer.to_string(m), 2, "0")}-01"
+            if month in months, do: Float.round(month_total(expenses, month), 2)
+          end
+
+        %{label: year, color: Enum.at(@year_colors, index, "#64748b"), data: data}
+      end)
+
+    %{metric: "value", title: "Monthly expenses per year (€)", labels: @month_labels, datasets: datasets}
   end
 
   defp year_value(_expenses, _year, total, "total"), do: total

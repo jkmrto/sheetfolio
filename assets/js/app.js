@@ -26,10 +26,19 @@ Hooks.HistoryChart = {
 
     if (this.chart) this.chart.destroy()
 
+    // payload.labels switches the x axis from time scale to categories (e.g. month names)
+    const xScale = payload.labels
+      ? {title: {display: true, text: "Month"}}
+      : {
+          type: "time",
+          time: {minUnit: "day", unit: payload.timeUnit, tooltipFormat: "dd/MM/yyyy", displayFormats: {day: "dd MMM", month: "MMM yyyy"}},
+          title: {display: true, text: "Date"}
+        }
+
     const ctx = this.el.querySelector("canvas").getContext("2d")
     this.chart = new Chart(ctx, {
       type: "line",
-      data: {datasets},
+      data: {labels: payload.labels, datasets},
       options: {
         responsive: true,
         interaction: {mode: "index", intersect: false},
@@ -43,11 +52,7 @@ Hooks.HistoryChart = {
           }
         },
         scales: {
-          x: {
-            type: "time",
-            time: {minUnit: "day", unit: payload.timeUnit, tooltipFormat: "dd/MM/yyyy", displayFormats: {day: "dd MMM", month: "MMM yyyy"}},
-            title: {display: true, text: "Date"}
-          },
+          x: xScale,
           y: {
             ticks: {callback: (v) => fmt(v)}
           }
