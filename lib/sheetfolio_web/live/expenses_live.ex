@@ -22,6 +22,7 @@ defmodule SheetfolioWeb.ExpensesLive do
          view: "months",
          mode: "total",
          reg_year: "All",
+         reg_month: "All",
          reg_category: "All"
        )}
     end
@@ -32,6 +33,7 @@ defmodule SheetfolioWeb.ExpensesLive do
      assign(socket,
        view: params["view"] || "months",
        reg_year: params["year"] || "All",
+       reg_month: params["month"] || "All",
        reg_category: params["category"] || "All"
      )}
   end
@@ -53,7 +55,8 @@ defmodule SheetfolioWeb.ExpensesLive do
       assign(assigns,
         categories: WiseExpenses.categories(),
         years: WiseExpenses.years(),
-        registry_rows: filtered_registry(assigns.registry, assigns.reg_year, assigns.reg_category)
+        registry_rows:
+          filtered_registry(assigns.registry, assigns.reg_year, assigns.reg_month, assigns.reg_category)
       )
 
     ~H"""
@@ -67,8 +70,8 @@ defmodule SheetfolioWeb.ExpensesLive do
       .expenses-buttons button, .expenses-buttons a { border: 1px solid #e2e8f0; background: white; color: #64748b; border-radius: 6px; padding: 0.4rem 1.1rem; font-size: 0.9rem; cursor: pointer; text-decoration: none; }
       .expenses-buttons button:hover, .expenses-buttons a:hover { color: #1e293b; }
       .expenses-buttons button.active, .expenses-buttons a.active { background: #1e293b; border-color: #1e293b; color: white; }
-      .expenses-table th a { color: inherit; text-decoration: none; }
-      .expenses-table th a:hover { text-decoration: underline; }
+      .expenses-table th a, .expenses-table td a { color: inherit; text-decoration: none; }
+      .expenses-table th a:hover, .expenses-table td a:hover { text-decoration: underline; }
       .expenses-table { background: white; border-radius: 12px; padding: 1.5rem 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-top: 1.5rem; overflow-x: auto; }
       .expenses-table table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
       .expenses-table th, .expenses-table td { padding: 0.4rem 0.8rem; text-align: right; white-space: nowrap; }
@@ -124,11 +127,23 @@ defmodule SheetfolioWeb.ExpensesLive do
             <tbody>
               <%= for month <- year_months(@expenses, @year) |> Enum.reverse() do %>
                 <tr>
-                  <td><%= String.slice(month, 0, 7) %></td>
+                  <td>
+                    <.link patch={registry_path("All", String.slice(month, 0, 7), "All")}><%= String.slice(month, 0, 7) %></.link>
+                  </td>
                   <%= for category <- @categories do %>
-                    <td><%= format(elem(@expenses, 1)[{month, category}]) %></td>
+                    <td>
+                      <%= if elem(@expenses, 1)[{month, category}] do %>
+                        <.link patch={registry_path("All", String.slice(month, 0, 7), category)}>
+                          <%= format(elem(@expenses, 1)[{month, category}]) %>
+                        </.link>
+                      <% else %>
+                        <%= format(nil) %>
+                      <% end %>
+                    </td>
                   <% end %>
-                  <td class="total"><%= format(month_total(@expenses, month)) %></td>
+                  <td class="total">
+                    <.link patch={registry_path("All", String.slice(month, 0, 7), "All")}><%= format(month_total(@expenses, month)) %></.link>
+                  </td>
                 </tr>
               <% end %>
             </tbody>
@@ -205,8 +220,13 @@ defmodule SheetfolioWeb.ExpensesLive do
       <%= if @view == "registry" do %>
         <div class="expenses-buttons">
           <%= for year <- ["All" | @years] do %>
-            <.link patch={registry_path(year, @reg_category)} class={if year == @reg_year, do: "active", else: ""}>
+            <.link patch={registry_path(year, @reg_category)} class={if year == @reg_year and @reg_month == "All", do: "active", else: ""}>
               <%= year %>
+            </.link>
+          <% end %>
+          <%= if @reg_month != "All" do %>
+            <.link patch={registry_path(String.slice(@reg_month, 0, 4), @reg_category)} class="active" title="Click to widen to the whole year">
+              <%= @reg_month %> ✕
             </.link>
           <% end %>
         </div>
@@ -295,17 +315,20 @@ defmodule SheetfolioWeb.ExpensesLive do
     %{metric: "value", title: title, labels: labels, xTitle: "Year", datasets: datasets}
   end
 
-  defp registry_path(year, category) do
+  defp registry_path(year, category), do: registry_path(year, "All", category)
+
+  defp registry_path(year, month, category) do
     query =
-      [view: "registry", year: year, category: category]
+      [view: "registry", year: year, month: month, category: category]
       |> Enum.reject(fn {_key, value} -> value == "All" end)
 
     "/expenses?" <> URI.encode_query(query)
   end
 
-  defp filtered_registry(registry, year, category) do
+  defp filtered_registry(registry, year, month, category) do
     Enum.filter(registry, fn row ->
       (year == "All" or String.starts_with?(row.date, year)) and
+        (month == "All" or String.starts_with?(row.date, month)) and
         (category == "All" or row.category == category)
     end)
   end
