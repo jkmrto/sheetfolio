@@ -143,6 +143,12 @@ defmodule SheetfolioWeb.ExpensesLive do
           </div>
         </div>
 
+        <div class="chart-container" style="margin-top: 1.5rem;" id="expenses-categories-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(categories_chart_payload(@expenses, @years, @categories, @mode))}>
+          <div id="expenses-categories-chart-canvas" phx-update="ignore">
+            <canvas id="expensesCategoriesChartCanvas"></canvas>
+          </div>
+        </div>
+
         <div class="expenses-table">
           <table>
             <thead>
@@ -189,6 +195,27 @@ defmodule SheetfolioWeb.ExpensesLive do
       end)
 
     %{metric: "value", title: "Monthly expenses per year (€)", labels: @month_labels, datasets: datasets}
+  end
+
+  defp categories_chart_payload(expenses, years, categories, mode) do
+    labels = Enum.reverse(years)
+
+    datasets =
+      Enum.map(categories, fn category ->
+        data =
+          Enum.map(labels, fn year ->
+            Float.round(year_value(expenses, year, category_total(expenses, year, category), mode), 2)
+          end)
+
+        %{label: category, color: WiseExpenses.color(category), data: data}
+      end)
+
+    title =
+      if mode == "avg",
+        do: "Avg monthly expenses per category (€)",
+        else: "Yearly expenses per category (€)"
+
+    %{metric: "value", title: title, labels: labels, xTitle: "Year", datasets: datasets}
   end
 
   defp year_value(_expenses, _year, total, "total"), do: total

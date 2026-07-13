@@ -28,7 +28,7 @@ Hooks.HistoryChart = {
 
     // payload.labels switches the x axis from time scale to categories (e.g. month names)
     const xScale = payload.labels
-      ? {title: {display: true, text: "Month"}}
+      ? {title: {display: true, text: payload.xTitle || "Month"}}
       : {
           type: "time",
           time: {minUnit: "day", unit: payload.timeUnit, tooltipFormat: "dd/MM/yyyy", displayFormats: {day: "dd MMM", month: "MMM yyyy"}},
