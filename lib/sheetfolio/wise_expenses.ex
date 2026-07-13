@@ -58,6 +58,19 @@ defmodule Sheetfolio.WiseExpenses do
 
   def color(category), do: @colors[category]
 
+  @doc "All spending activities, most recent first."
+  def list do
+    Mongo.find(:mongo, @collection, %{status: "COMPLETED", excluded: false, positive: false}, sort: %{date: -1})
+    |> Enum.map(fn doc ->
+      %{
+        date: String.slice(doc["date"] || "", 0, 10),
+        title: doc["title"],
+        category: Map.get(@labels, doc["category"], "Other"),
+        amount: doc["amount"]
+      }
+    end)
+  end
+
   def years do
     Enum.map(Date.utc_today().year..@since.year//-1, &Integer.to_string/1)
   end
@@ -83,11 +96,11 @@ defmodule Sheetfolio.WiseExpenses do
     {:ok, activities} = WiseClient.activities(profile["id"], since)
 
     known =
-      Mongo.find(:mongo, @collection, %{}, projection: %{status: 1})
-      |> Map.new(&{&1["_id"], &1["status"]})
+      Mongo.find(:mongo, @collection, %{}, projection: %{status: 1, date: 1})
+      |> Map.new(&{&1["_id"], {&1["status"], is_binary(&1["date"])}})
 
     activities
-    |> Enum.reject(&(known[&1["id"]] == &1["status"]))
+    |> Enum.reject(&(known[&1["id"]] == {&1["status"], true}))
     |> Task.async_stream(&store(profile["id"], &1["id"]), max_concurrency: 10, timeout: 60_000)
     |> Stream.run()
   end
@@ -95,24 +108,22 @@ defmodule Sheetfolio.WiseExpenses do
   defp store(profile_id, activity_id) do
     {:ok, detail} = WiseClient.activity(profile_id, activity_id)
 
+    # Activity details have no createdOn; scheduled ones also lack visibleOn.
+    date = detail["visibleOn"] || detail["finishedOn"] || detail["willStartOn"] || ""
+
     doc = %{
       status: detail["status"],
       type: detail["type"],
       category: detail["category"],
       title: String.replace(detail["title"], ~r/<[^>]*>/, ""),
-      month: month(detail),
+      date: date,
+      month: String.slice(date, 0, 7) <> "-01",
       amount: amount_eur(detail),
       positive: String.contains?(detail["primaryAmount"], "<positive>"),
       excluded: detail["isExcludedFromInsights"] == true
     }
 
     {:ok, _} = Mongo.update_one(:mongo, @collection, %{_id: activity_id}, %{"$set" => doc}, upsert: true)
-  end
-
-  # Activity details have no createdOn; scheduled ones also lack visibleOn.
-  defp month(detail) do
-    date = detail["visibleOn"] || detail["finishedOn"] || detail["willStartOn"] || ""
-    String.slice(date, 0, 7) <> "-01"
   end
 
   defp months do
