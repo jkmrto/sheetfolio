@@ -4,13 +4,21 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   alias Sheetfolio.UrbanitaeTransactions
 
   @ranges ~w(1m 3m 1y ytd all)
+  @views ~w(projects transactions)
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
       transactions = if connected?(socket), do: UrbanitaeTransactions.all(), else: []
-      {:ok, assign(socket, authenticated: true, transactions: transactions, range: "all")}
+
+      {:ok,
+       assign(socket,
+         authenticated: true,
+         transactions: transactions,
+         range: "all",
+         view: "projects"
+       )}
     end
   end
 
@@ -18,13 +26,14 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     {:noreply, assign(socket, range: range)}
   end
 
-  def render(assigns) do
-    filtered = filter_range(assigns.transactions, assigns.range)
+  def handle_event("set_view", %{"view" => view}, socket) when view in @views do
+    {:noreply, assign(socket, view: view)}
+  end
 
+  def render(assigns) do
     assigns =
       assign(assigns,
         rollup: UrbanitaeTransactions.rollup_by_project(assigns.transactions),
-        rows: filtered,
         totals: totals(assigns.transactions)
       )
 
@@ -39,12 +48,17 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       .u-totals .stat-value { font-size: 1.4rem; font-weight: 600; color: #0f172a; }
       .u-totals .stat-value.pos { color: #1baf7a; }
       .u-totals .stat-value.neg { color: #e34948; }
+      .u-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+      .u-subtabs button { border: none; background: none; color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+      .u-subtabs button:hover { color: #1e293b; }
+      .u-subtabs button.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
       table.u-table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
       table.u-table th { text-align: left; font-weight: 600; color: #64748b; text-transform: uppercase; font-size: 0.72rem; letter-spacing: 0.03em; padding: 0.5rem 0.5rem; border-bottom: 1px solid #e2e8f0; }
       table.u-table td { padding: 0.55rem 0.5rem; border-bottom: 1px solid #f1f5f9; }
       table.u-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-      table.u-table td.pos { color: #1baf7a; font-weight: 600; }
-      table.u-table td.neg { color: #e34948; font-weight: 600; }
+      table.u-table th.num { text-align: right; }
+      table.u-table td.pos, .u-totals .stat-value.pos, .stat-value.pos { color: #1baf7a; font-weight: 600; }
+      table.u-table td.neg, .u-totals .stat-value.neg { color: #e34948; font-weight: 600; }
       .u-pill { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
       .u-pill.active { background: #e0f2fe; color: #0369a1; }
       .u-pill.closed { background: #dcfce7; color: #166534; }
@@ -54,6 +68,15 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       .range-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
       .range-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
       .range-toggle button.selected { background: #1e293b; color: white; }
+      .u-project { border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
+      .u-project-header { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+      .u-project-title { font-size: 1rem; font-weight: 600; color: #0f172a; }
+      .u-project-city { color: #64748b; font-size: 0.85rem; }
+      .u-project-stats { display: flex; gap: 1.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; font-size: 0.85rem; }
+      .u-project-stats .k { color: #64748b; margin-right: 0.35rem; }
+      .u-project-stats .v { font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; }
+      .u-project-stats .v.pos { color: #1baf7a; }
+      .u-project-stats .v.neg { color: #e34948; }
     </style>
 
     <%= if @transactions == [] do %>
@@ -83,78 +106,111 @@ defmodule SheetfolioWeb.UrbanitaeLive do
         </div>
       </div>
 
-      <div class="u-card">
-        <h2>Projects</h2>
-        <table class="u-table">
-          <thead>
-            <tr>
-              <th>Status</th>
-              <th>City</th>
-              <th>Project</th>
-              <th class="num">Invested</th>
-              <th class="num">Returned</th>
-              <th class="num">Outstanding</th>
-              <th class="num">Net P&amp;L</th>
-              <th class="num">Txs</th>
-              <th>First → Last</th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for r <- @rollup do %>
-              <tr>
-                <td><span class={"u-pill #{r.status}"}>{r.status}</span></td>
-                <td>{r.city}</td>
-                <td>{r.project}</td>
-                <td class="num">{format_eur(r.invested)}</td>
-                <td class="num">{format_eur(r.returned)}</td>
-                <td class="num">{format_eur(r.outstanding)}</td>
-                <td class={"num #{pnl_class(r.net_pnl)}"}>{format_eur(r.net_pnl)}</td>
-                <td class="num">{r.tx_count}</td>
-                <td>{r.first_date} → {r.last_date}</td>
-              </tr>
-            <% end %>
-          </tbody>
-        </table>
+      <div class="u-subtabs">
+        <button type="button" class={if @view == "projects", do: "active", else: ""} phx-click="set_view" phx-value-view="projects">
+          Projects
+        </button>
+        <button type="button" class={if @view == "transactions", do: "active", else: ""} phx-click="set_view" phx-value-view="transactions">
+          Transactions
+        </button>
       </div>
 
-      <div class="u-card">
-        <h2>Transactions</h2>
-        <div class="range-row">
-          <div class="range-toggle">
-            <%= for {value, label} <- range_options() do %>
-              <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}>{label}</button>
-            <% end %>
+      <%= if @view == "projects" do %>
+        <%= render_projects(assigns) %>
+      <% else %>
+        <%= render_transactions(assigns) %>
+      <% end %>
+    <% end %>
+    """
+  end
+
+  defp render_projects(assigns) do
+    ~H"""
+    <div class="u-card">
+      <%= for r <- @rollup do %>
+        <% project_txs = project_transactions(@transactions, r.project_key) %>
+        <div class="u-project">
+          <div class="u-project-header">
+            <span class={"u-pill #{r.status}"}>{r.status}</span>
+            <span class="u-project-title">{r.project}</span>
+            <span class="u-project-city">{r.city}</span>
           </div>
-        </div>
-        <%= if @rows == [] do %>
-          <p style="color:#64748b; font-size:0.85rem;">No transactions in this window.</p>
-        <% else %>
+          <div class="u-project-stats">
+            <span><span class="k">Invested</span><span class="v">{format_eur(r.invested)}</span></span>
+            <span><span class="k">Returned</span><span class="v">{format_eur(r.returned)}</span></span>
+            <span><span class="k">Outstanding</span><span class="v">{format_eur(r.outstanding)}</span></span>
+            <span><span class="k">Net P&amp;L</span><span class={"v #{pnl_class(r.net_pnl)}"}>{format_eur(r.net_pnl)}</span></span>
+          </div>
           <table class="u-table">
             <thead>
               <tr>
                 <th>Date</th>
                 <th>Kind</th>
-                <th>City</th>
-                <th>Project</th>
                 <th class="num">Amount</th>
               </tr>
             </thead>
             <tbody>
-              <%= for tx <- @rows do %>
+              <%= for tx <- project_txs do %>
                 <tr>
                   <td>{tx["date"]}</td>
                   <td><span class={"u-pill #{tx["kind"]}"}>{tx["kind"]}</span></td>
-                  <td>{tx["city"]}</td>
-                  <td>{tx["project"]}</td>
                   <td class="num">{format_eur(tx["amount"])}</td>
                 </tr>
               <% end %>
             </tbody>
           </table>
-        <% end %>
-      </div>
-    <% end %>
+        </div>
+      <% end %>
+    </div>
     """
+  end
+
+  defp render_transactions(assigns) do
+    assigns = assign(assigns, rows: filter_range(assigns.transactions, assigns.range))
+
+    ~H"""
+    <div class="u-card">
+      <div class="range-row">
+        <div class="range-toggle">
+          <%= for {value, label} <- range_options() do %>
+            <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}>{label}</button>
+          <% end %>
+        </div>
+      </div>
+      <%= if @rows == [] do %>
+        <p style="color:#64748b; font-size:0.85rem;">No transactions in this window.</p>
+      <% else %>
+        <table class="u-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Kind</th>
+              <th>City</th>
+              <th>Project</th>
+              <th class="num">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <%= for tx <- @rows do %>
+              <tr>
+                <td>{tx["date"]}</td>
+                <td><span class={"u-pill #{tx["kind"]}"}>{tx["kind"]}</span></td>
+                <td>{tx["city"]}</td>
+                <td>{tx["project"]}</td>
+                <td class="num">{format_eur(tx["amount"])}</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp project_transactions(transactions, project_key) do
+    transactions
+    |> Enum.filter(&(&1["project_key"] == project_key))
+    |> Enum.sort_by(& &1["date"], :desc)
   end
 
   defp totals(transactions) do
@@ -194,7 +250,6 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   defp pnl_class(_), do: ""
 
   defp format_eur(amount) do
-    # es-ES style: "." thousands, "," decimals.
     sign = if amount < 0, do: "-", else: ""
     abs_amount = abs(amount)
     whole = trunc(abs_amount)
