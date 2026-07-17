@@ -3,12 +3,21 @@ defmodule SheetfolioWeb.HistoryLive do
 
   @palette ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"]
   @max_selected length(@palette)
+  @ranges ~w(1m 3m 1y ytd all)
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      socket = assign(socket, authenticated: true, snapshots: [], asset_list: [], color_map: %{}, metric: "value")
+      socket =
+        assign(socket,
+          authenticated: true,
+          snapshots: [],
+          asset_list: [],
+          color_map: %{},
+          metric: "value",
+          range: "all"
+        )
 
       if connected?(socket) do
         snapshots =
@@ -54,6 +63,10 @@ defmodule SheetfolioWeb.HistoryLive do
     {:noreply, assign(socket, metric: metric)}
   end
 
+  def handle_event("set_range", %{"range" => range}, socket) when range in @ranges do
+    {:noreply, assign(socket, range: range)}
+  end
+
   def render(assigns) do
     ~H"""
     <style>
@@ -65,6 +78,7 @@ defmodule SheetfolioWeb.HistoryLive do
       .metric-toggle { margin-left: auto; display: flex; gap: 0; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
       .metric-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
       .metric-toggle button.selected { background: #1e293b; color: white; }
+      .range-toggle { margin-left: 0; }
       .empty-note { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); color: #64748b; font-size: 0.9rem; }
     </style>
 
@@ -86,6 +100,11 @@ defmodule SheetfolioWeb.HistoryLive do
         <div class="metric-toggle">
           <button class={if @metric == "value", do: "selected"} phx-click="set_metric" phx-value-metric="value">Value (€)</button>
           <button class={if @metric == "pct", do: "selected"} phx-click="set_metric" phx-value-metric="pct">Gain/Loss (%)</button>
+        </div>
+        <div class="metric-toggle range-toggle">
+          <%= for {value, label} <- range_options() do %>
+            <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}><%= label %></button>
+          <% end %>
         </div>
       </div>
 
@@ -112,6 +131,8 @@ defmodule SheetfolioWeb.HistoryLive do
   end
 
   defp chart_payload(assigns) do
+    snapshots = filter_range(assigns.snapshots, assigns.range)
+
     datasets =
       assigns.color_map
       |> Enum.sort_by(fn {_isin, slot} -> slot end)
@@ -125,12 +146,26 @@ defmodule SheetfolioWeb.HistoryLive do
         %{
           label: name,
           color: Enum.at(palette(), slot),
-          data: series_points(assigns.snapshots, isin, assigns.metric)
+          data: series_points(snapshots, isin, assigns.metric)
         }
       end)
 
     %{metric: assigns.metric, datasets: datasets}
   end
+
+  defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+
+  defp filter_range(snapshots, "all"), do: snapshots
+
+  defp filter_range(snapshots, range) do
+    cutoff = range |> cutoff_date(Date.utc_today()) |> Date.to_iso8601()
+    Enum.filter(snapshots, &(&1["date"] >= cutoff))
+  end
+
+  defp cutoff_date("1m", today), do: Date.shift(today, month: -1)
+  defp cutoff_date("3m", today), do: Date.shift(today, month: -3)
+  defp cutoff_date("1y", today), do: Date.shift(today, year: -1)
+  defp cutoff_date("ytd", today), do: Date.new!(today.year, 1, 1)
 
   defp series_points(snapshots, isin, metric) do
     snapshots

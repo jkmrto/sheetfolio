@@ -9,12 +9,13 @@ defmodule SheetfolioWeb.CashLive do
     "Ibercaja" => "#4a3aa7"
   }
   @collection "cash_snapshots"
+  @ranges ~w(1m 3m 1y ytd all)
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      {:ok, assign(socket, authenticated: true, saved: false, snapshots: load_snapshots(socket))}
+      {:ok, assign(socket, authenticated: true, saved: false, range: "all", snapshots: load_snapshots(socket))}
     end
   end
 
@@ -41,6 +42,10 @@ defmodule SheetfolioWeb.CashLive do
     {:noreply, assign(socket, saved: true, snapshots: load_snapshots(socket))}
   end
 
+  def handle_event("set_range", %{"range" => range}, socket) when range in @ranges do
+    {:noreply, assign(socket, range: range)}
+  end
+
   def render(assigns) do
     assigns = assign(assigns, latest: latest_amounts(assigns.snapshots), sources: @sources)
 
@@ -54,6 +59,10 @@ defmodule SheetfolioWeb.CashLive do
       .cash-form button { background: #1e293b; color: white; border: none; border-radius: 6px; padding: 0.5rem 1.2rem; font-size: 0.9rem; cursor: pointer; }
       .cash-form button:hover { background: #334155; }
       .cash-saved { color: #1baf7a; font-size: 0.85rem; align-self: center; }
+      .range-row { display: flex; margin-bottom: 1rem; }
+      .range-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+      .range-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
+      .range-toggle button.selected { background: #1e293b; color: white; }
     </style>
 
     <div class="cash-form">
@@ -72,7 +81,15 @@ defmodule SheetfolioWeb.CashLive do
     </div>
 
     <%= if @snapshots != [] do %>
-      <div class="chart-container" id="cash-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(@snapshots))}>
+      <div class="range-row">
+        <div class="range-toggle">
+          <%= for {value, label} <- range_options() do %>
+            <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}><%= label %></button>
+          <% end %>
+        </div>
+      </div>
+
+      <div class="chart-container" id="cash-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(filter_range(@snapshots, @range)))}>
         <div id="cash-chart-canvas" phx-update="ignore">
           <canvas id="cashChartCanvas"></canvas>
         </div>
@@ -98,6 +115,20 @@ defmodule SheetfolioWeb.CashLive do
 
   defp placeholder(nil), do: "0"
   defp placeholder(amount), do: :erlang.float_to_binary(amount / 1, decimals: 2)
+
+  defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+
+  defp filter_range(snapshots, "all"), do: snapshots
+
+  defp filter_range(snapshots, range) do
+    cutoff = range |> cutoff_date(Date.utc_today()) |> Date.to_iso8601()
+    Enum.filter(snapshots, &(&1["date"] >= cutoff))
+  end
+
+  defp cutoff_date("1m", today), do: Date.shift(today, month: -1)
+  defp cutoff_date("3m", today), do: Date.shift(today, month: -3)
+  defp cutoff_date("1y", today), do: Date.shift(today, year: -1)
+  defp cutoff_date("ytd", today), do: Date.new!(today.year, 1, 1)
 
   defp chart_payload(snapshots) do
     source_datasets =
