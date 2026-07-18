@@ -3,11 +3,13 @@ defmodule SheetfolioWeb.PortfolioLive do
 
   alias Sheetfolio.UrbanitaeTransactions
 
+  @ranges ~w(1m 3m 1y ytd all)
+
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      socket = assign(socket, authenticated: true, snapshots: [], cash: [], urbanitae_by_date: %{})
+      socket = assign(socket, authenticated: true, snapshots: [], cash: [], urbanitae_by_date: %{}, range: "all")
 
       if connected?(socket) do
         snapshots =
@@ -33,6 +35,10 @@ defmodule SheetfolioWeb.PortfolioLive do
     end
   end
 
+  def handle_event("set_range", %{"range" => range}, socket) when range in @ranges do
+    {:noreply, assign(socket, range: range)}
+  end
+
   def render(assigns) do
     ~H"""
     <%= if @snapshots == [] do %>
@@ -40,7 +46,22 @@ defmodule SheetfolioWeb.PortfolioLive do
         No snapshots recorded yet. History accumulates one point per day once the recorder runs.
       </div>
     <% else %>
-      <div class="chart-container" id="portfolio-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(@snapshots, @cash, @urbanitae_by_date))}>
+      <style>
+        .range-row { display: flex; margin-bottom: 1rem; }
+        .range-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+        .range-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
+        .range-toggle button.selected { background: #1e293b; color: white; }
+      </style>
+
+      <div class="range-row">
+        <div class="range-toggle">
+          <%= for {value, label} <- range_options() do %>
+            <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}>{label}</button>
+          <% end %>
+        </div>
+      </div>
+
+      <div class="chart-container" id="portfolio-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(filter_range(@snapshots, @range), filter_cash_range(@cash, @range), @urbanitae_by_date))}>
         <div id="portfolio-chart-canvas" phx-update="ignore">
           <canvas></canvas>
         </div>
@@ -48,6 +69,25 @@ defmodule SheetfolioWeb.PortfolioLive do
     <% end %>
     """
   end
+
+  defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+
+  defp filter_range(snapshots, "all"), do: snapshots
+
+  defp filter_range(snapshots, range) do
+    cutoff = range |> cutoff_date(Date.utc_today()) |> Date.to_iso8601()
+    Enum.filter(snapshots, &(&1["date"] >= cutoff))
+  end
+
+  # cash_at/2 walks the full history to find the latest ≤ date, so we keep
+  # all cash points earlier than the cutoff too — otherwise the first
+  # snapshot in the window would have no cash value.
+  defp filter_cash_range(cash, _range), do: cash
+
+  defp cutoff_date("1m", today), do: Date.shift(today, month: -1)
+  defp cutoff_date("3m", today), do: Date.shift(today, month: -3)
+  defp cutoff_date("1y", today), do: Date.shift(today, year: -1)
+  defp cutoff_date("ytd", today), do: Date.new!(today.year, 1, 1)
 
   defp chart_payload(snapshots, cash, urbanitae) do
     %{
