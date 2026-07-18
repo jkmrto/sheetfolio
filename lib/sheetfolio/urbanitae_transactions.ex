@@ -121,6 +121,17 @@ defmodule Sheetfolio.UrbanitaeTransactions do
   end
 
   @doc """
+  Running `{outstanding, earnings}` as of the given ISO date. Useful for
+  overlaying Urbanitae onto other time-series charts.
+  """
+  def state_at(transactions, date_string) do
+    transactions
+    |> Enum.filter(&(&1["date"] <= date_string))
+    |> Enum.reduce(%{}, &apply_transaction(&2, &1))
+    |> totals_from()
+  end
+
+  @doc """
   Time series over the transaction history: one snapshot per event date,
   plus a final `today` point. Each snapshot has:
 
