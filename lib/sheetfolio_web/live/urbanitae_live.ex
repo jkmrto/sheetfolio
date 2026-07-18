@@ -1,21 +1,30 @@
 defmodule SheetfolioWeb.UrbanitaeLive do
   use SheetfolioWeb, :live_view
 
-  alias Sheetfolio.UrbanitaeTransactions
+  alias Sheetfolio.{UrbanitaeProjects, UrbanitaeTransactions}
 
   @ranges ~w(1m 3m 1y ytd all)
   @views ~w(projects transactions)
+  @type_labels %{"plusvalia" => "Plusvalía", "alquiler" => "Alquiler", "prestamo" => "Préstamo"}
+
+  defp type_order, do: ["plusvalia", "alquiler", "prestamo"]
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      transactions = if connected?(socket), do: UrbanitaeTransactions.all(), else: []
+      {transactions, types} =
+        if connected?(socket) do
+          {UrbanitaeTransactions.all(), UrbanitaeProjects.types_by_key()}
+        else
+          {[], %{}}
+        end
 
       {:ok,
        assign(socket,
          authenticated: true,
          transactions: transactions,
+         types_by_key: types,
          range: "all",
          view: "projects"
        )}
@@ -31,10 +40,14 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   end
 
   def render(assigns) do
+    rollup = UrbanitaeTransactions.rollup_by_project(assigns.transactions, assigns.types_by_key)
+
     assigns =
       assign(assigns,
-        rollup: UrbanitaeTransactions.rollup_by_project(assigns.transactions),
-        totals: totals(assigns.transactions)
+        rollup: rollup,
+        totals: totals(rollup),
+        active_by_type: group_active_by_type(rollup),
+        closed: Enum.filter(rollup, &(&1.status == "closed"))
       )
 
     ~H"""
@@ -42,6 +55,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       .u-empty { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); color: #64748b; font-size: 0.9rem; }
       .u-card { background: white; border-radius: 12px; padding: 1.5rem 1.75rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
       .u-card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #0f172a; }
+      .u-card h3 { font-size: 0.95rem; font-weight: 600; margin: 0.5rem 0 0.75rem 0; color: #334155; }
       .u-totals { display: flex; gap: 2.5rem; flex-wrap: wrap; }
       .u-totals .stat { display: flex; flex-direction: column; gap: 0.25rem; }
       .u-totals .stat-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
@@ -57,23 +71,33 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       table.u-table td { padding: 0.55rem 0.5rem; border-bottom: 1px solid #f1f5f9; }
       table.u-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
       table.u-table th.num { text-align: right; }
-      table.u-table td.pos, .u-totals .stat-value.pos, .stat-value.pos { color: #1baf7a; font-weight: 600; }
-      table.u-table td.neg, .u-totals .stat-value.neg { color: #e34948; font-weight: 600; }
+      table.u-table td.pos { color: #1baf7a; font-weight: 600; }
+      table.u-table td.neg { color: #e34948; font-weight: 600; }
       .u-pill { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
       .u-pill.active { background: #e0f2fe; color: #0369a1; }
       .u-pill.closed { background: #dcfce7; color: #166534; }
       .u-pill.investment { background: #fef3c7; color: #92400e; }
       .u-pill.repayment { background: #dcfce7; color: #166534; }
+      .u-pill.yield { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+      .u-pill.principal { background: #ede9fe; color: #6d28d9; border: 1px solid #ddd6fe; }
+      .u-pill.type-plusvalia { background: #fce7f3; color: #a21caf; }
+      .u-pill.type-alquiler { background: #dbeafe; color: #1e40af; }
+      .u-pill.type-prestamo { background: #fef3c7; color: #92400e; }
+      .u-pill.type-unknown { background: #f1f5f9; color: #64748b; }
       .range-row { display: flex; margin-bottom: 1rem; }
       .range-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
       .range-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
       .range-toggle button.selected { background: #1e293b; color: white; }
-      .u-project { border: 1px solid #e2e8f0; border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1rem; }
-      .u-project-header { display: flex; align-items: baseline; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+      .u-type-section { margin-bottom: 1.25rem; }
+      .u-type-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid #e2e8f0; }
+      .u-type-header .label { font-size: 0.9rem; font-weight: 600; color: #0f172a; text-transform: uppercase; letter-spacing: 0.03em; }
+      .u-type-header .subtotal { font-size: 0.85rem; color: #475569; font-variant-numeric: tabular-nums; }
+      .u-project { border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.9rem 1.15rem; margin-bottom: 0.75rem; }
+      .u-project-header { display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.65rem; flex-wrap: wrap; }
       .u-project-title { font-size: 1rem; font-weight: 600; color: #0f172a; }
       .u-project-city { color: #64748b; font-size: 0.85rem; }
-      .u-project-stats { display: flex; gap: 1.75rem; flex-wrap: wrap; margin-bottom: 0.75rem; font-size: 0.85rem; }
-      .u-project-stats .k { color: #64748b; margin-right: 0.35rem; }
+      .u-project-stats { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 0.7rem; font-size: 0.85rem; }
+      .u-project-stats .k { color: #64748b; margin-right: 0.3rem; }
       .u-project-stats .v { font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; }
       .u-project-stats .v.pos { color: #1baf7a; }
       .u-project-stats .v.neg { color: #e34948; }
@@ -88,19 +112,19 @@ defmodule SheetfolioWeb.UrbanitaeLive do
         <h2>Overall</h2>
         <div class="u-totals">
           <div class="stat">
-            <span class="stat-label">Invested</span>
-            <span class="stat-value">{format_eur(@totals.invested)}</span>
-          </div>
-          <div class="stat">
-            <span class="stat-label">Returned</span>
-            <span class="stat-value">{format_eur(@totals.returned)}</span>
+            <span class="stat-label">Invested (all-time)</span>
+            <span class="stat-value">{format_eur(@totals.invested_all_time)}</span>
           </div>
           <div class="stat">
             <span class="stat-label">Outstanding</span>
             <span class="stat-value">{format_eur(@totals.outstanding)}</span>
           </div>
           <div class="stat">
-            <span class="stat-label">Net P&amp;L (closed projects)</span>
+            <span class="stat-label">Yield received</span>
+            <span class="stat-value pos">{format_eur(@totals.yield_received)}</span>
+          </div>
+          <div class="stat">
+            <span class="stat-label">Realized P&amp;L (closed)</span>
             <span class={"stat-value #{pnl_class(@totals.closed_pnl)}"}>{format_eur(@totals.closed_pnl)}</span>
           </div>
         </div>
@@ -127,40 +151,85 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   defp render_projects(assigns) do
     ~H"""
     <div class="u-card">
-      <%= for r <- @rollup do %>
-        <% project_txs = project_transactions(@transactions, r.project_key) %>
-        <div class="u-project">
-          <div class="u-project-header">
-            <span class={"u-pill #{r.status}"}>{r.status}</span>
-            <span class="u-project-title">{r.project}</span>
-            <span class="u-project-city">{r.city}</span>
+      <h2>Active</h2>
+      <%= for type <- type_order(), group = Map.get(@active_by_type, type, []), group != [] do %>
+        <div class="u-type-section">
+          <div class="u-type-header">
+            <span class="label">{type_label(type)}</span>
+            <span class="subtotal">Outstanding {format_eur(sum_field(group, :outstanding))}</span>
           </div>
-          <div class="u-project-stats">
-            <span><span class="k">Invested</span><span class="v">{format_eur(r.invested)}</span></span>
-            <span><span class="k">Returned</span><span class="v">{format_eur(r.returned)}</span></span>
-            <span><span class="k">Outstanding</span><span class="v">{format_eur(r.outstanding)}</span></span>
-            <span><span class="k">Net P&amp;L</span><span class={"v #{pnl_class(r.net_pnl)}"}>{format_eur(r.net_pnl)}</span></span>
-          </div>
-          <table class="u-table">
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Kind</th>
-                <th class="num">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for tx <- project_txs do %>
-                <tr>
-                  <td>{tx["date"]}</td>
-                  <td><span class={"u-pill #{tx["kind"]}"}>{tx["kind"]}</span></td>
-                  <td class="num">{format_eur(tx["amount"])}</td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
+          <%= for r <- group do %>
+            {render_project(assign(assigns, r: r))}
+          <% end %>
         </div>
       <% end %>
+
+      <% unknown = Map.get(@active_by_type, nil, []) %>
+      <%= if unknown != [] do %>
+        <div class="u-type-section">
+          <div class="u-type-header">
+            <span class="label">Untyped</span>
+            <span class="subtotal">Outstanding {format_eur(sum_field(unknown, :outstanding))}</span>
+          </div>
+          <%= for r <- unknown do %>
+            {render_project(assign(assigns, r: r))}
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+
+    <%= if @closed != [] do %>
+      <div class="u-card">
+        <h2>Closed</h2>
+        <%= for r <- @closed do %>
+          {render_project(assign(assigns, r: r))}
+        <% end %>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp render_project(assigns) do
+    ~H"""
+    <div class="u-project">
+      <div class="u-project-header">
+        <span class={"u-pill #{@r.status}"}>{@r.status}</span>
+        <span class={"u-pill type-#{@r.type || "unknown"}"}>{type_label(@r.type)}</span>
+        <span class="u-project-title">{@r.project}</span>
+        <span class="u-project-city">{@r.city}</span>
+      </div>
+      <div class="u-project-stats">
+        <span><span class="k">Invested</span><span class="v">{format_eur(@r.invested)}</span></span>
+        <span><span class="k">Outstanding</span><span class="v">{format_eur(@r.outstanding)}</span></span>
+        <span><span class="k">Yield</span><span class="v pos">{format_eur(@r.yield_returned)}</span></span>
+        <%= if @r.status == "closed" do %>
+          <span><span class="k">Principal back</span><span class="v">{format_eur(@r.principal_returned)}</span></span>
+          <span><span class="k">Net P&amp;L</span><span class={"v #{pnl_class(@r.net_pnl)}"}>{format_eur(@r.net_pnl)}</span></span>
+        <% end %>
+      </div>
+      <table class="u-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Kind</th>
+            <th class="num">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <%= for tx <- project_transactions(@transactions, @r.project_key) do %>
+            <tr>
+              <td>{tx["date"]}</td>
+              <td>
+                <span class={"u-pill #{tx["kind"]}"}>{tx["kind"]}</span>
+                <%= if tx["kind"] == "repayment" and tx["repayment_kind"] do %>
+                  <span class={"u-pill #{tx["repayment_kind"]}"}>{tx["repayment_kind"]}</span>
+                <% end %>
+              </td>
+              <td class="num">{format_eur(tx["amount"])}</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
     </div>
     """
   end
@@ -194,7 +263,12 @@ defmodule SheetfolioWeb.UrbanitaeLive do
             <%= for tx <- @rows do %>
               <tr>
                 <td>{tx["date"]}</td>
-                <td><span class={"u-pill #{tx["kind"]}"}>{tx["kind"]}</span></td>
+                <td>
+                  <span class={"u-pill #{tx["kind"]}"}>{tx["kind"]}</span>
+                  <%= if tx["kind"] == "repayment" and tx["repayment_kind"] do %>
+                    <span class={"u-pill #{tx["repayment_kind"]}"}>{tx["repayment_kind"]}</span>
+                  <% end %>
+                </td>
                 <td>{tx["city"]}</td>
                 <td>{tx["project"]}</td>
                 <td class="num">{format_eur(tx["amount"])}</td>
@@ -213,23 +287,32 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     |> Enum.sort_by(& &1["date"], :desc)
   end
 
-  defp totals(transactions) do
-    rollup = UrbanitaeTransactions.rollup_by_project(transactions)
-    invested = Enum.reduce(rollup, 0.0, &(&1.invested + &2))
-    returned = Enum.reduce(rollup, 0.0, &(&1.returned + &2))
+  defp group_active_by_type(rollup) do
+    rollup
+    |> Enum.filter(&(&1.status == "active"))
+    |> Enum.group_by(& &1.type)
+  end
 
-    closed_pnl =
-      rollup
-      |> Enum.filter(&(&1.status == "closed"))
-      |> Enum.reduce(0.0, &(&1.net_pnl + &2))
+  defp totals(rollup) do
+    invested_all_time = Enum.reduce(rollup, 0.0, &(&1.invested + &2))
+    outstanding = rollup |> Enum.filter(&(&1.status == "active")) |> Enum.reduce(0.0, &(&1.outstanding + &2))
+    yield_received = Enum.reduce(rollup, 0.0, &(&1.yield_returned + &2))
+    closed_pnl = rollup |> Enum.filter(&(&1.status == "closed")) |> Enum.reduce(0.0, &(&1.net_pnl + &2))
 
     %{
-      invested: Float.round(invested, 2),
-      returned: Float.round(returned, 2),
-      outstanding: Float.round(invested - returned, 2),
+      invested_all_time: Float.round(invested_all_time, 2),
+      outstanding: Float.round(outstanding, 2),
+      yield_received: Float.round(yield_received, 2),
       closed_pnl: Float.round(closed_pnl, 2)
     }
   end
+
+  defp sum_field(rows, field) do
+    Enum.reduce(rows, 0.0, &(Map.fetch!(&1, field) + &2)) |> Float.round(2)
+  end
+
+  defp type_label(nil), do: "?"
+  defp type_label(type), do: Map.get(@type_labels, type, type)
 
   defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
 
@@ -265,4 +348,5 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     cents_str = cents |> Integer.to_string() |> String.pad_leading(2, "0")
     "#{sign}#{whole_str},#{cents_str} €"
   end
+
 end
