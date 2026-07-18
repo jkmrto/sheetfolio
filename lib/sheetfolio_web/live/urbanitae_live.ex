@@ -57,11 +57,18 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       .u-card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #0f172a; }
       .u-card h3 { font-size: 0.95rem; font-weight: 600; margin: 0.5rem 0 0.75rem 0; color: #334155; }
       .u-totals { display: flex; gap: 2.5rem; flex-wrap: wrap; }
-      .u-totals .stat { display: flex; flex-direction: column; gap: 0.25rem; }
-      .u-totals .stat-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; }
+      .u-totals .stat { display: flex; flex-direction: column; gap: 0.25rem; position: relative; }
+      .u-totals .stat-label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.03em; display: inline-flex; align-items: center; gap: 0.35rem; }
       .u-totals .stat-value { font-size: 1.4rem; font-weight: 600; color: #0f172a; }
       .u-totals .stat-value.pos { color: #1baf7a; }
       .u-totals .stat-value.neg { color: #e34948; }
+      .u-totals .stat.has-tip { cursor: pointer; outline: none; }
+      .u-totals .stat.has-tip .tip-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: #cbd5e1; color: white; font-size: 0.65rem; font-weight: 700; font-family: serif; line-height: 1; }
+      .u-totals .stat.has-tip:hover .tip-icon, .u-totals .stat.has-tip:focus-within .tip-icon { background: #1e293b; }
+      .u-totals .tip-popup { display: none; position: absolute; top: 100%; left: 0; margin-top: 0.6rem; background: #1e293b; color: white; padding: 0.7rem 0.9rem; border-radius: 6px; font-size: 0.8rem; line-height: 1.4; white-space: nowrap; box-shadow: 0 6px 16px rgba(0,0,0,0.18); z-index: 20; }
+      .u-totals .tip-popup .row { display: flex; justify-content: space-between; gap: 1.5rem; }
+      .u-totals .tip-popup .k { color: #94a3b8; }
+      .u-totals .stat.has-tip:hover .tip-popup, .u-totals .stat.has-tip:focus-within .tip-popup { display: block; }
       .u-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
       .u-subtabs button { border: none; background: none; color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
       .u-subtabs button:hover { color: #1e293b; }
@@ -119,13 +126,13 @@ defmodule SheetfolioWeb.UrbanitaeLive do
             <span class="stat-label">Outstanding</span>
             <span class="stat-value">{format_eur(@totals.outstanding)}</span>
           </div>
-          <div class="stat">
-            <span class="stat-label">Yield received</span>
-            <span class="stat-value pos">{format_eur(@totals.yield_received)}</span>
-          </div>
-          <div class="stat">
-            <span class="stat-label">Realized P&amp;L (closed)</span>
-            <span class={"stat-value #{pnl_class(@totals.closed_pnl)}"}>{format_eur(@totals.closed_pnl)}</span>
+          <div class="stat has-tip" tabindex="0">
+            <span class="stat-label">Total earnings <span class="tip-icon">i</span></span>
+            <span class={"stat-value #{pnl_class(@totals.total_earnings)}"}>{format_eur(@totals.total_earnings)}</span>
+            <div class="tip-popup">
+              <div class="row"><span class="k">Yield received</span><span>{format_eur(@totals.yield_received)}</span></div>
+              <div class="row"><span class="k">Realized P&amp;L (closed)</span><span>{format_eur(@totals.closed_pnl)}</span></div>
+            </div>
           </div>
         </div>
       </div>
@@ -342,7 +349,8 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       invested_all_time: Float.round(invested_all_time, 2),
       outstanding: Float.round(outstanding, 2),
       yield_received: Float.round(yield_received, 2),
-      closed_pnl: Float.round(closed_pnl, 2)
+      closed_pnl: Float.round(closed_pnl, 2),
+      total_earnings: Float.round(yield_received + closed_pnl, 2)
     }
   end
 
