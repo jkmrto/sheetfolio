@@ -8,7 +8,13 @@ defmodule SheetfolioWeb.EarningsLive do
       {:ok, push_navigate(socket, to: "/login")}
     else
       socket =
-        assign(socket, authenticated: true, realized_events: [], unrealized: [], view: "by_asset")
+        assign(socket,
+          authenticated: true,
+          realized_events: [],
+          unrealized: [],
+          view: "by_asset",
+          expanded_assets: MapSet.new()
+        )
 
       if connected?(socket) do
         operations = Sheetfolio.OperationsServer.get_operations() || []
@@ -27,6 +33,17 @@ defmodule SheetfolioWeb.EarningsLive do
 
   def handle_event("set_view", %{"view" => view}, socket) when view in @views do
     {:noreply, assign(socket, view: view)}
+  end
+
+  def handle_event("toggle_asset", %{"asset" => asset}, socket) do
+    expanded =
+      if MapSet.member?(socket.assigns.expanded_assets, asset) do
+        MapSet.delete(socket.assigns.expanded_assets, asset)
+      else
+        MapSet.put(socket.assigns.expanded_assets, asset)
+      end
+
+    {:noreply, assign(socket, expanded_assets: expanded)}
   end
 
   def render(assigns) do
@@ -57,6 +74,17 @@ defmodule SheetfolioWeb.EarningsLive do
       .neg { color: #e34948; }
       .warn { color: #b45309; font-size: 0.78rem; }
       .muted { color: #64748b; font-size: 0.78rem; }
+      .earnings-table tr.asset-row { cursor: pointer; }
+      .earnings-table tr.asset-row:hover td { background: #eef2f7; }
+      .chevron { display: inline-block; width: 0.9rem; color: #64748b; font-size: 0.7rem; transition: transform 0.15s; margin-right: 0.35rem; }
+      .chevron.open { transform: rotate(90deg); }
+      .earnings-table tr.details-row td { padding: 0; background: #f8fafc; }
+      .earnings-table tr.details-row .details-inner { padding: 0.5rem 1rem 0.9rem 2.25rem; }
+      .details-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; }
+      .details-table th { text-align: right; font-weight: 600; color: #64748b; text-transform: uppercase; font-size: 0.68rem; letter-spacing: 0.03em; padding: 0.35rem 0.6rem; border-bottom: 1px solid #e2e8f0; }
+      .details-table th:first-child, .details-table td:first-child, .details-table th.left, .details-table td.left { text-align: left; }
+      .details-table td { padding: 0.35rem 0.6rem; border-bottom: 1px solid #f1f5f9; text-align: right; }
+      .details-table tr:last-child td { border-bottom: none; }
     </style>
 
     <div class="earnings-total">
@@ -86,9 +114,10 @@ defmodule SheetfolioWeb.EarningsLive do
           <th>Realized</th>
         </tr>
         <%= for row <- @by_asset do %>
-          <tr>
+          <% open? = MapSet.member?(@expanded_assets, row.asset) %>
+          <tr class="asset-row" phx-click="toggle_asset" phx-value-asset={row.asset}>
             <td class="left">
-              <%= row.asset %>
+              <span class={"chevron#{if open?, do: " open"}"}>▶</span><%= row.asset %>
               <%= if row.uncovered > 0.001 do %>
                 <div class="warn">⚠ <%= Float.round(row.uncovered, 2) %> units without buy history — excluded</div>
               <% end %>
@@ -99,6 +128,34 @@ defmodule SheetfolioWeb.EarningsLive do
             <td><%= eur(row.cost) %></td>
             <td class={sign_class(row.realized)}><%= eur(row.realized) %></td>
           </tr>
+          <%= if open? do %>
+            <tr class="details-row">
+              <td colspan="6">
+                <div class="details-inner">
+                  <table class="details-table">
+                    <tr>
+                      <th class="left">Fecha</th>
+                      <th class="left">Tipo</th>
+                      <th>Qty</th>
+                      <th>Proceeds</th>
+                      <th>Cost basis</th>
+                      <th>Realized</th>
+                    </tr>
+                    <%= for e <- row.events do %>
+                      <tr>
+                        <td class="left"><%= e.fecha %></td>
+                        <td class="left"><%= e.tipo %></td>
+                        <td><%= Float.round(e.qty, 3) %></td>
+                        <td><%= eur(e.proceeds) %></td>
+                        <td><%= eur(e.cost) %></td>
+                        <td class={sign_class(e.realized)}><%= eur(e.realized) %></td>
+                      </tr>
+                    <% end %>
+                  </table>
+                </div>
+              </td>
+            </tr>
+          <% end %>
         <% end %>
         <tr class="sum">
           <td class="left" colspan="5">Total realized</td>
@@ -161,6 +218,7 @@ defmodule SheetfolioWeb.EarningsLive do
     |> Enum.map(fn {asset, evs} ->
       %{
         asset: asset,
+        events: evs,
         sells: length(evs),
         qty: Enum.reduce(evs, 0.0, &(&1.qty + &2)),
         proceeds: Enum.reduce(evs, 0.0, &(&1.proceeds + &2)),
