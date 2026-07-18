@@ -120,6 +120,81 @@ defmodule Sheetfolio.UrbanitaeTransactions do
     |> Enum.sort_by(&{&1.status, -&1.invested})
   end
 
+  @doc """
+  Time series over the transaction history: one snapshot per event date,
+  plus a final `today` point. Each snapshot has:
+
+      %{date: "2024-05-23", outstanding: 10000.00, earnings: 0.00}
+
+  Outstanding sums per-project (invested − principal_returned), floored at 0.
+  Earnings accumulates: every yield repayment adds its full amount; every
+  principal repayment adds the surplus over what remained outstanding for
+  that project (i.e. the closure gain).
+  """
+  def time_series(transactions) do
+    sorted = Enum.sort_by(transactions, & &1["date"])
+
+    {points, state} =
+      Enum.reduce(sorted, {[], %{}}, fn tx, {points, per_project} ->
+        per_project = apply_transaction(per_project, tx)
+        {outstanding, earnings} = totals_from(per_project)
+        point = %{date: tx["date"], outstanding: round2(outstanding), earnings: round2(earnings)}
+        {[point | points], per_project}
+      end)
+
+    today = Date.utc_today() |> Date.to_iso8601()
+
+    trailing =
+      case state do
+        state when map_size(state) == 0 ->
+          []
+
+        state ->
+          {outstanding, earnings} = totals_from(state)
+          [%{date: today, outstanding: round2(outstanding), earnings: round2(earnings)}]
+      end
+
+    points |> Enum.reverse() |> collapse_same_day() |> Kernel.++(trailing)
+  end
+
+  # One doc per date (drop earlier same-day points so we only emit the
+  # end-of-day snapshot).
+  defp collapse_same_day(points) do
+    points
+    |> Enum.reverse()
+    |> Enum.uniq_by(& &1.date)
+    |> Enum.reverse()
+  end
+
+  defp apply_transaction(state, %{"kind" => "investment", "project_key" => pk, "amount" => amount}) do
+    Map.update(state, pk, %{invested: amount, principal_returned: 0.0, yield_returned: 0.0}, fn p ->
+      %{p | invested: p.invested + amount}
+    end)
+  end
+
+  defp apply_transaction(
+         state,
+         %{"kind" => "repayment", "project_key" => pk, "amount" => amount} = tx
+       ) do
+    project = Map.get(state, pk, %{invested: 0.0, principal_returned: 0.0, yield_returned: 0.0})
+
+    project =
+      case Map.get(tx, "repayment_kind") do
+        "principal" -> %{project | principal_returned: project.principal_returned + amount}
+        _ -> %{project | yield_returned: project.yield_returned + amount}
+      end
+
+    Map.put(state, pk, project)
+  end
+
+  defp totals_from(per_project) do
+    Enum.reduce(per_project, {0.0, 0.0}, fn {_pk, p}, {outstanding, earnings} ->
+      remaining = max(p.invested - p.principal_returned, 0.0)
+      surplus = max(p.principal_returned - p.invested, 0.0)
+      {outstanding + remaining, earnings + p.yield_returned + surplus}
+    end)
+  end
+
   defp outstanding("closed", _invested, _principal_returned), do: 0.0
   defp outstanding(_, invested, principal_returned), do: round2(invested - principal_returned)
 

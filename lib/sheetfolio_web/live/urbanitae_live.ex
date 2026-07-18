@@ -4,7 +4,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   alias Sheetfolio.{UrbanitaeProjects, UrbanitaeTransactions}
 
   @ranges ~w(1m 3m 1y ytd all)
-  @views ~w(projects transactions)
+  @views ~w(overview projects transactions)
   @type_labels %{"plusvalia" => "Plusvalía", "alquiler" => "Alquiler", "prestamo" => "Préstamo"}
 
   defp type_order, do: ["plusvalia", "alquiler", "prestamo"]
@@ -26,7 +26,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
          transactions: transactions,
          types_by_key: types,
          range: "all",
-         view: "projects"
+         view: "overview"
        )}
     end
   end
@@ -131,6 +131,9 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       </div>
 
       <div class="u-subtabs">
+        <button type="button" class={if @view == "overview", do: "active", else: ""} phx-click="set_view" phx-value-view="overview">
+          Overview
+        </button>
         <button type="button" class={if @view == "projects", do: "active", else: ""} phx-click="set_view" phx-value-view="projects">
           Projects
         </button>
@@ -139,13 +142,49 @@ defmodule SheetfolioWeb.UrbanitaeLive do
         </button>
       </div>
 
-      <%= if @view == "projects" do %>
-        <%= render_projects(assigns) %>
-      <% else %>
-        <%= render_transactions(assigns) %>
+      <%= cond do %>
+        <% @view == "overview" -> %>
+          <%= render_overview(assigns) %>
+        <% @view == "projects" -> %>
+          <%= render_projects(assigns) %>
+        <% true -> %>
+          <%= render_transactions(assigns) %>
       <% end %>
     <% end %>
     """
+  end
+
+  defp render_overview(assigns) do
+    assigns = assign(assigns, chart_payload: chart_payload(assigns.transactions))
+
+    ~H"""
+    <div class="chart-container" id="urbanitae-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(@chart_payload)}>
+      <div id="urbanitae-chart-canvas" phx-update="ignore">
+        <canvas id="urbanitaeChartCanvas"></canvas>
+      </div>
+    </div>
+    """
+  end
+
+  defp chart_payload(transactions) do
+    series = UrbanitaeTransactions.time_series(transactions)
+
+    %{
+      metric: "value",
+      title: "Outstanding balance and cumulative earnings (€)",
+      datasets: [
+        %{
+          label: "Outstanding",
+          color: "#2a78d6",
+          data: Enum.map(series, &%{x: &1.date, y: &1.outstanding})
+        },
+        %{
+          label: "Earnings",
+          color: "#1baf7a",
+          data: Enum.map(series, &%{x: &1.date, y: &1.earnings})
+        }
+      ]
+    }
   end
 
   defp render_projects(assigns) do
