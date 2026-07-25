@@ -189,7 +189,8 @@ All of the above shipped. Numbers against the real mailbox and MongoDB Atlas:
 
 | | before | after |
 |---|---|---|
-| Boot to serving the history | minutes | 908ms |
+| Boot to serving the history (production) | minutes | 225ms |
+| Boot to serving the history (local) | minutes | 908ms |
 | 10 Gmail messages | 2772ms | 416ms |
 | Full 252-email download | ~140s (estimated) | 7.0s |
 | Background sync finding nothing new | n/a | 2.8s |
