@@ -4,6 +4,9 @@ defmodule Sheetfolio.MyinvestorEmails do
   @gmail_query_operaciones "from:notificaciones@myinvestor.es subject:CONFIRMACIÓN DE OPERACIÓN DE VALORES"
   @gmail_query_traspasos "from:notificaciones@myinvestor.es subject:TRASPASO"
 
+  @concurrency 8
+  @message_timeout 30_000
+
   @doc """
   Returns {:ok, [operation_map]} or {:error, reason}, exactly as parsed from the
   emails — corrections and synthetic operations are layered on later by
@@ -18,20 +21,30 @@ defmodule Sheetfolio.MyinvestorEmails do
 
       ops =
         all_ids
-        |> Enum.with_index(1)
-        |> Enum.flat_map(fn {id, current} ->
+        |> Task.async_stream(&{&1, fetch_and_parse(&1)},
+          max_concurrency: @concurrency,
+          timeout: @message_timeout
+        )
+        |> Stream.with_index(1)
+        |> Enum.flat_map(fn {result, current} ->
           if progress, do: progress.(current, total)
-
-          case fetch_and_parse(id) do
-            {:ok, ops} -> ops
-            {:error, reason} ->
-              Logger.warning("[MyinvestorEmails] Failed to parse #{id}: #{inspect(reason)}")
-              []
-          end
+          ops_from(result)
         end)
 
       {:ok, ops}
     end
+  end
+
+  defp ops_from({:ok, {_id, {:ok, ops}}}), do: ops
+
+  defp ops_from({:ok, {id, {:error, reason}}}) do
+    Logger.warning("[MyinvestorEmails] Failed to parse #{id}: #{inspect(reason)}")
+    []
+  end
+
+  defp ops_from({:exit, reason}) do
+    Logger.warning("[MyinvestorEmails] Message fetch crashed: #{inspect(reason)}")
+    []
   end
 
   defp list_ids(query) do

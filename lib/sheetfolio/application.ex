@@ -22,6 +22,8 @@ defmodule Sheetfolio.Application do
            customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
          ]
        ]},
+      # Caches the Gmail OAuth access token so every API call doesn't refresh it
+      Sheetfolio.GmailToken,
       # Caches current/historical prices and FX rates, computes earnings on demand
       Sheetfolio.EarningsServer,
       # Loads all operations from MyInvestor Gmail emails at boot, serves them from memory

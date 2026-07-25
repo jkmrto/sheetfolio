@@ -63,31 +63,5 @@ defmodule Sheetfolio.GmailClient do
 
   defp find_html_part(_), do: nil
 
-  defp fetch_token do
-    config = load_token_config()
-    refresh_access_token(config)
-  end
-
-  defp load_token_config do
-    %{
-      "client_id" => System.fetch_env!("GMAIL_CLIENT_ID"),
-      "client_secret" => System.fetch_env!("GMAIL_CLIENT_SECRET"),
-      "refresh_token" => System.fetch_env!("GMAIL_REFRESH_TOKEN")
-    }
-  end
-
-  defp refresh_access_token(config) do
-    body = [
-      grant_type: "refresh_token",
-      refresh_token: config["refresh_token"],
-      client_id: config["client_id"],
-      client_secret: config["client_secret"]
-    ]
-
-    case Req.post("https://oauth2.googleapis.com/token", form: body) do
-      {:ok, %{status: 200, body: %{"access_token" => token}}} -> {:ok, token}
-      {:ok, %{status: status, body: body}} -> {:error, {status, body}}
-      {:error, reason} -> {:error, reason}
-    end
-  end
+  defp fetch_token, do: Sheetfolio.GmailToken.fetch()
 end
