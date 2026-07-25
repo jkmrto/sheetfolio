@@ -37,6 +37,8 @@ defmodule Sheetfolio.Application do
       Sheetfolio.GmailToken,
       # Caches current/historical prices and FX rates, computes earnings on demand
       Sheetfolio.EarningsServer,
+      # Caches the asset -> category mapping read from the spreadsheet
+      Sheetfolio.AssetCategories,
       # Loads all operations from MyInvestor Gmail emails at boot, serves them from memory
       Sheetfolio.OperationsServer,
       # Writes a daily cash snapshot to MongoDB (boot + 21:00 UTC); auto-records the

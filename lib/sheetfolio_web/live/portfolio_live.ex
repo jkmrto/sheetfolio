@@ -1,15 +1,39 @@
 defmodule SheetfolioWeb.PortfolioLive do
   use SheetfolioWeb, :live_view
 
+  alias Sheetfolio.AssetCategories
   alias Sheetfolio.UrbanitaeTransactions
 
   @ranges ~w(1m 3m 1y ytd all)
+
+  # Assigned per category, never by rank, so a slice keeps its colour as the
+  # allocation shifts. Same hues the Cash and Expenses charts use.
+  @category_colors %{
+    "Indexados" => "#2a78d6",
+    "Renta fija corto plazo" => "#eda100",
+    "Gold" => "#1baf7a",
+    "Inmobiliario" => "#e34948",
+    "Custom Stocks" => "#4a3aa7",
+    "Silver" => "#0aa2c0",
+    "Indexado Sectorial" => "#eb6834",
+    "Bitcoin" => "#9333ea",
+    "Renta fija largo plazo" => "#9c8400"
+  }
+  @other_color "#94a3b8"
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      socket = assign(socket, authenticated: true, snapshots: [], cash: [], urbanitae_by_date: %{}, range: "all")
+      socket =
+        assign(socket,
+          authenticated: true,
+          snapshots: [],
+          cash: [],
+          urbanitae_by_date: %{},
+          range: "all",
+          allocation: []
+        )
 
       if connected?(socket) do
         snapshots =
@@ -28,12 +52,29 @@ defmodule SheetfolioWeb.PortfolioLive do
 
         urbanitae_by_date = urbanitae_by_date(snapshots)
 
-        {:ok, assign(socket, snapshots: snapshots, cash: cash, urbanitae_by_date: urbanitae_by_date)}
+        {:ok,
+         assign(socket,
+           snapshots: snapshots,
+           cash: cash,
+           urbanitae_by_date: urbanitae_by_date,
+           allocation: allocation()
+         )}
       else
         {:ok, socket}
       end
     end
   end
+
+  # The latest snapshot already carries each position's value, so the
+  # allocation needs no price fetching.
+  defp allocation do
+    case Mongo.find_one(:mongo, "portfolio_snapshots", %{}, sort: %{date: -1}) do
+      nil -> []
+      doc -> AssetCategories.breakdown(doc["positions"] || [], AssetCategories.get())
+    end
+  end
+
+  defp category_color(category), do: Map.get(@category_colors, category, @other_color)
 
   def handle_event("set_range", %{"range" => range}, socket) when range in @ranges do
     {:noreply, assign(socket, range: range)}
@@ -51,6 +92,17 @@ defmodule SheetfolioWeb.PortfolioLive do
         .range-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
         .range-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
         .range-toggle button.selected { background: #1e293b; color: white; }
+        .alloc { display: flex; flex-wrap: wrap; gap: 2rem; align-items: center; margin-top: 1.5rem; }
+        .alloc-chart { flex: 0 0 260px; max-width: 260px; }
+        .alloc-legend { flex: 1 1 320px; min-width: 280px; }
+        .alloc-title { font-size: 0.85rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
+        .alloc-legend table { width: 100%; border-collapse: collapse; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
+        .alloc-legend td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #f1f5f9; }
+        .alloc-legend tr:last-child td { border-bottom: none; }
+        .alloc-legend td.num { text-align: right; white-space: nowrap; }
+        .alloc-legend td.pct { text-align: right; white-space: nowrap; color: #64748b; width: 3.5rem; }
+        .alloc-legend tfoot td { font-weight: 600; border-top: 2px solid #e2e8f0; }
+        .alloc-dot { display: inline-block; width: 0.65rem; height: 0.65rem; border-radius: 50%; margin-right: 0.5rem; vertical-align: middle; }
       </style>
 
       <div class="range-row">
@@ -66,8 +118,59 @@ defmodule SheetfolioWeb.PortfolioLive do
           <canvas></canvas>
         </div>
       </div>
+
+      <%= if @allocation != [] do %>
+        <div class="chart-container" style="margin-top:1.5rem;">
+          <div class="alloc-title">Allocation by category</div>
+          <div class="alloc">
+            <div class="alloc-chart" id="allocation-chart" phx-hook="CategoryPie" data-chart={Jason.encode!(allocation_payload(@allocation))}>
+              <div id="allocation-chart-canvas" phx-update="ignore">
+                <canvas></canvas>
+              </div>
+            </div>
+            <div class="alloc-legend">
+              <table>
+                <tbody>
+                  <%= for slice <- @allocation do %>
+                    <tr>
+                      <td>
+                        <span class="alloc-dot" style={"background:#{category_color(slice.category)}"}></span><%= slice.category %>
+                      </td>
+                      <td class="num"><%= format_eur(slice.value) %></td>
+                      <td class="pct"><%= slice.pct %>%</td>
+                    </tr>
+                  <% end %>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td>Total</td>
+                    <td class="num"><%= format_eur(allocation_total(@allocation)) %></td>
+                    <td class="pct"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        </div>
+      <% end %>
     <% end %>
     """
+  end
+
+  defp allocation_total(allocation) do
+    allocation |> Enum.reduce(0.0, &(&1.value + &2)) |> Float.round(2)
+  end
+
+  defp allocation_payload(allocation) do
+    %{
+      labels: Enum.map(allocation, & &1.category),
+      values: Enum.map(allocation, & &1.value),
+      colors: Enum.map(allocation, &category_color(&1.category))
+    }
+  end
+
+  defp format_eur(value) do
+    :erlang.float_to_binary(value * 1.0, decimals: 2) <> " €"
   end
 
   defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]

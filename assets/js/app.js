@@ -62,6 +62,52 @@ Hooks.HistoryChart = {
   }
 }
 
+Hooks.CategoryPie = {
+  mounted() { this.render() },
+  updated() { this.render() },
+  destroyed() { if (this.chart) this.chart.destroy() },
+  render() {
+    const {labels, values, colors} = JSON.parse(this.el.dataset.chart)
+    const total = values.reduce((a, b) => a + b, 0)
+
+    if (this.chart) this.chart.destroy()
+
+    const ctx = this.el.querySelector("canvas").getContext("2d")
+    this.chart = new Chart(ctx, {
+      type: "doughnut",
+      data: {
+        labels,
+        datasets: [{
+          data: values,
+          backgroundColor: colors,
+          // A surface-coloured gap keeps adjacent slices separable, which
+          // matters more than usual with this many categories.
+          borderColor: "#ffffff",
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        cutout: "55%",
+        plugins: {
+          // The table beside the chart already names every slice with its
+          // value and share, so a second legend would just repeat it.
+          legend: {display: false},
+          tooltip: {
+            callbacks: {
+              label: (ctx) => {
+                const v = ctx.parsed
+                const pct = total > 0 ? (v / total * 100).toFixed(1) : "0.0"
+                return `${ctx.label}: €${v.toLocaleString("es-ES")} (${pct}%)`
+              }
+            }
+          }
+        }
+      }
+    })
+  }
+}
+
 Hooks.DcaChart = {
   mounted() {
     const ctx = this.el.getContext('2d')
