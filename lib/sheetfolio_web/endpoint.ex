@@ -14,10 +14,15 @@ defmodule SheetfolioWeb.Endpoint do
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [session: @session_options]]
 
+  # The layout links /assets/app.js unversioned, so without this browsers are
+  # free to keep serving a cached bundle after a deploy — a new LiveView hook
+  # then silently never arrives and its chart renders blank. Revalidating on
+  # every request costs one 304 and makes a deploy take effect immediately.
   plug Plug.Static,
     at: "/assets",
     from: {:sheetfolio, "priv/static/assets"},
-    gzip: false
+    gzip: false,
+    cache_control_for_etags: "public, no-cache"
 
   if code_reloading? do
     plug Phoenix.CodeReloader
