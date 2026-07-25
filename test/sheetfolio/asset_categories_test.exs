@@ -42,12 +42,11 @@ defmodule Sheetfolio.AssetCategoriesTest do
 
   describe "category_for/2" do
     test "uses the sheet when it has the identifier" do
-      assert AssetCategories.category_for("IE00B579F325", %{"IE00B579F325" => "Gold"}) == "Gold"
+      assert AssetCategories.category_for("ES0165265001", %{"ES0165265001" => "Indexados"}) ==
+               "Indexados"
     end
 
     test "falls back for holdings the sheet can't match on its own" do
-      # The sheet's ISIN row holds the ticker XAD6.DE for this one.
-      assert AssetCategories.category_for("DE000A1E0HS6", %{}) == "Silver"
       # Bought after the sheet's header row was last extended.
       assert AssetCategories.category_for("IE000RHYOR04", %{}) == "Renta fija corto plazo"
       assert AssetCategories.category_for("URBANITAE", %{}) == "Inmobiliario"
@@ -62,6 +61,91 @@ defmodule Sheetfolio.AssetCategoriesTest do
     test "anything else is uncategorized" do
       assert AssetCategories.category_for("XX0000000000", %{}) == AssetCategories.uncategorized()
     end
+
+    test "cash entries are reported as Efectivo" do
+      assert AssetCategories.category_for("EFECTIVO", %{}) == "Efectivo"
+    end
+  end
+
+  describe "breakdown/2 with cash folded in" do
+    test "cash accounts collapse into one Efectivo slice alongside the market positions" do
+      positions = [
+        position("A", "Fund A", 700.0),
+        position("EFECTIVO", "Bankinter", 100.0),
+        position("EFECTIVO", "Wise", 200.0)
+      ]
+
+      assert [funds, cash] = AssetCategories.breakdown(positions, %{"A" => "Indexados"})
+
+      assert funds.category == "Indexados"
+      assert cash.category == "Efectivo"
+      assert cash.value == 300.0
+      assert cash.pct == 30.0
+      assert cash.assets == ["Wise", "Bankinter"]
+    end
+
+    test "a zero-balance account doesn't show up as an asset" do
+      positions = [
+        position("A", "Fund A", 700.0),
+        position("EFECTIVO", "Bankinter", 0.0),
+        position("EFECTIVO", "Wise", 300.0)
+      ]
+
+      assert [_funds, cash] = AssetCategories.breakdown(positions, %{"A" => "Indexados"})
+
+      assert cash.assets == ["Wise"]
+      assert cash.value == 300.0
+    end
+  end
+
+  describe "category_for/2 precious-metals regrouping" do
+    test "the sheet's Gold and Silver are both reported as Oro/Plata" do
+      assert AssetCategories.category_for("IE00B579F325", %{"IE00B579F325" => "Gold"}) ==
+               "Oro/Plata"
+
+      assert AssetCategories.category_for("IE00B4ND3602", %{"IE00B4ND3602" => "Silver"}) ==
+               "Oro/Plata"
+    end
+
+    test "a fallback that lands on Silver is regrouped too" do
+      # The sheet's ISIN row holds the ticker XAD6.DE for the silver ETF, so
+      # this one reaches Silver through the fallback rather than the sheet.
+      assert AssetCategories.category_for("DE000A1E0HS6", %{}) == "Oro/Plata"
+    end
+
+    test "VanEck Gold Miners moves even though the sheet files it as Indexado Sectorial" do
+      categories = %{"IE00BQQP9F84" => "Indexado Sectorial"}
+
+      assert AssetCategories.category_for("IE00BQQP9F84", categories) == "Oro/Plata"
+    end
+
+    test "other Indexado Sectorial holdings stay put" do
+      # Van Eck Semiconductors shares that category and is not a metal.
+      categories = %{"IE00BMC38736" => "Indexado Sectorial"}
+
+      assert AssetCategories.category_for("IE00BMC38736", categories) == "Indexado Sectorial"
+    end
+
+    test "the three of them collapse into a single slice" do
+      positions = [
+        position("IE00B579F325", "Invesco Physical Gold", 29_292.31),
+        position("DE000A1E0HS6", "ETF DB Physical Silver", 14_474.40),
+        position("IE00BQQP9F84", "VanEck Gold Miners", 10_154.55),
+        position("ES0165265001", "Indexado Global", 1000.0)
+      ]
+
+      categories = %{
+        "IE00B579F325" => "Gold",
+        "IE00BQQP9F84" => "Indexado Sectorial",
+        "ES0165265001" => "Indexados"
+      }
+
+      assert [metals, _indexados] = AssetCategories.breakdown(positions, categories)
+
+      assert metals.category == "Oro/Plata"
+      assert metals.value == 53_921.26
+      assert length(metals.assets) == 3
+    end
   end
 
   describe "breakdown/2" do
@@ -72,13 +156,13 @@ defmodule Sheetfolio.AssetCategoriesTest do
         position("C", "Fund C", 600.0)
       ]
 
-      categories = %{"A" => "Indexados", "B" => "Indexados", "C" => "Gold"}
+      categories = %{"A" => "Indexados", "B" => "Indexados", "C" => "Bitcoin"}
 
-      assert [gold, indexados] = AssetCategories.breakdown(positions, categories)
+      assert [bitcoin, indexados] = AssetCategories.breakdown(positions, categories)
 
-      assert gold.category == "Gold"
-      assert gold.value == 600.0
-      assert gold.pct == 60.0
+      assert bitcoin.category == "Bitcoin"
+      assert bitcoin.value == 600.0
+      assert bitcoin.pct == 60.0
 
       assert indexados.category == "Indexados"
       assert indexados.value == 400.0
@@ -89,18 +173,20 @@ defmodule Sheetfolio.AssetCategoriesTest do
     test "leaves out positions with no value rather than counting them as zero" do
       positions = [position("A", "Fund A", 100.0), position("B", "Fund B", nil)]
 
-      assert [only] = AssetCategories.breakdown(positions, %{"A" => "Gold", "B" => "Silver"})
-      assert only.category == "Gold"
+      categories = %{"A" => "Indexados", "B" => "Bitcoin"}
+
+      assert [only] = AssetCategories.breakdown(positions, categories)
+      assert only.category == "Indexados"
       assert only.pct == 100.0
     end
 
     test "groups anything the sheet doesn't know under one uncategorized slice" do
       positions = [position("XX0000000000", "Mystery", 50.0), position("A", "Fund A", 50.0)]
 
-      breakdown = AssetCategories.breakdown(positions, %{"A" => "Gold"})
+      breakdown = AssetCategories.breakdown(positions, %{"A" => "Indexados"})
 
       assert Enum.map(breakdown, & &1.category) |> Enum.sort() ==
-               Enum.sort(["Gold", AssetCategories.uncategorized()])
+               Enum.sort(["Indexados", AssetCategories.uncategorized()])
     end
 
     test "an empty position list produces no slices" do

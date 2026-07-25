@@ -9,14 +9,14 @@ defmodule SheetfolioWeb.PortfolioLive do
   # Assigned per category, never by rank, so a slice keeps its colour as the
   # allocation shifts. Same hues the Cash and Expenses charts use.
   @category_colors %{
+    "Oro/Plata" => "#eda100",
     "Indexados" => "#2a78d6",
-    "Renta fija corto plazo" => "#eda100",
-    "Gold" => "#1baf7a",
     "Inmobiliario" => "#e34948",
+    "Renta fija corto plazo" => "#1baf7a",
+    "Efectivo" => "#0aa2c0",
     "Custom Stocks" => "#4a3aa7",
-    "Silver" => "#0aa2c0",
-    "Indexado Sectorial" => "#eb6834",
-    "Bitcoin" => "#9333ea",
+    "Bitcoin" => "#eb6834",
+    "Indexado Sectorial" => "#9333ea",
     "Renta fija largo plazo" => "#9c8400"
   }
   @other_color "#94a3b8"
@@ -66,12 +66,28 @@ defmodule SheetfolioWeb.PortfolioLive do
   end
 
   # The latest snapshot already carries each position's value, so the
-  # allocation needs no price fetching.
+  # allocation needs no price fetching. Cash isn't a market position, so each
+  # account is folded in as its own entry under the Efectivo category.
   defp allocation do
     case Mongo.find_one(:mongo, "portfolio_snapshots", %{}, sort: %{date: -1}) do
-      nil -> []
-      doc -> AssetCategories.breakdown(doc["positions"] || [], AssetCategories.get())
+      nil ->
+        []
+
+      doc ->
+        positions = (doc["positions"] || []) ++ cash_entries()
+        AssetCategories.breakdown(positions, AssetCategories.get())
     end
+  end
+
+  defp cash_entries do
+    case Mongo.find_one(:mongo, "cash_snapshots", %{}, sort: %{date: -1}) do
+      nil -> []
+      doc -> Enum.map(doc["sources"] || [], &cash_entry/1)
+    end
+  end
+
+  defp cash_entry(source) do
+    %{"isin" => "EFECTIVO", "asset" => source["name"], "value" => source["amount"]}
   end
 
   defp category_color(category), do: Map.get(@category_colors, category, @other_color)

@@ -31,14 +31,25 @@ defmodule Sheetfolio.AssetCategories do
   #   US8629451027              — Strive's ISIN changed; the sheet still has
   #                                the old US8629453007
   #   IE000RHYOR04              — bought after the header row was last extended
-  #   URBANITAE                 — tracked in a column that carries no ISIN
+  #   URBANITAE, EFECTIVO       — tracked in columns that carry no ISIN; cash
+  #                                comes from cash_snapshots rather than from
+  #                                a market position
   @fallback_categories %{
     "DE000A1E0HS6" => "Silver",
     "CA50077N1024" => "Custom Stocks",
     "US8629451027" => "Custom Stocks",
     "IE000RHYOR04" => "Renta fija corto plazo",
-    "URBANITAE" => "Inmobiliario"
+    "URBANITAE" => "Inmobiliario",
+    "EFECTIVO" => "Efectivo"
   }
+
+  # Regrouping applied on top of whatever the sheet says, so the dashboard can
+  # report precious metals as one holding while the sheet keeps its finer
+  # split. VanEck Gold Miners moves by ISIN because the sheet files it under
+  # "Indexado Sectorial", which Van Eck Semiconductors also uses — that one
+  # should stay put.
+  @regroup_by_isin %{"IE00BQQP9F84" => "Oro/Plata"}
+  @regroup_by_category %{"Gold" => "Oro/Plata", "Silver" => "Oro/Plata"}
 
   def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
@@ -111,10 +122,20 @@ defmodule Sheetfolio.AssetCategories do
 
   defp trim(value), do: value |> to_string() |> String.trim()
 
-  @doc "The category for an identifier, falling back to the overrides then to uncategorized."
+  @doc """
+  The category an identifier is reported under: the sheet's value, or a
+  fallback when the sheet can't match it, with the precious-metals regrouping
+  applied on top.
+  """
   def category_for(isin, categories) do
+    Map.get(@regroup_by_isin, isin) || regroup(from_sheet(isin, categories))
+  end
+
+  defp from_sheet(isin, categories) do
     Map.get(categories, isin) || Map.get(@fallback_categories, isin) || @uncategorized
   end
+
+  defp regroup(category), do: Map.get(@regroup_by_category, category, category)
 
   @doc """
   Groups valued positions into `%{category, value, pct, assets}`, largest
