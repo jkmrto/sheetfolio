@@ -30,6 +30,7 @@ defmodule Sheetfolio.OperationsServer do
   end
 
   def handle_info({:load_done, {:ok, ops}}, state) do
+    ops = Sheetfolio.OperationHistory.patch(ops)
     Enum.each(state.pending, &GenServer.reply(&1, ops))
     {:noreply, %{state | status: :ready, operations: ops, pending: []}}
   end

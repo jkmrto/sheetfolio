@@ -4,7 +4,12 @@ defmodule Sheetfolio.MyinvestorEmails do
   @gmail_query_operaciones "from:notificaciones@myinvestor.es subject:CONFIRMACIÓN DE OPERACIÓN DE VALORES"
   @gmail_query_traspasos "from:notificaciones@myinvestor.es subject:TRASPASO"
 
-  @doc "Returns {:ok, [operation_map]} or {:error, reason}. Optional progress/2 callback called with (current, total)."
+  @doc """
+  Returns {:ok, [operation_map]} or {:error, reason}, exactly as parsed from the
+  emails — corrections and synthetic operations are layered on later by
+  `Sheetfolio.OperationHistory`. Optional progress/2 callback called with
+  (current, total).
+  """
   def fetch_all(progress \\ nil) do
     with {:ok, op_ids} <- list_ids(@gmail_query_operaciones),
          {:ok, traspaso_ids} <- list_ids(@gmail_query_traspasos) do
@@ -46,12 +51,9 @@ defmodule Sheetfolio.MyinvestorEmails do
           else: Sheetfolio.MyinvestorParser.parse(html_body, subject)
 
       case result do
-        {:ok, ops} when is_list(ops) ->
-          {:ok, Enum.map(ops, &Sheetfolio.OperationOverrides.apply/1)}
-        {:ok, op} ->
-          {:ok, [Sheetfolio.OperationOverrides.apply(op)]}
-        error ->
-          error
+        {:ok, ops} when is_list(ops) -> {:ok, ops}
+        {:ok, op} -> {:ok, [op]}
+        error -> error
       end
     end
   end
