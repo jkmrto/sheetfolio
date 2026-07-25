@@ -10,7 +10,7 @@ Status legend: `[ ]` pending, `[x]` done.
 
 ## 1. Bugs
 
-### 1.1 Synthetic operations are silently not applied `[ ]`
+### 1.1 Synthetic operations are silently not applied `[x]`
 
 `Sheetfolio.SyntheticOperations` is referenced by nothing in `lib/`. It used to
 be wired into the ingest path — `MyinvestorEmails.fetch_all/0` ended with:
@@ -26,7 +26,7 @@ concatenation. Since then the two AXA Trésor Court Terme reembolsos
 from the operation history, which shifts realized P&L and the uncovered-units
 count on `/earnings`.
 
-### 1.2 The `skip: true` override does nothing `[ ]`
+### 1.2 The `skip: true` override does nothing `[x]`
 
 `OperationOverrides.apply/1` only merges the override map into the operation, so
 `skip: true` just adds a `skip` key and the operation still flows into
@@ -43,7 +43,7 @@ calls `fetch_token/0`, which does a full OAuth refresh POST against
 then walks the id list with `Enum.flat_map`, so there is no concurrency either.
 That is why boot takes minutes.
 
-### 2.1 Cache the access token, fan out the fetches `[ ]`
+### 2.1 Cache the access token, fan out the fetches `[x]`
 
 Hold the token in a small GenServer keyed to its `expires_in`, refreshing
 shortly before expiry, and replace `Enum.flat_map` with
@@ -51,7 +51,7 @@ shortly before expiry, and replace `Enum.flat_map` with
 this alone takes boot from minutes to seconds. The progress callback has to
 count completions rather than index the stream.
 
-### 2.2 Cache emails in MongoDB `[ ]`
+### 2.2 Cache emails in MongoDB `[x]`
 
 Collection `myinvestor_emails`, `_id` = the Gmail message id (stable, and these
 emails are immutable, so invalidation is trivial). Store subject, raw HTML body
@@ -74,7 +74,7 @@ zeroed portfolio), and `/loading` stops appearing in the normal case.
 
 ---
 
-## 3. Stale prices and FX `[ ]`
+## 3. Stale prices and FX `[x]`
 
 `EarningsServer.init/1` sends itself `:fetch_fx` once and never reschedules.
 `fly.toml` has `auto_stop_machines = 'off'` with `min_machines_running = 1`, so
@@ -89,7 +89,7 @@ minute TTL.
 
 ---
 
-## 4. EarningsServer serializes all network I/O `[ ]`
+## 4. EarningsServer serializes all network I/O `[x]`
 
 Every price fetch happens inside `handle_cast` in the single `EarningsServer`
 process. When `/summary` mounts it casts one request per ISIN and those are
@@ -108,7 +108,7 @@ requests for the same ISIN). The GenServer then never blocks on the network.
 
 ---
 
-## 5. Redundant price-pipeline work `[ ]`
+## 5. Redundant price-pipeline work `[x]`
 
 `PriceFetcher.fetch_prices/1` re-fetches both FX pairs on every call, and
 `resolve_ticker/1` re-does the Yahoo search per ISIN per call. ISIN→ticker
@@ -118,7 +118,7 @@ rather than source.
 
 ---
 
-## 6. Snapshots silently record partial data `[ ]`
+## 6. Snapshots silently record partial data `[x]`
 
 In `SnapshotRecorder.record/0` a position whose price fetch fails gets
 `value: nil` and is then filtered out of `valued`, so it contributes to neither
@@ -133,7 +133,7 @@ the document `partial: true` when that happens. Minor, same function:
 
 ---
 
-## 7. Tests `[ ]`
+## 7. Tests `[x]`
 
 `mix test` does not run at all: there is no `config/test.exs`, so it dies
 loading config, and `test/sheetfolio_test.exs` asserts
@@ -155,7 +155,7 @@ Add `mix test` and `mix compile --warnings-as-errors` to the credo workflow.
 
 ---
 
-## 8. Cleanups `[ ]`
+## 8. Cleanups `[x]`
 
 - `PortfolioCalculator` is not just dead, it is broken — it references
   `Sheetfolio.SheetData`, a module that does not exist in the repo. Deleting it,
@@ -180,3 +180,45 @@ Add `mix test` and `mix compile --warnings-as-errors` to the credo workflow.
 Extracting shared components out of the LiveViews. `CLAUDE.md` says LiveViews
 are deliberately self-contained (markup, inline CSS and chart JS in each
 `*_live.ex`), so the duplicated styling stays.
+
+---
+
+## Measured outcomes
+
+All of the above shipped. Numbers against the real mailbox and MongoDB Atlas:
+
+| | before | after |
+|---|---|---|
+| Boot to serving the history | minutes | 908ms |
+| 10 Gmail messages | 2772ms | 416ms |
+| Full 252-email download | ~140s (estimated) | 7.0s |
+| Background sync finding nothing new | n/a | 2.8s |
+
+The cached mailbox is 252 emails, about 780KB gzipped, and parses in ~100ms.
+Parsed output was checked to be identical to fetching straight from Gmail.
+
+One incidental confirmation of the staleness problem: production's snapshot for
+2026-07-24 was missing the operations from 20, 22 and 23 July, because its
+`OperationsServer` had loaded at boot days earlier and only refreshes on a
+manual reload. The background sync fixes that.
+
+---
+
+## Still open
+
+- **Parser fixtures.** `MyinvestorParser` is still untested. The natural
+  fixtures are now sitting in the `myinvestor_emails` collection, but a raw
+  confirmation email likely carries name, address and account identifiers, so
+  it needs redacting before it can land in the repo.
+- **Cost basis is recomputed at today's FX rate.** `Positions.build/3` takes the
+  current `eur_usd`/`eur_cad` and applies them while replaying the whole
+  history, so the reported *invested* amount for USD and CAD positions drifts
+  every day even when nothing is bought or sold — Humacyte moved 2973.02 →
+  2987.40 between two consecutive snapshots on no activity. Cost basis should
+  arguably use the rate at the time of each operation. Pre-existing, unrelated
+  to anything changed here, and it changes historical numbers, so it wants a
+  deliberate decision rather than a drive-by fix.
+- **Three same-day duplicate operations** appear in the history (one on
+  23/09/2024, 04/07/2023 and 02/09/2025). They come from genuinely distinct
+  Gmail messages and predate all of this work, so they're most likely two real
+  purchases of the same size on the same day — worth an eyeball, not a fix.

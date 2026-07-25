@@ -8,7 +8,7 @@ defmodule SheetfolioWeb.SessionController do
   def create(conn, %{"password" => password}) do
     expected = Application.fetch_env!(:sheetfolio, :app_password)
 
-    if password == expected do
+    if Plug.Crypto.secure_compare(password, expected) do
       conn
       |> put_session(:authenticated, true)
       |> redirect(to: "/")
