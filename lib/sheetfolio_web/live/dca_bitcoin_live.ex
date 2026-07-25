@@ -11,22 +11,30 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      socket = assign(socket, authenticated: true, subtab: "bitcoin", buys: [])
+      socket =
+        assign(socket,
+          authenticated: true,
+          subtab: "bitcoin",
+          buys: [],
+          position: %{net_qty: 0.0, cost_basis: 0.0},
+          current_price: nil
+        )
 
       if connected?(socket) do
         {eur_usd, eur_cad} = Sheetfolio.EarningsServer.get_fx_rates()
         all_ops = Sheetfolio.OperationsServer.get_operations() || []
-        buys = BitcoinDca.build_buys(all_ops, eur_usd, eur_cad)
+        state_history = BitcoinDca.state_history(all_ops, eur_usd, eur_cad)
+        buys = BitcoinDca.build_buys(state_history)
 
-        etf_prices = fetch_etf_history(buys)
-        btc_prices = fetch_history("BTC-USD", buys)
-        chart_data = BitcoinDca.cumulative_series(buys, etf_prices, btc_prices, eur_usd, eur_cad)
+        etf_prices = fetch_etf_history(state_history)
+        btc_prices = fetch_history("BTC-USD", state_history)
+        chart_data = BitcoinDca.cumulative_series(state_history, etf_prices, btc_prices, eur_usd, eur_cad)
 
         Sheetfolio.EarningsServer.request_price(@isin, self())
 
         socket =
           socket
-          |> assign(buys: buys)
+          |> assign(buys: buys, position: position(state_history))
           |> push_event("update_btc_dca_chart", %{
             labels: Enum.map(chart_data, & &1.date),
             invested: Enum.map(chart_data, & &1.invested),
@@ -41,10 +49,17 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
     end
   end
 
+  defp position([]), do: %{net_qty: 0.0, cost_basis: 0.0}
+  defp position(state_history), do: List.last(state_history)
+
   def handle_info({:price_result, _isin, nil}, socket), do: {:noreply, socket}
 
   def handle_info({:price_result, @isin, price_eur}, socket) do
-    {:noreply, assign(socket, buys: BitcoinDca.price_buys(socket.assigns.buys, price_eur))}
+    {:noreply,
+     assign(socket,
+       buys: BitcoinDca.price_buys(socket.assigns.buys, price_eur),
+       current_price: price_eur
+     )}
   end
 
   def render(assigns) do
@@ -76,9 +91,9 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
     </div>
 
     <% buys = @buys %>
-    <% total_invested = Enum.reduce(buys, 0.0, &(&1.invested + &2)) %>
-    <% total_units = Enum.reduce(buys, 0.0, &(&1.units + &2)) %>
-    <% total_value = total_value(buys) %>
+    <% total_invested = Float.round(@position.cost_basis, 2) %>
+    <% total_units = @position.net_qty %>
+    <% total_value = total_value(total_units, @current_price) %>
     <% total_pnl = total_pnl(total_value, total_invested) %>
     <% total_pnl_pct = total_pnl_pct(total_pnl, total_invested) %>
     <% avg_cost = avg_cost(total_invested, total_units) %>
@@ -158,17 +173,17 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
     """
   end
 
-  defp fetch_etf_history(buys) do
+  defp fetch_etf_history(state_history) do
     case PriceFetcher.resolve_ticker(@isin) do
-      {:ok, ticker} -> fetch_history(ticker, buys)
+      {:ok, ticker} -> fetch_history(ticker, state_history)
       _ -> %{}
     end
   end
 
   defp fetch_history(_ticker, []), do: %{}
 
-  defp fetch_history(ticker, buys) do
-    dates = Enum.map(buys, &parse_op_date(&1.fecha))
+  defp fetch_history(ticker, state_history) do
+    dates = Enum.map(state_history, &parse_op_date(&1.fecha))
     min_date = Enum.min(dates, Date)
     max_date = Date.utc_today()
 
@@ -183,11 +198,8 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
     Date.new!(String.to_integer(y), String.to_integer(m), String.to_integer(d))
   end
 
-  defp total_value(buys) do
-    if buys != [] and Enum.all?(buys, & &1.value_now) do
-      buys |> Enum.reduce(0.0, &(&1.value_now + &2)) |> Float.round(2)
-    end
-  end
+  defp total_value(_total_units, nil), do: nil
+  defp total_value(total_units, price), do: Float.round(total_units * price, 2)
 
   defp total_pnl(nil, _total_invested), do: nil
   defp total_pnl(total_value, total_invested), do: Float.round(total_value - total_invested, 2)

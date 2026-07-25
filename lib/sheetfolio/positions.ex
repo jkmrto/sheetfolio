@@ -20,20 +20,55 @@ defmodule Sheetfolio.Positions do
     Enum.reverse(events)
   end
 
+  @doc """
+  Like `build/3`, but one entry per date that had activity, oldest first,
+  each carrying every ISIN's cumulative state as of that date — the same
+  average-cost-basis accounting `build/3` produces as its final totals,
+  checkpointed along the way instead of only at the end.
+
+  This is what makes a same-day buy that's immediately undone by a sell net
+  out correctly (a sell reduces cost_basis proportionally, same as `build/3`)
+  instead of the buy permanently inflating a caller's running series.
+  """
+  def history(operations, eur_usd, eur_cad) do
+    operations
+    |> Enum.sort_by(&settlement_key/1)
+    |> Enum.group_by(& &1.fecha)
+    |> Enum.sort_by(fn {fecha, _ops} -> date_sort_key(fecha) end)
+    |> Enum.map_reduce(%{}, fn {fecha, ops}, assets ->
+      assets = Enum.reduce(ops, assets, &apply_op(&2, &1, eur_usd, eur_cad))
+      {{fecha, assets}, assets}
+    end)
+    |> elem(0)
+  end
+
+  defp apply_op(assets, data, eur_usd, eur_cad), do: elem(update_asset(assets, data, eur_usd, eur_cad), 0)
+
   defp replay(operations, eur_usd, eur_cad) do
     operations
-    |> Enum.sort_by(fn %{fecha: f} ->
-      case String.split(f, "/") do
-        [d, m, y] -> {y, m, d}
-        _ -> {"", "", ""}
-      end
-    end)
+    |> Enum.sort_by(&settlement_key/1)
     |> Enum.reduce({%{}, []}, fn data, {assets, events} ->
       case update_asset(assets, data, eur_usd, eur_cad) do
         {assets, nil} -> {assets, events}
         {assets, event} -> {assets, [event | events]}
       end
     end)
+  end
+
+  # Within one date, buys settle before sells: you can only sell units you
+  # already hold, and the emails don't record intraday order. Replaying a
+  # same-day sell first would treat units as uncovered that the same day's
+  # buy actually covered, wrongly realizing P&L and then re-adding the full
+  # cost of units that had already been sold.
+  defp settlement_key(op), do: {date_sort_key(op.fecha), sell?(op.tipo)}
+
+  defp sell?(tipo), do: if(buy?(tipo), do: 0, else: 1)
+
+  defp date_sort_key(fecha) do
+    case String.split(fecha, "/") do
+      [d, m, y] -> {y, m, d}
+      _ -> {"", "", ""}
+    end
   end
 
   defp update_asset(assets, data, eur_usd, eur_cad) do

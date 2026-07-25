@@ -1,13 +1,20 @@
 defmodule Sheetfolio.BitcoinDca do
   @moduledoc """
-  Pure aggregation behind the Bitcoin DCA subtab: per-day buy rows and the
-  cumulative invested/value/benchmark series behind its chart. Kept separate
-  from DcaBitcoinLive so it can be tested without a LiveView, Mongo or the
-  network.
+  Pure aggregation behind the Bitcoin DCA subtab: per-day net-purchase rows
+  and the cumulative invested/value/benchmark series behind its chart.
 
-  Unlike the S&P 500 DCA page, there is no base/extra split here — the
-  Bitcoin buys are a steady weekly amount with no discretionary top-up, so
-  this just tracks DCA performance against Bitcoin itself.
+  Built on `Positions.history/3`'s average-cost-basis replay rather than
+  summing raw buy operations directly. This account has one same-day buy
+  immediately undone by a sell (100 units bought and 100 sold on
+  07/10/2025) — summing buys alone would count that buy as a permanent
+  6255 EUR-and-counting addition to "invested" that was never actually kept.
+  Positions already nets a sell against the running cost basis correctly for
+  every other page in this app; reusing it here keeps that the single place
+  average-cost accounting happens.
+
+  Unlike the S&P 500 DCA page, there is no base/extra split — the Bitcoin
+  buys are a steady weekly amount with no discretionary top-up, so this just
+  tracks DCA performance against Bitcoin itself.
   """
 
   alias Sheetfolio.Money
@@ -18,32 +25,50 @@ defmodule Sheetfolio.BitcoinDca do
   def isin, do: @isin
 
   @doc """
-  One row per day the ETF was bought, newest first. Sells, traspasos and
-  other ISINs are excluded; two buys on the same day are merged.
+  This ISIN's cumulative `%{fecha, net_qty, cost_basis}` after each date with
+  activity, oldest first. The last entry is the current position.
   """
-  def build_buys(operations, eur_usd, eur_cad) do
+  def state_history(operations, eur_usd, eur_cad) do
     operations
-    |> Enum.filter(&buy?/1)
-    |> Enum.group_by(& &1.fecha)
-    |> Enum.map(&merge_buys(&1, eur_usd, eur_cad))
-    |> Enum.sort_by(&date_sort_key(&1.fecha), :desc)
+    |> Enum.filter(&(&1.isin == @isin))
+    |> Positions.history(eur_usd, eur_cad)
+    |> Enum.map(&isin_state/1)
   end
 
-  defp buy?(op) do
-    op.isin == @isin and op.tipo in ["Compra", "Suscripcion"] and not op.traspaso
+  defp isin_state({fecha, assets}) do
+    state = Map.get(assets, @isin, %{net_qty: 0.0, cost_basis: 0.0})
+    %{fecha: fecha, net_qty: state.net_qty, cost_basis: state.cost_basis}
   end
 
-  defp merge_buys({fecha, ops}, eur_usd, eur_cad) do
-    {units, invested} =
-      Enum.reduce(ops, {0.0, 0.0}, fn op, {units_acc, invested_acc} ->
-        qty = Positions.parse_cantidad(op.cantidad)
-        amt = Positions.amount_in_eur(op.importe_with_comision, op.precio, qty, eur_usd, eur_cad)
-        {units_acc + qty, invested_acc + amt}
+  @doc """
+  One row per date with a net-positive purchase, newest first — the day's
+  change in units and cost basis, not the raw operations recorded that day.
+  A date whose sells net out or exceed its buys contributes no row.
+  """
+  def build_buys(state_history) do
+    state_history
+    |> deltas()
+    |> Enum.filter(&(&1.units > 0.0001))
+  end
+
+  # Prepends as it folds over the oldest-first history, so rows come back
+  # newest-first, which is the order the table wants.
+  defp deltas(state_history) do
+    {rows, _last} =
+      Enum.reduce(state_history, {[], {0.0, 0.0}}, fn state, {rows, previous} ->
+        {row, next} = delta_row(state, previous)
+        {[row | rows], next}
       end)
 
-    %{
+    rows
+  end
+
+  defp delta_row(%{fecha: fecha, net_qty: net_qty, cost_basis: cost_basis}, {prev_qty, prev_cost}) do
+    units = net_qty - prev_qty
+    invested = cost_basis - prev_cost
+
+    row = %{
       fecha: fecha,
-      asset: hd(ops).asset,
       units: units,
       invested: invested,
       unit_cost: unit_cost(invested, units),
@@ -51,9 +76,11 @@ defmodule Sheetfolio.BitcoinDca do
       pnl: nil,
       pnl_pct: nil
     }
+
+    {row, {net_qty, cost_basis}}
   end
 
-  defp unit_cost(_invested, units) when units == 0.0, do: 0.0
+  defp unit_cost(_invested, units) when units <= 0.0, do: 0.0
   defp unit_cost(invested, units), do: invested / units
 
   @doc "Fills in value_now/pnl/pnl_pct on every row from a single current EUR price."
@@ -70,31 +97,25 @@ defmodule Sheetfolio.BitcoinDca do
   defp pnl_pct(pnl, invested), do: Float.round(pnl / invested * 100, 2)
 
   @doc """
-  Chart points in date order: cumulative invested, cumulative value (units
-  bought so far × the ETF's EUR price on that date, from `etf_prices_usd`),
-  and the raw Bitcoin benchmark price on that date (from `btc_prices_usd`).
-  Both price maps are `%{Date => usd_price}`; a date missing from either
-  falls back to the nearest earlier price within 4 days, since Yahoo only
-  returns trading days.
+  Chart points in date order: cumulative invested (the running cost basis —
+  average-cost accounting, so a same-day buy undone by a sell doesn't
+  inflate it), cumulative value (net units held × the ETF's EUR price on
+  that date, from `etf_prices_usd`), and the raw Bitcoin benchmark price on
+  that date (from `btc_prices_usd`). Both price maps are `%{Date =>
+  usd_price}`; a date missing from either falls back to the nearest earlier
+  price within 4 days, since Yahoo only returns trading days.
   """
-  def cumulative_series(buys, etf_prices_usd, btc_prices_usd, eur_usd, eur_cad) do
-    buys
-    |> Enum.sort_by(&date_sort_key(&1.fecha))
-    |> Enum.map_reduce({0.0, 0.0}, fn buy, {cum_invested, cum_units} ->
-      date = parse_date(buy.fecha)
-      new_invested = cum_invested + buy.invested
-      new_units = cum_units + buy.units
+  def cumulative_series(state_history, etf_prices_usd, btc_prices_usd, eur_usd, eur_cad) do
+    Enum.map(state_history, fn %{fecha: fecha, net_qty: net_qty, cost_basis: cost_basis} ->
+      date = parse_date(fecha)
 
-      point = %{
-        date: iso_date(buy.fecha),
-        invested: Float.round(new_invested, 2),
-        value: value_at(new_units, etf_prices_usd, date, eur_usd, eur_cad),
+      %{
+        date: iso_date(fecha),
+        invested: Float.round(cost_basis, 2),
+        value: value_at(net_qty, etf_prices_usd, date, eur_usd, eur_cad),
         btc: nearest_price(btc_prices_usd, date)
       }
-
-      {point, {new_invested, new_units}}
     end)
-    |> elem(0)
   end
 
   defp value_at(units, prices, date, eur_usd, eur_cad) do
@@ -107,13 +128,6 @@ defmodule Sheetfolio.BitcoinDca do
   @doc "The price on `date`, or the nearest earlier price within 4 days."
   def nearest_price(prices, date) do
     Enum.find_value(0..4, fn offset -> Map.get(prices, Date.add(date, -offset)) end)
-  end
-
-  defp date_sort_key(fecha) do
-    case String.split(fecha, "/") do
-      [d, m, y] -> {String.to_integer(y), String.to_integer(m), String.to_integer(d)}
-      _ -> {0, 0, 0}
-    end
   end
 
   defp parse_date(fecha) do
