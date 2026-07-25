@@ -9,6 +9,7 @@ defmodule Sheetfolio.PriceFetcher do
   alias Sheetfolio.PricesApi.{OpenFigi, YahooFinance, Stooq}
 
   @isin_format ~r/^[A-Z]{2}[A-Z0-9]{10}$/
+  @ticker_collection "isin_tickers"
 
   @ticker_overrides %{
     "DE000A1E0HS6" => "XAD6.DE",
@@ -52,8 +53,7 @@ defmodule Sheetfolio.PriceFetcher do
   end
 
   def fetch_prices(assets_map) do
-    eur_usd = fetch_fx("EURUSD=X") || 1.0
-    eur_cad = fetch_fx("EURCAD=X") || 1.0
+    {eur_usd, eur_cad} = Sheetfolio.EarningsServer.get_fx_rates()
 
     assets_map
     |> Task.async_stream(
@@ -86,24 +86,36 @@ defmodule Sheetfolio.PriceFetcher do
 
   def resolve_ticker(value) do
     cond do
-      Map.has_key?(@ticker_overrides, value) ->
-        {:ok, @ticker_overrides[value]}
-      Regex.match?(@isin_format, value) ->
-        case YahooFinance.resolve_ticker(value) do
-          {:ok, ticker} -> {:ok, ticker}
-          {:error, _} -> OpenFigi.resolve_ticker(value)
-        end
-      true ->
-        {:ok, value}
+      Map.has_key?(@ticker_overrides, value) -> {:ok, @ticker_overrides[value]}
+      Regex.match?(@isin_format, value) -> cached_ticker(value)
+      true -> {:ok, value}
+    end
+  end
+
+  # An ISIN's ticker doesn't change, so resolving it — a Yahoo search plus an
+  # OpenFIGI fallback — is worth doing once rather than on every price fetch.
+  defp cached_ticker(isin) do
+    case Mongo.find_one(:mongo, @ticker_collection, %{_id: isin}) do
+      %{"ticker" => ticker} -> {:ok, ticker}
+      _ -> resolve_and_store(isin)
+    end
+  end
+
+  defp resolve_and_store(isin) do
+    with {:ok, ticker} <- lookup_ticker(isin) do
+      doc = %{ticker: ticker, resolved_at: DateTime.utc_now()}
+      Mongo.update_one(:mongo, @ticker_collection, %{_id: isin}, %{"$set" => doc}, upsert: true)
+      {:ok, ticker}
+    end
+  end
+
+  # Failures aren't stored, so an ISIN neither source knows yet gets retried.
+  defp lookup_ticker(isin) do
+    case YahooFinance.resolve_ticker(isin) do
+      {:ok, ticker} -> {:ok, ticker}
+      {:error, _} -> OpenFigi.resolve_ticker(isin)
     end
   end
 
   defp to_eur(price, currency, eur_usd, eur_cad), do: Money.to_eur(price, currency, eur_usd, eur_cad)
-
-  defp fetch_fx(pair) do
-    case YahooFinance.fetch_price(pair) do
-      {:ok, rate, _} -> rate
-      _ -> nil
-    end
-  end
 end

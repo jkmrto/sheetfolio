@@ -46,8 +46,12 @@ defmodule Sheetfolio.EarningsServer do
 
   def init(_) do
     :ets.new(@table, [:set, :public, :named_table, read_concurrency: true])
-    send(self(), :refresh_fx)
-    {:ok, %{eur_usd: 1.0, eur_cad: 1.0}}
+    Process.send_after(self(), :refresh_fx, @fx_refresh_ms)
+
+    # Fetched synchronously: SnapshotRecorder asks for these as soon as it
+    # starts, and recording a day's USD positions at a placeholder rate of 1.0
+    # would write a wrong number that nothing later corrects.
+    {:ok, %{eur_usd: fetch_fx("EURUSD=X"), eur_cad: fetch_fx("EURCAD=X")}}
   end
 
   def handle_info(:refresh_fx, state) do
