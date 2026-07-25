@@ -44,14 +44,13 @@ A Stop hook in `.claude/settings.json` blocks ending the turn while the working 
 2. `SyntheticOperations` (hardcoded ops missing from Gmail) and `OperationOverrides` (per-`{fecha, isin}` corrections, `skip: true` to exclude) patch the parsed history. This is the standard mechanism when an email is missing or wrong — add entries there, don't special-case downstream.
 3. `Positions` replays operations into per-ISIN positions using average-cost basis and computes realized P&L events (sells beyond recorded buy history are "uncovered" and realize nothing).
 4. `PriceFetcher` resolves ISIN → ticker (Yahoo Finance search, OpenFIGI fallback) and fetches EUR prices; `lib/sheetfolio/prices_api/` holds the Yahoo/Stooq/OpenFIGI clients. Problem ISINs are handled via `@ticker_overrides` / `@stooq_overrides` in `PriceFetcher`.
-5. `GoogleSheetsClient` + `Assets` read the spreadsheet; the "Participaciones" sheet is the single source of truth for asset → ISIN mapping. `Urbanitae` derives a manual position from spreadsheet columns.
+5. `GoogleSheetsClient` reads the spreadsheet; `Urbanitae` derives a manual position from spreadsheet columns. ISINs come from the parsed emails, not from the sheet.
 6. `WiseClient` + `WiseExpenses` pull spending by category from the Wise activities endpoint (statements/SCA are unavailable for personal accounts), caching activity details in Mongo.
 
 ### Web layer (`lib/sheetfolio_web/`)
 - Everything is LiveView; routes in `router.ex`. All pages sit behind `AuthPlug` (single password, `APP_PASSWORD`).
 - Routes under the `live_session :authenticated` block mount `LoadingHook`, which redirects to `/loading` until `OperationsServer` has finished its boot load. Pages that need operation history belong inside that block.
 - LiveViews are self-contained: markup, inline CSS, and chart JS live in each `*_live.ex` file. Follow that pattern rather than extracting shared components.
-- Dead code, kept around: `OperationsController` and `PortfolioCalculator` are referenced by nothing.
 
 ## Conventions
 
