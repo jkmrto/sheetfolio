@@ -15,6 +15,10 @@ defmodule Sheetfolio.WiseClient do
     get("/v1/profiles/#{profile_id}/activities/#{activity_id}")
   end
 
+  def transfer(transfer_id) do
+    get("/v1/transfers/#{transfer_id}")
+  end
+
   def activities(profile_id, %DateTime{} = since) do
     activities(profile_id, since, nil, [])
   end

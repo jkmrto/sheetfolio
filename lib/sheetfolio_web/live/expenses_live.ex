@@ -22,9 +22,20 @@ defmodule SheetfolioWeb.ExpensesLive do
          view: "months",
          mode: "total",
          reg_year: "All",
+         reg_month: "All",
          reg_category: "All"
        )}
     end
+  end
+
+  def handle_params(params, _uri, socket) do
+    {:noreply,
+     assign(socket,
+       view: params["view"] || "months",
+       reg_year: params["year"] || "All",
+       reg_month: params["month"] || "All",
+       reg_category: params["category"] || "All"
+     )}
   end
 
   def handle_info(:load, socket) do
@@ -35,20 +46,8 @@ defmodule SheetfolioWeb.ExpensesLive do
     {:noreply, assign(socket, year: year)}
   end
 
-  def handle_event("select_view", %{"view" => view}, socket) do
-    {:noreply, assign(socket, view: view)}
-  end
-
   def handle_event("select_mode", %{"mode" => mode}, socket) do
     {:noreply, assign(socket, mode: mode)}
-  end
-
-  def handle_event("select_reg_year", %{"year" => year}, socket) do
-    {:noreply, assign(socket, reg_year: year)}
-  end
-
-  def handle_event("select_reg_category", %{"category" => category}, socket) do
-    {:noreply, assign(socket, reg_category: category)}
   end
 
   def render(assigns) do
@@ -56,20 +55,23 @@ defmodule SheetfolioWeb.ExpensesLive do
       assign(assigns,
         categories: WiseExpenses.categories(),
         years: WiseExpenses.years(),
-        registry_rows: filtered_registry(assigns.registry, assigns.reg_year, assigns.reg_category)
+        registry_rows:
+          filtered_registry(assigns.registry, assigns.reg_year, assigns.reg_month, assigns.reg_category)
       )
 
     ~H"""
     <style>
       .expenses-loading { color: #64748b; padding: 2rem; text-align: center; }
       .expenses-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
-      .expenses-subtabs button { border: none; background: none; color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
-      .expenses-subtabs button:hover { color: #1e293b; }
-      .expenses-subtabs button.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
+      .expenses-subtabs button, .expenses-subtabs a { border: none; background: none; color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
+      .expenses-subtabs button:hover, .expenses-subtabs a:hover { color: #1e293b; }
+      .expenses-subtabs button.active, .expenses-subtabs a.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
       .expenses-buttons { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
-      .expenses-buttons button { border: 1px solid #e2e8f0; background: white; color: #64748b; border-radius: 6px; padding: 0.4rem 1.1rem; font-size: 0.9rem; cursor: pointer; }
-      .expenses-buttons button:hover { color: #1e293b; }
-      .expenses-buttons button.active { background: #1e293b; border-color: #1e293b; color: white; }
+      .expenses-buttons button, .expenses-buttons a { border: 1px solid #e2e8f0; background: white; color: #64748b; border-radius: 6px; padding: 0.4rem 1.1rem; font-size: 0.9rem; cursor: pointer; text-decoration: none; }
+      .expenses-buttons button:hover, .expenses-buttons a:hover { color: #1e293b; }
+      .expenses-buttons button.active, .expenses-buttons a.active { background: #1e293b; border-color: #1e293b; color: white; }
+      .expenses-table th a, .expenses-table td a { color: inherit; text-decoration: none; }
+      .expenses-table th a:hover, .expenses-table td a:hover { text-decoration: underline; }
       .expenses-table { background: white; border-radius: 12px; padding: 1.5rem 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-top: 1.5rem; overflow-x: auto; }
       .expenses-table table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
       .expenses-table th, .expenses-table td { padding: 0.4rem 0.8rem; text-align: right; white-space: nowrap; }
@@ -87,15 +89,9 @@ defmodule SheetfolioWeb.ExpensesLive do
       <div class="expenses-loading">Loading Wise activities…</div>
     <% else %>
       <div class="expenses-subtabs">
-        <button type="button" class={if @view == "months", do: "active", else: ""} phx-click="select_view" phx-value-view="months">
-          Months
-        </button>
-        <button type="button" class={if @view == "years", do: "active", else: ""} phx-click="select_view" phx-value-view="years">
-          Years
-        </button>
-        <button type="button" class={if @view == "registry", do: "active", else: ""} phx-click="select_view" phx-value-view="registry">
-          Registry
-        </button>
+        <.link patch="/expenses" class={if @view == "months", do: "active", else: ""}>Months</.link>
+        <.link patch="/expenses?view=years" class={if @view == "years", do: "active", else: ""}>Years</.link>
+        <.link patch={registry_path(@reg_year, @reg_category)} class={if @view == "registry", do: "active", else: ""}>Registry</.link>
       </div>
 
       <%= if @view == "months" do %>
@@ -120,7 +116,9 @@ defmodule SheetfolioWeb.ExpensesLive do
                 <th>Month</th>
                 <%= for category <- @categories do %>
                   <th>
-                    <span class="expenses-dot" style={"background: #{WiseExpenses.color(category)}"}></span><%= category %>
+                    <.link patch={registry_path(@year, category)}>
+                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(category)}"}></span><%= category %>
+                    </.link>
                   </th>
                 <% end %>
                 <th>Total</th>
@@ -129,11 +127,23 @@ defmodule SheetfolioWeb.ExpensesLive do
             <tbody>
               <%= for month <- year_months(@expenses, @year) |> Enum.reverse() do %>
                 <tr>
-                  <td><%= String.slice(month, 0, 7) %></td>
+                  <td>
+                    <.link patch={registry_path("All", String.slice(month, 0, 7), "All")}><%= String.slice(month, 0, 7) %></.link>
+                  </td>
                   <%= for category <- @categories do %>
-                    <td><%= format(elem(@expenses, 1)[{month, category}]) %></td>
+                    <td>
+                      <%= if elem(@expenses, 1)[{month, category}] do %>
+                        <.link patch={registry_path("All", String.slice(month, 0, 7), category)}>
+                          <%= format(elem(@expenses, 1)[{month, category}]) %>
+                        </.link>
+                      <% else %>
+                        <%= format(nil) %>
+                      <% end %>
+                    </td>
                   <% end %>
-                  <td class="total"><%= format(month_total(@expenses, month)) %></td>
+                  <td class="total">
+                    <.link patch={registry_path("All", String.slice(month, 0, 7), "All")}><%= format(month_total(@expenses, month)) %></.link>
+                  </td>
                 </tr>
               <% end %>
             </tbody>
@@ -210,20 +220,25 @@ defmodule SheetfolioWeb.ExpensesLive do
       <%= if @view == "registry" do %>
         <div class="expenses-buttons">
           <%= for year <- ["All" | @years] do %>
-            <button type="button" class={if year == @reg_year, do: "active", else: ""} phx-click="select_reg_year" phx-value-year={year}>
+            <.link patch={registry_path(year, @reg_category)} class={if year == @reg_year and @reg_month == "All", do: "active", else: ""}>
               <%= year %>
-            </button>
+            </.link>
+          <% end %>
+          <%= if @reg_month != "All" do %>
+            <.link patch={registry_path(String.slice(@reg_month, 0, 4), @reg_category)} class="active" title="Click to widen to the whole year">
+              <%= @reg_month %> ✕
+            </.link>
           <% end %>
         </div>
 
         <div class="expenses-buttons">
           <%= for category <- ["All" | @categories] do %>
-            <button type="button" class={if category == @reg_category, do: "active", else: ""} phx-click="select_reg_category" phx-value-category={category}>
+            <.link patch={registry_path(@reg_year, category)} class={if category == @reg_category, do: "active", else: ""}>
               <%= if category != "All" do %>
                 <span class="expenses-dot" style={"background: #{WiseExpenses.color(category)}"}></span>
               <% end %>
               <%= category %>
-            </button>
+            </.link>
           <% end %>
         </div>
 
@@ -244,7 +259,7 @@ defmodule SheetfolioWeb.ExpensesLive do
                   <td class="left">
                     <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= row.category %>
                   </td>
-                  <td class="left"><%= row.title %></td>
+                  <td class="left"><%= if row.note != "", do: row.note, else: row.title %></td>
                   <td><%= format(row.amount) %></td>
                 </tr>
               <% end %>
@@ -300,9 +315,20 @@ defmodule SheetfolioWeb.ExpensesLive do
     %{metric: "value", title: title, labels: labels, xTitle: "Year", datasets: datasets}
   end
 
-  defp filtered_registry(registry, year, category) do
+  defp registry_path(year, category), do: registry_path(year, "All", category)
+
+  defp registry_path(year, month, category) do
+    query =
+      [view: "registry", year: year, month: month, category: category]
+      |> Enum.reject(fn {_key, value} -> value == "All" end)
+
+    "/expenses?" <> URI.encode_query(query)
+  end
+
+  defp filtered_registry(registry, year, month, category) do
     Enum.filter(registry, fn row ->
       (year == "All" or String.starts_with?(row.date, year)) and
+        (month == "All" or String.starts_with?(row.date, month)) and
         (category == "All" or row.category == category)
     end)
   end

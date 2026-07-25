@@ -13,6 +13,9 @@ defmodule Sheetfolio.WiseExpenses do
   @collection "wise_activities"
   @since ~D[2024-01-01]
 
+  # Bump to force a full detail refetch on next sync (docs store their version).
+  @schema_version 2
+
   @labels %{
     "GROCERIES" => "Groceries",
     "EATING_OUT" => "Eating out",
@@ -65,6 +68,7 @@ defmodule Sheetfolio.WiseExpenses do
       %{
         date: String.slice(doc["date"] || "", 0, 10),
         title: doc["title"],
+        note: doc["note"] || "",
         category: Map.get(@labels, doc["category"], "Other"),
         amount: doc["amount"]
       }
@@ -96,11 +100,11 @@ defmodule Sheetfolio.WiseExpenses do
     {:ok, activities} = WiseClient.activities(profile["id"], since)
 
     known =
-      Mongo.find(:mongo, @collection, %{}, projection: %{status: 1, date: 1})
-      |> Map.new(&{&1["_id"], {&1["status"], is_binary(&1["date"])}})
+      Mongo.find(:mongo, @collection, %{}, projection: %{status: 1, v: 1})
+      |> Map.new(&{&1["_id"], {&1["status"], &1["v"]}})
 
     activities
-    |> Enum.reject(&(known[&1["id"]] == {&1["status"], true}))
+    |> Enum.reject(&(known[&1["id"]] == {&1["status"], @schema_version}))
     |> Task.async_stream(&store(profile["id"], &1["id"]), max_concurrency: 10, timeout: 60_000)
     |> Stream.run()
   end
@@ -116,11 +120,13 @@ defmodule Sheetfolio.WiseExpenses do
       type: detail["type"],
       category: detail["category"],
       title: String.replace(detail["title"], ~r/<[^>]*>/, ""),
+      note: note(detail),
       date: date,
       month: String.slice(date, 0, 7) <> "-01",
       amount: amount_eur(detail),
       positive: String.contains?(detail["primaryAmount"], "<positive>"),
-      excluded: detail["isExcludedFromInsights"] == true
+      excluded: detail["isExcludedFromInsights"] == true,
+      v: @schema_version
     }
 
     {:ok, _} = Mongo.update_one(:mongo, @collection, %{_id: activity_id}, %{"$set" => doc}, upsert: true)
@@ -134,6 +140,16 @@ defmodule Sheetfolio.WiseExpenses do
     |> Enum.reverse()
     |> Enum.map(&Date.to_iso8601/1)
   end
+
+  # The user-entered reference of a bank transfer ("Gym julio", ...).
+  defp note(%{"type" => "TRANSFER", "resource" => %{"id" => transfer_id}}) do
+    case WiseClient.transfer(transfer_id) do
+      {:ok, %{"reference" => reference}} when is_binary(reference) -> reference
+      _ -> ""
+    end
+  end
+
+  defp note(_detail), do: ""
 
   defp amount_eur(activity) do
     [activity["primaryAmount"], activity["secondaryAmount"]]
