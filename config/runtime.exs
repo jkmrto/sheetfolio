@@ -1,34 +1,37 @@
 import Config
 
-credentials =
-  case System.get_env("GOOGLE_CREDENTIALS_JSON") do
-    nil ->
-      path =
-        System.get_env("GOOGLE_APPLICATION_CREDENTIALS") ||
-          raise "Missing GOOGLE_CREDENTIALS_JSON or GOOGLE_APPLICATION_CREDENTIALS"
+# The test environment starts no services, so it has no secrets to look up.
+if config_env() != :test do
+  credentials =
+    case System.get_env("GOOGLE_CREDENTIALS_JSON") do
+      nil ->
+        path =
+          System.get_env("GOOGLE_APPLICATION_CREDENTIALS") ||
+            raise "Missing GOOGLE_CREDENTIALS_JSON or GOOGLE_APPLICATION_CREDENTIALS"
 
-      path |> File.read!() |> Jason.decode!()
+        path |> File.read!() |> Jason.decode!()
 
-    json ->
-      Jason.decode!(json)
-  end
+      json ->
+        Jason.decode!(json)
+    end
 
-config :sheetfolio, google_credentials: credentials
+  config :sheetfolio, google_credentials: credentials
 
-app_password = System.get_env("APP_PASSWORD", "")
-config :sheetfolio, app_password: app_password
+  app_password = System.get_env("APP_PASSWORD", "")
+  config :sheetfolio, app_password: app_password
 
-spreadsheet_id =
-  System.get_env("SPREADSHEET_ID") ||
-    raise "Missing SPREADSHEET_ID environment variable"
+  spreadsheet_id =
+    System.get_env("SPREADSHEET_ID") ||
+      raise "Missing SPREADSHEET_ID environment variable"
 
-config :sheetfolio, spreadsheet_id: spreadsheet_id
+  config :sheetfolio, spreadsheet_id: spreadsheet_id
 
-mongodb_uri =
-  System.get_env("MONGODB_URI") ||
-    raise "Missing MONGODB_URI environment variable"
+  mongodb_uri =
+    System.get_env("MONGODB_URI") ||
+      raise "Missing MONGODB_URI environment variable"
 
-config :sheetfolio, mongodb_uri: mongodb_uri
+  config :sheetfolio, mongodb_uri: mongodb_uri
+end
 
 if config_env() == :prod do
   secret_key_base =

@@ -2,20 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Sheetfolio is a single-user Elixir/Phoenix portfolio dashboard. It reads holdings from a Google Sheet, reconstructs the operation history from MyInvestor confirmation emails in Gmail, fetches market prices, and stores daily snapshots in MongoDB Atlas. Deployed on Fly.io (`sheetfolio.fly.dev`, Amsterdam). There is no Ecto/SQL database and effectively no test suite — verification is done by running the app.
+Sheetfolio is a single-user Elixir/Phoenix portfolio dashboard. It reads holdings from a Google Sheet, reconstructs the operation history from MyInvestor confirmation emails in Gmail, fetches market prices, and stores daily snapshots in MongoDB Atlas. Deployed on Fly.io (`sheetfolio.fly.dev`, Amsterdam). There is no Ecto/SQL database. Tests cover the pure calculation layer only (money parsing, position replay, Urbanitae rollups); everything involving the UI or an external API is verified by running the app.
 
 ## Commands
 
 - `make run` — start the app locally with `iex -S mix phx.server`. Required: it loads secrets from `.env` (Google credentials, `SPREADSHEET_ID`, `MONGODB_URI`, Gmail/Wise tokens). A bare `mix phx.server` will crash in `runtime.exs`.
 - `mix credo` — lint; must stay clean (see Quality gate).
-- `mix compile --warnings-as-errors` — quick sanity check.
+- `mix compile --warnings-as-errors` — quick sanity check; must stay clean.
+- `mix test` — pure-function tests. Needs no secrets: the test env starts no services (`start_services: false`), and `runtime.exs` skips its secret lookups there.
 - `mix assets.build` — esbuild bundle of `assets/js/app.js` (there is no npm build; charts are hand-rolled JS/SVG in LiveView hooks).
 - `mix parse_myinvestor_emails` — dry run: fetch and parse all MyInvestor operation emails.
 - `mix wise_operations [days]` — dry run: fetch Wise balances and activities (needs `.env`, so use `make wise-operations`).
 - `fly deploy` — deploy to production.
 - One-off backfills live in `scripts/*.exs` (run with `mix run`).
 
-CI (GitHub Actions) runs `mix credo`, `mix hex.audit`, and `mix sobelow --config`.
+CI (GitHub Actions) runs `mix compile --warnings-as-errors`, `mix credo`, `mix test`, `mix hex.audit`, and `mix sobelow --config`.
 
 ## End-of-task routine
 When a task that changed code is complete and verified, always finish by:

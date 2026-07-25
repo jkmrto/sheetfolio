@@ -7,7 +7,7 @@ on:
     branches: [master]
 
 jobs:
-  credo:
+  check:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,5 +27,11 @@ jobs:
       - name: Install dependencies
         run: mix deps.get
 
+      - name: Compile
+        run: mix compile --warnings-as-errors
+
       - name: Run Credo
         run: mix credo
+
+      - name: Run tests
+        run: mix test

@@ -3,11 +3,20 @@ defmodule Sheetfolio.Application do
 
   @impl true
   def start(_type, _args) do
+    Supervisor.start_link(children(), strategy: :one_for_one)
+  end
+
+  # Tests exercise the pure calculation layer, so they start nothing external.
+  defp children do
+    if Application.get_env(:sheetfolio, :start_services, true), do: services(), else: []
+  end
+
+  defp services do
     credentials = Application.fetch_env!(:sheetfolio, :google_credentials)
 
     source = {:service_account, credentials, scopes: ["https://www.googleapis.com/auth/spreadsheets"]}
 
-    children = [
+    [
       # Google service-account auth for the Sheets API
       {Goth, name: Sheetfolio.Goth, source: source},
       # MongoDB Atlas connection, used for portfolio snapshot history
@@ -35,7 +44,5 @@ defmodule Sheetfolio.Application do
       # Phoenix HTTP endpoint
       SheetfolioWeb.Endpoint
     ]
-
-    Supervisor.start_link(children, strategy: :one_for_one)
   end
 end
