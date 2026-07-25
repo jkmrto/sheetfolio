@@ -36,6 +36,7 @@ defmodule SheetfolioWeb.ControlLive do
   defp schedule_poll, do: Process.send_after(self(), :poll, @poll_ms)
 
   defp loading?({:loading, _, _}), do: true
+  defp loading?({:syncing, _, _}), do: true
   defp loading?(_), do: false
 
   def render(assigns) do
@@ -55,6 +56,10 @@ defmodule SheetfolioWeb.ControlLive do
               </div>
             <% {:loading, _, _} -> %>
               Fetching email list…
+            <% {:syncing, current, total} when total > 0 -> %>
+              Serving the cached history; downloading {current} / {total} new emails
+            <% {:syncing, _, _} -> %>
+              Serving the cached history; checking Gmail for new emails…
           <% end %>
         </div>
         <button
