@@ -15,7 +15,23 @@ defmodule SheetfolioWeb.CashLive do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      {:ok, assign(socket, authenticated: true, saved: false, range: "all", snapshots: load_snapshots(socket))}
+      if connected?(socket), do: send(self(), :fetch_wise)
+
+      {:ok,
+       assign(socket,
+         authenticated: true,
+         saved: false,
+         range: "all",
+         snapshots: load_snapshots(socket),
+         wise_balance: nil
+       )}
+    end
+  end
+
+  def handle_info(:fetch_wise, socket) do
+    case Sheetfolio.WiseBalance.current_eur() do
+      {:ok, amount} -> {:noreply, assign(socket, wise_balance: amount)}
+      {:error, _reason} -> {:noreply, socket}
     end
   end
 
@@ -70,7 +86,7 @@ defmodule SheetfolioWeb.CashLive do
         <%= for name <- @sources do %>
           <div class="cash-field">
             <label><%= name %></label>
-            <input type="text" inputmode="decimal" name={name} placeholder={placeholder(@latest[name])} />
+            <input type="text" inputmode="decimal" name={name} placeholder={placeholder(source_placeholder(name, @latest, @wise_balance))} />
           </div>
         <% end %>
         <button type="submit">Save today</button>
@@ -115,6 +131,11 @@ defmodule SheetfolioWeb.CashLive do
 
   defp placeholder(nil), do: "0"
   defp placeholder(amount), do: :erlang.float_to_binary(amount / 1, decimals: 2)
+
+  # The Wise field prefers the freshly-fetched live balance over whatever was
+  # last saved; the other fields only ever have the last saved amount.
+  defp source_placeholder("Wise", latest, wise_balance), do: wise_balance || latest["Wise"]
+  defp source_placeholder(name, latest, _wise_balance), do: latest[name]
 
   defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
 

@@ -39,6 +39,9 @@ defmodule Sheetfolio.Application do
       Sheetfolio.EarningsServer,
       # Loads all operations from MyInvestor Gmail emails at boot, serves them from memory
       Sheetfolio.OperationsServer,
+      # Writes a daily cash snapshot to MongoDB (boot + 21:00 UTC); auto-records the
+      # Wise balance, carries the manually-entered sources forward
+      Sheetfolio.CashRecorder,
       # Writes a daily portfolio snapshot to MongoDB (boot + 22:00 UTC)
       Sheetfolio.SnapshotRecorder,
       # Phoenix HTTP endpoint
