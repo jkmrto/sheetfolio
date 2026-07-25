@@ -19,6 +19,10 @@ defmodule Sheetfolio.SnapshotRecorder do
 
   @impl true
   def init(nil) do
+    Mongo.create_indexes(:mongo, @collection, [
+      %{key: %{date: 1}, name: "date_unique", unique: true}
+    ])
+
     send(self(), :record)
     {:ok, nil}
   end
@@ -39,10 +43,6 @@ defmodule Sheetfolio.SnapshotRecorder do
     operations = Sheetfolio.OperationsServer.get_operations(:infinity) || []
     {eur_usd, eur_cad} = Sheetfolio.EarningsServer.get_fx_rates()
 
-    Mongo.create_indexes(:mongo, @collection, [
-      %{key: %{date: 1}, name: "date_unique", unique: true}
-    ])
-
     assets = Sheetfolio.Positions.build(operations, eur_usd, eur_cad) |> Map.values()
 
     # Cumulative realized P&L, including fully settled positions.
@@ -55,22 +55,11 @@ defmodule Sheetfolio.SnapshotRecorder do
       |> Map.new(&{&1.isin, &1.isin})
       |> Sheetfolio.PriceFetcher.fetch_prices()
 
-    position_docs =
-      Enum.map(positions, fn p ->
-        value =
-          case Map.get(prices, p.isin) do
-            nil -> nil
-            price -> Float.round(p.net_qty * price, 2)
-          end
+    carry_forward = previous_prices()
+    position_docs = Enum.map(positions, &position_doc(&1, prices, carry_forward))
+    warn_about_stale_prices(position_docs)
 
-        %{
-          isin: p.isin,
-          asset: p.asset,
-          units: p.net_qty,
-          invested: Float.round(p.cost_basis, 2),
-          value: value
-        }
-      end) ++ urbanitae_positions()
+    position_docs = position_docs ++ urbanitae_positions()
 
     # Urbanitae is charted as its own line; totals track only market positions.
     valued = Enum.filter(position_docs, &(&1.value && &1.isin != "URBANITAE"))
@@ -85,6 +74,7 @@ defmodule Sheetfolio.SnapshotRecorder do
       total_invested: total_invested,
       total_value: total_value,
       total_realized: total_realized,
+      partial: Enum.any?(position_docs, &(&1[:stale_price] || is_nil(&1.value))),
       positions: position_docs
     }
 
@@ -96,6 +86,60 @@ defmodule Sheetfolio.SnapshotRecorder do
       {:error, reason} = err ->
         Logger.error("SnapshotRecorder: failed to record #{date}: #{inspect(reason)}")
         err
+    end
+  end
+
+  defp position_doc(position, prices, carry_forward) do
+    {value, stale} =
+      position_value(
+        position.net_qty,
+        Map.get(prices, position.isin),
+        Map.get(carry_forward, position.isin)
+      )
+
+    %{
+      isin: position.isin,
+      asset: position.asset,
+      units: position.net_qty,
+      invested: Float.round(position.cost_basis, 2),
+      value: value,
+      stale_price: stale
+    }
+  end
+
+  @doc """
+  A position's value as `{value, price_was_carried_forward?}`, given today's
+  price and the previous snapshot's per-unit price. Falls back to the previous
+  price when today's quote is missing, and to nothing when neither exists.
+  """
+  def position_value(_qty, nil, nil), do: {nil, false}
+  def position_value(qty, nil, previous_price), do: {Float.round(qty * previous_price, 2), true}
+  def position_value(qty, price, _previous), do: {Float.round(qty * price, 2), false}
+
+  # Per-unit prices from the most recent earlier snapshot. Without this, a
+  # transient Yahoo failure drops the position out of the day's totals entirely
+  # and leaves a permanent fake dip in the portfolio chart.
+  defp previous_prices do
+    today = Date.utc_today() |> Date.to_iso8601()
+    query = %{date: %{"$lt" => today}}
+
+    case Mongo.find_one(:mongo, @collection, query, sort: %{date: -1}) do
+      nil -> %{}
+      doc -> unit_prices(doc["positions"] || [])
+    end
+  end
+
+  @doc "Per-unit prices from a stored snapshot's position list."
+  def unit_prices(positions) do
+    positions
+    |> Enum.filter(&(&1["value"] && &1["units"] && &1["units"] > 0))
+    |> Map.new(&{&1["isin"], &1["value"] / &1["units"]})
+  end
+
+  defp warn_about_stale_prices(position_docs) do
+    case Enum.filter(position_docs, & &1.stale_price) do
+      [] -> :ok
+      stale -> Logger.warning("SnapshotRecorder: no quote for #{Enum.map_join(stale, ", ", & &1.isin)}, carried forward the previous snapshot's price")
     end
   end
 
