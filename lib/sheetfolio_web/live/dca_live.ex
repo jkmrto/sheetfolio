@@ -12,6 +12,7 @@ defmodule SheetfolioWeb.DcaLive do
 
       socket = assign(socket,
         authenticated: true,
+        subtab: "sp500",
         operations: [],
         prices: %{},
         recommendation: nil,
@@ -81,6 +82,10 @@ defmodule SheetfolioWeb.DcaLive do
   def render(assigns) do
     ~H"""
     <style>
+      .dca-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+      .dca-subtabs a { border: none; background: none; color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
+      .dca-subtabs a:hover { color: #1e293b; }
+      .dca-subtabs a.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
       .dca-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-top: 2rem; }
       .dca-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 1; }
       .dca-table th:not(:first-child):not(:nth-child(2)) { text-align: right; }
@@ -98,6 +103,11 @@ defmodule SheetfolioWeb.DcaLive do
       .section-title { font-size: 0.85rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.75rem; }
       .no-extra { color: #cbd5e1; }
     </style>
+
+    <div class="dca-subtabs">
+      <.link navigate="/summary/dca" class={if @subtab == "sp500", do: "active", else: ""}>S&amp;P 500</.link>
+      <.link navigate="/summary/dca/bitcoin" class={if @subtab == "bitcoin", do: "active", else: ""}>Bitcoin</.link>
+    </div>
 
     <% ops = @operations %>
     <% total_extra_invested = Enum.reduce(ops, 0.0, fn o, acc -> acc + o.extra_invested end) %>

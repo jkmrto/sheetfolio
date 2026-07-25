@@ -156,6 +156,86 @@ Hooks.DcaChart = {
   }
 }
 
+Hooks.DcaBitcoinChart = {
+  mounted() {
+    const ctx = this.el.getContext('2d')
+    this.chart = new Chart(ctx, {
+      type: 'line',
+      data: { datasets: [] },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: {
+            callbacks: {
+              label: item => {
+                const v = item.parsed.y
+                if (item.dataset.label === 'Bitcoin (USD)') return `Bitcoin: $${v.toFixed(0)}`
+                return `${item.dataset.label}: ${v.toFixed(2)} €`
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: 'time',
+            time: { unit: 'month', tooltipFormat: 'dd/MM/yyyy' },
+            ticks: { maxTicksLimit: 12 }
+          },
+          y: {
+            position: 'left',
+            ticks: { callback: v => v.toFixed(0) + ' €' }
+          },
+          y1: {
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { callback: v => '$' + v.toFixed(0) }
+          }
+        }
+      }
+    })
+
+    this.handleEvent("update_btc_dca_chart", ({ labels, invested, value, btc }) => {
+      this.chart.data.labels = labels
+      this.chart.data.datasets = [
+        {
+          label: 'Invested (€)',
+          data: invested,
+          borderColor: '#94a3b8',
+          borderWidth: 2,
+          pointRadius: 2,
+          fill: false,
+          tension: 0.1,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Value (€)',
+          data: value,
+          borderColor: '#6366f1',
+          borderWidth: 2,
+          pointRadius: 2,
+          fill: false,
+          tension: 0.1,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Bitcoin (USD)',
+          data: btc,
+          borderColor: '#f59e0b',
+          borderWidth: 1.5,
+          pointRadius: 2,
+          fill: false,
+          tension: 0.1,
+          borderDash: [4, 3],
+          yAxisID: 'y1'
+        }
+      ]
+      this.chart.update()
+    })
+  }
+}
+
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {params: {_csrf_token: csrfToken}, hooks: Hooks})
 liveSocket.connect()
