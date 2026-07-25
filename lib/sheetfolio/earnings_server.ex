@@ -1,94 +1,64 @@
 defmodule Sheetfolio.EarningsServer do
+  @moduledoc """
+  Price and FX cache behind the earnings computations.
+
+  The cache lives in a public ETS table rather than in the process state, and
+  every request runs in its own supervised task. Nothing does network I/O inside
+  a GenServer callback, so a page that asks for twenty prices fetches them in
+  parallel instead of one at a time, and `get_fx_rates/0` can't end up queued
+  behind somebody else's slow quote request.
+
+  Current prices expire after 15 minutes and FX rates refresh hourly, because
+  the Fly machine never stops — before that, both were fetched once at boot and
+  then reused until the next deploy.
+  """
   use GenServer
 
   require Logger
 
+  alias Sheetfolio.Money
   alias Sheetfolio.PriceFetcher
   alias Sheetfolio.PricesApi.YahooFinance
+
+  @table :sheetfolio_price_cache
+  @price_ttl_ms 15 * 60 * 1000
+  @fx_refresh_ms 60 * 60 * 1000
 
   def start_link(_), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
 
   def request(ref, isin, precio, cantidad, caller_pid) do
-    GenServer.cast(__MODULE__, {:compute, ref, isin, precio, cantidad, caller_pid})
+    run(fn -> send(caller_pid, {:earnings_result, ref, earnings(isin, precio, cantidad)}) end)
   end
 
   def request_price(isin, caller_pid) do
-    GenServer.cast(__MODULE__, {:fetch_price, isin, caller_pid})
+    run(fn -> send(caller_pid, {:price_result, isin, price(isin)}) end)
   end
 
   def request_price_at(isin, %Date{} = date, caller_pid) do
-    GenServer.cast(__MODULE__, {:fetch_price_at, isin, date, caller_pid})
+    run(fn -> send(caller_pid, price_at_message(isin, date)) end)
   end
 
-  def get_fx_rates do
-    GenServer.call(__MODULE__, :get_fx_rates)
-  end
+  def get_fx_rates, do: GenServer.call(__MODULE__, :get_fx_rates)
 
-  def clear_price_cache do
-    GenServer.call(__MODULE__, :clear_price_cache)
-  end
+  def clear_price_cache, do: GenServer.call(__MODULE__, :clear_price_cache)
 
   # --- GenServer callbacks ---
 
   def init(_) do
-    send(self(), :fetch_fx)
-    {:ok, %{price_cache: %{}, historical_cache: %{}, historical_fx: %{}, eur_usd: 1.0, eur_cad: 1.0}}
+    :ets.new(@table, [:set, :public, :named_table, read_concurrency: true])
+    send(self(), :refresh_fx)
+    {:ok, %{eur_usd: 1.0, eur_cad: 1.0}}
   end
 
-  def handle_info(:fetch_fx, state) do
-    eur_usd = fetch_fx("EURUSD=X")
-    eur_cad = fetch_fx("EURCAD=X")
+  def handle_info(:refresh_fx, state) do
+    server = self()
+    run(fn -> send(server, {:fx, fetch_fx("EURUSD=X"), fetch_fx("EURCAD=X")}) end)
+    Process.send_after(self(), :refresh_fx, @fx_refresh_ms)
+    {:noreply, state}
+  end
+
+  def handle_info({:fx, eur_usd, eur_cad}, state) do
     {:noreply, %{state | eur_usd: eur_usd, eur_cad: eur_cad}}
-  end
-
-  def handle_cast({:compute, ref, isin, precio, cantidad, caller_pid}, state) do
-    {price_eur, state} = get_price(isin, state)
-
-    result =
-      with true <- not is_nil(price_eur),
-           {qty, _} <- parse_number(cantidad),
-           {purchase_price, currency} <- parse_price_with_currency(precio) do
-        purchase_eur = to_eur(purchase_price, currency, state.eur_usd, state.eur_cad)
-        cost = purchase_eur * qty
-        current = price_eur * qty
-        abs = Float.round(current - cost, 2)
-        pct = Float.round((current - cost) / cost * 100, 2)
-        {abs, pct}
-      else
-        _ -> nil
-      end
-
-    send(caller_pid, {:earnings_result, ref, result})
-    {:noreply, state}
-  end
-
-  def handle_cast({:fetch_price, isin, caller_pid}, state) do
-    {price_eur, state} = get_price(isin, state)
-    send(caller_pid, {:price_result, isin, price_eur})
-    {:noreply, state}
-  end
-
-  def handle_cast({:fetch_price_at, isin, date, caller_pid}, state) do
-    {eur_usd, eur_cad, state} = get_historical_fx(date, state)
-    cache_key = {isin, Date.to_iso8601(date)}
-
-    {result, state} =
-      case Map.fetch(state.historical_cache, cache_key) do
-        {:ok, cached} ->
-          {cached, state}
-
-        :error ->
-          {result, new_state} = compute_price_at(isin, date, eur_usd, eur_cad, state)
-          {result, %{new_state | historical_cache: Map.put(new_state.historical_cache, cache_key, result)}}
-      end
-
-    case result do
-      {:ok, price} -> send(caller_pid, {:price_result, isin, price})
-      {:estimated, price} -> send(caller_pid, {:price_estimate, isin, price})
-      _ -> send(caller_pid, {:price_result, isin, nil})
-    end
-
-    {:noreply, state}
   end
 
   def handle_call(:get_fx_rates, _from, state) do
@@ -96,93 +66,100 @@ defmodule Sheetfolio.EarningsServer do
   end
 
   def handle_call(:clear_price_cache, _from, state) do
-    {:reply, :ok, %{state | price_cache: %{}}}
+    :ets.match_delete(@table, {{:price, :_}, :_, :_})
+    {:reply, :ok, state}
   end
 
-  defp compute_price_at(isin, date, eur_usd, eur_cad, state) do
-    case PriceFetcher.fetch_price_at(isin, date, eur_usd, eur_cad) do
-      {:ok, price} ->
-        {{:ok, price}, state}
+  # --- Work, all of it off the GenServer ---
 
-      _ ->
-        {current_price, new_state} = get_price(isin, state)
-        today = Date.utc_today()
-        days = Date.diff(today, date)
+  defp run(fun), do: Task.Supervisor.start_child(Sheetfolio.TaskSupervisor, fun)
 
-        result =
-          cond do
-            is_nil(current_price) -> nil
-            days == 0 -> {:ok, current_price}
-            true -> {:estimated, current_price * :math.pow(1 - 0.0002, days)}
-          end
+  defp earnings(isin, precio, cantidad) do
+    {eur_usd, eur_cad} = get_fx_rates()
 
-        {result, new_state}
+    with price_eur when not is_nil(price_eur) <- price(isin),
+         {qty, _} <- Money.parse_number(cantidad),
+         {purchase_price, currency} <- Money.parse_price(precio) do
+      cost = Money.to_eur(purchase_price, currency, eur_usd, eur_cad) * qty
+      current = price_eur * qty
+      {Float.round(current - cost, 2), Float.round((current - cost) / cost * 100, 2)}
+    else
+      _ -> nil
     end
   end
 
-  defp get_price(isin, state) do
-    case Map.fetch(state.price_cache, isin) do
-      {:ok, price} ->
-        {price, state}
-
-      :error ->
-        price = fetch_price(isin)
-        Logger.debug("[EarningsServer] Fetched price for #{isin}: #{inspect(price)}")
-        {price, put_in(state.price_cache[isin], price)}
+  defp price_at_message(isin, date) do
+    case price_at(isin, date) do
+      {:ok, price} -> {:price_result, isin, price}
+      {:estimated, price} -> {:price_estimate, isin, price}
+      _ -> {:price_result, isin, nil}
     end
   end
+
+  defp price(isin) do
+    cached(:ets.lookup(@table, {:price, isin}), fn -> fetch_price(isin) end)
+  end
+
+  defp cached([{_key, value, expires_at}], refetch) do
+    if System.monotonic_time(:millisecond) < expires_at, do: value, else: refetch.()
+  end
+
+  defp cached([], refetch), do: refetch.()
 
   defp fetch_price(isin) do
-    prices = PriceFetcher.fetch_prices(%{isin => isin})
-    Map.get(prices, isin)
+    price = PriceFetcher.fetch_prices(%{isin => isin}) |> Map.get(isin)
+    Logger.debug("[EarningsServer] Fetched price for #{isin}: #{inspect(price)}")
+    expires_at = System.monotonic_time(:millisecond) + @price_ttl_ms
+    :ets.insert(@table, {{:price, isin}, price, expires_at})
+    price
   end
 
-  defp parse_price_with_currency(precio_str) do
-    case Regex.run(~r/([\d.,]+)\s+([A-Z]+)/, precio_str) do
-      [_, amount, currency] -> amount_with_currency(parse_number(amount), currency)
-      _ -> :error
+  # Historical prices and FX never change, so these entries have no expiry.
+  defp price_at(isin, date) do
+    key = {:price_at, isin, Date.to_iso8601(date)}
+
+    case :ets.lookup(@table, key) do
+      [{_key, result}] -> result
+      [] -> compute_and_cache_price_at(key, isin, date)
     end
   end
 
-  defp amount_with_currency({val, _}, currency), do: {val, currency}
-  defp amount_with_currency(:error, _currency), do: :error
+  defp compute_and_cache_price_at(key, isin, date) do
+    {eur_usd, eur_cad} = fx_at(date)
+    result = compute_price_at(isin, date, eur_usd, eur_cad)
+    :ets.insert(@table, {key, result})
+    result
+  end
 
-  defp parse_number(str) do
-    cond do
-      String.contains?(str, ".") and String.contains?(str, ",") ->
-        last_dot = str |> :binary.matches(".") |> List.last() |> elem(0)
-        last_comma = str |> :binary.matches(",") |> List.last() |> elem(0)
-        if last_dot > last_comma do
-          str |> String.replace(",", "") |> Float.parse()
-        else
-          str |> String.replace(".", "") |> String.replace(",", ".") |> Float.parse()
-        end
-      String.contains?(str, ",") ->
-        case Regex.run(~r/^[\d,]+,(\d{3})$/, str) do
-          [_, _] -> str |> String.replace(",", "") |> Float.parse()
-          _ -> str |> String.replace(",", ".") |> Float.parse()
-        end
-      true ->
-        Float.parse(str)
+  defp compute_price_at(isin, date, eur_usd, eur_cad) do
+    case PriceFetcher.fetch_price_at(isin, date, eur_usd, eur_cad) do
+      {:ok, price} -> {:ok, price}
+      _ -> estimate_from_current(isin, date)
     end
   end
 
-  defp to_eur(price, "USD", eur_usd, _), do: price / eur_usd
-  defp to_eur(price, "CAD", _, eur_cad), do: price / eur_cad
-  defp to_eur(price, _, _, _), do: price
+  # No historical quote available: drift today's price backwards very slightly
+  # so the series doesn't show a flat line at today's value.
+  defp estimate_from_current(isin, date) do
+    days = Date.diff(Date.utc_today(), date)
+    estimate(price(isin), days)
+  end
 
-  defp get_historical_fx(date, state) do
-    date_str = Date.to_iso8601(date)
+  defp estimate(nil, _days), do: nil
+  defp estimate(price, 0), do: {:ok, price}
+  defp estimate(price, days), do: {:estimated, price * :math.pow(1 - 0.0002, days)}
 
-    case Map.fetch(state.historical_fx, date_str) do
-      {:ok, {eur_usd, eur_cad}} ->
-        {eur_usd, eur_cad, state}
+  defp fx_at(date) do
+    key = {:fx_at, Date.to_iso8601(date)}
 
-      :error ->
-        eur_usd = fetch_fx_at("EURUSD=X", date)
-        eur_cad = fetch_fx_at("EURCAD=X", date)
-        new_state = %{state | historical_fx: Map.put(state.historical_fx, date_str, {eur_usd, eur_cad})}
-        {eur_usd, eur_cad, new_state}
+    case :ets.lookup(@table, key) do
+      [{_key, rates}] ->
+        rates
+
+      [] ->
+        rates = {fetch_fx_at("EURUSD=X", date), fetch_fx_at("EURCAD=X", date)}
+        :ets.insert(@table, {key, rates})
+        rates
     end
   end
 

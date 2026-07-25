@@ -5,6 +5,7 @@ defmodule Sheetfolio.PriceFetcher do
   Returns prices converted to EUR.
   """
 
+  alias Sheetfolio.Money
   alias Sheetfolio.PricesApi.{OpenFigi, YahooFinance, Stooq}
 
   @isin_format ~r/^[A-Z]{2}[A-Z0-9]{10}$/
@@ -97,9 +98,7 @@ defmodule Sheetfolio.PriceFetcher do
     end
   end
 
-  defp to_eur(price, "USD", eur_usd, _eur_cad), do: price / eur_usd
-  defp to_eur(price, "CAD", _eur_usd, eur_cad), do: price / eur_cad
-  defp to_eur(price, _, _, _), do: price
+  defp to_eur(price, currency, eur_usd, eur_cad), do: Money.to_eur(price, currency, eur_usd, eur_cad)
 
   defp fetch_fx(pair) do
     case YahooFinance.fetch_price(pair) do

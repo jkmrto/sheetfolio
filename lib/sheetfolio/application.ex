@@ -22,6 +22,8 @@ defmodule Sheetfolio.Application do
            customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
          ]
        ]},
+      # Runs the price/FX fetches that EarningsServer must not block on
+      {Task.Supervisor, name: Sheetfolio.TaskSupervisor},
       # Caches the Gmail OAuth access token so every API call doesn't refresh it
       Sheetfolio.GmailToken,
       # Caches current/historical prices and FX rates, computes earnings on demand
