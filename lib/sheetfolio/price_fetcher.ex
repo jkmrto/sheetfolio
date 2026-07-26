@@ -11,10 +11,14 @@ defmodule Sheetfolio.PriceFetcher do
   @isin_format ~r/^[A-Z]{2}[A-Z0-9]{10}$/
   @ticker_collection "isin_tickers"
 
+  # N5396 is a DGS registration code, not an ISIN, so it can never resolve
+  # through the ISIN lookup — Yahoo lists that pension plan in EUR under this
+  # symbol.
   @ticker_overrides %{
     "DE000A1E0HS6" => "XAD6.DE",
     "GB00BJYDH287" => "BTCW.L",
-    "LU0080237943" => "DI4C.F"
+    "LU0080237943" => "DI4C.F",
+    "N5396" => "0P0001LIG7.F"
   }
 
   # ISINs where Yahoo Finance has no historical data — fall back to Stooq (Frankfurt tickers)

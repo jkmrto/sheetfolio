@@ -65,6 +65,10 @@ defmodule Sheetfolio.AssetCategoriesTest do
     test "cash entries are reported as Efectivo" do
       assert AssetCategories.category_for("EFECTIVO", %{}) == "Efectivo"
     end
+
+    test "the pension plan is Indexados, keyed by its DGS code" do
+      assert AssetCategories.category_for("N5396", %{}) == "Indexados"
+    end
   end
 
   describe "breakdown/2 with cash folded in" do

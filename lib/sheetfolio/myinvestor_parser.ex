@@ -34,7 +34,8 @@ defmodule Sheetfolio.MyinvestorParser do
          {:ok, fecha} <- extract_fecha(html_body),
          {:ok, {cantidad, precio, importe_without_comision}} <- extract_amounts(html_body),
          {:ok, comision} <- extract_comision(html_body),
-         {:ok, importe_with_comision} <- extract_importe_with_comision(html_body) do
+         {:ok, importe_with_comision} <-
+           extract_importe_with_comision(html_body, importe_without_comision) do
       {:ok, %{
         fecha: fecha,
         asset: asset,
@@ -65,9 +66,18 @@ defmodule Sheetfolio.MyinvestorParser do
   defp asset_from_subject({_, _, asset}), do: {:ok, String.trim(asset)}
   defp asset_from_subject(nil), do: {:error, "Could not extract asset name"}
 
+  # Pension plans carry a DGS registration code instead of an ISIN, so that
+  # code is what identifies the holding downstream.
   defp extract_isin(html) do
     case Regex.run(~r/C&oacute;digo ISIN: ([A-Z0-9]{12})/, html) do
       [_, isin] -> {:ok, isin}
+      nil -> extract_dgs(html)
+    end
+  end
+
+  defp extract_dgs(html) do
+    case Regex.run(~r/C&oacute;digo DGS: ([A-Z0-9]+)/, html) do
+      [_, dgs] -> {:ok, dgs}
       nil -> {:error, "Could not extract ISIN"}
     end
   end
@@ -106,12 +116,14 @@ defmodule Sheetfolio.MyinvestorParser do
     end
   end
 
-  defp extract_importe_with_comision(html) do
+  # Pension emails have no net-amount block: the contribution carries no fees,
+  # so the gross amount is what left the account.
+  defp extract_importe_with_comision(html, gross) do
     pattern = ~r/Importe Efectivo Neto.*?valign="top">([\d,.]+)&nbsp;([A-Z]+)/s
 
     case Regex.run(pattern, html) do
       [_, amount, currency] -> {:ok, amount <> " " <> currency}
-      nil -> {:error, "Could not extract Importe Efectivo Neto"}
+      nil -> {:ok, gross}
     end
   end
 
@@ -200,6 +212,8 @@ defmodule Sheetfolio.MyinvestorParser do
     end
   end
 
+  # A pension contribution buys units the same way a fund subscription does.
+  defp normalize_tipo("APORTACION" <> _), do: "Suscripcion"
   defp normalize_tipo("SUSCRIPCION" <> _), do: "Suscripcion"
   defp normalize_tipo("COMPRA"), do: "Compra"
   defp normalize_tipo("REEMBOLSO" <> _), do: "Reembolso"

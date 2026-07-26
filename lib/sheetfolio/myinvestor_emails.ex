@@ -7,6 +7,7 @@ defmodule Sheetfolio.MyinvestorEmails do
 
   @gmail_query_operaciones "from:notificaciones@myinvestor.es subject:CONFIRMACIÓN DE OPERACIÓN DE VALORES"
   @gmail_query_traspasos "from:notificaciones@myinvestor.es subject:TRASPASO"
+  @gmail_query_pensiones "from:notificaciones@myinvestor.es subject:APORTACION A PLANES DE PENSIONES"
 
   @concurrency 8
   @message_timeout 30_000
@@ -53,8 +54,9 @@ defmodule Sheetfolio.MyinvestorEmails do
 
   defp list_all_ids do
     with {:ok, op_ids} <- list_ids(@gmail_query_operaciones),
-         {:ok, traspaso_ids} <- list_ids(@gmail_query_traspasos) do
-      {:ok, op_ids ++ traspaso_ids}
+         {:ok, traspaso_ids} <- list_ids(@gmail_query_traspasos),
+         {:ok, pension_ids} <- list_ids(@gmail_query_pensiones) do
+      {:ok, op_ids ++ traspaso_ids ++ pension_ids}
     end
   end
 

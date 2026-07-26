@@ -34,6 +34,9 @@ defmodule Sheetfolio.AssetCategories do
   #   URBANITAE, EFECTIVO       — tracked in columns that carry no ISIN; cash
   #                                comes from cash_snapshots rather than from
   #                                a market position
+  #   N5396                     — the MyInvestor Indexado Global pension plan,
+  #                                identified by its DGS code; the sheet
+  #                                doesn't track it at all
   # Sold-out holdings that only appear in older snapshots. Each is an earlier
   # share class of a fund the sheet does list under its current ISIN, so the
   # sheet alone can't categorise the history:
@@ -49,7 +52,8 @@ defmodule Sheetfolio.AssetCategories do
     "EFECTIVO" => "Efectivo",
     "ES0170156048" => "Renta fija corto plazo",
     "IE0032126645" => "Indexados",
-    "IE00B04GQX83" => "Renta fija largo plazo"
+    "IE00B04GQX83" => "Renta fija largo plazo",
+    "N5396" => "Indexados"
   }
 
   # Regrouping applied on top of whatever the sheet says, so the dashboard can
