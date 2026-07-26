@@ -143,20 +143,33 @@ defmodule Sheetfolio.SnapshotRecorder do
     end
   end
 
+  # Urbanitae has no market price: the position is the capital still committed
+  # to open projects, which the transaction ledger tracks. Yield that has been
+  # repaid has left Urbanitae and shows up as cash, so counting it here — as
+  # the spreadsheet's invested-plus-gains figure used to — overstates property
+  # and double-counts it against the cash snapshot.
   defp urbanitae_positions do
-    with {:ok, history} <- Sheetfolio.Urbanitae.fetch_history(),
-         position when not is_nil(position) <-
-           Sheetfolio.Urbanitae.position_at(history, Date.utc_today()) do
-      [position]
-    else
-      nil ->
-        []
+    {outstanding, _earnings} =
+      Sheetfolio.UrbanitaeTransactions.all()
+      |> Sheetfolio.UrbanitaeTransactions.state_at(Date.to_iso8601(Date.utc_today()))
 
-      {:error, reason} ->
-        Logger.warning("SnapshotRecorder: Urbanitae sheet read failed: #{inspect(reason)}")
-        []
-    end
+    urbanitae_position(Float.round(outstanding, 2))
   end
+
+  defp urbanitae_position(outstanding) when outstanding > 0 do
+    [
+      %{
+        isin: "URBANITAE",
+        asset: "Urbanitae",
+        units: 1.0,
+        invested: outstanding,
+        value: outstanding,
+        stale_price: false
+      }
+    ]
+  end
+
+  defp urbanitae_position(_outstanding), do: []
 
   defp ms_until_next_run do
     now = DateTime.utc_now()
