@@ -19,11 +19,35 @@ defmodule BackfillTraspasoBasis do
   that day, which can't be recovered now. So are positions with no operations
   behind them (Urbanitae).
 
-  Run with: set -a && . ./.env && set +a && mix run scripts/backfill_traspaso_basis.exs
-  Pass --dry-run to report what would change without writing.
+  ## Already applied — 2026-07-26
+
+  Because it shifts what is stored rather than recomputing it, running it twice
+  would subtract the same difference twice. It has been applied, so it refuses
+  to write again without --force; a --dry-run still reports a pending change
+  and that is expected, not a sign it was missed.
+
+  Run with: set -a && . ./.env && set +a && mix run scripts/backfill_traspaso_basis.exs --dry-run
   """
 
   @collection "portfolio_snapshots"
+
+  def main(args) do
+    cond do
+      "--dry-run" in args -> run(true)
+      "--force" in args -> run(false)
+      true -> refuse()
+    end
+  end
+
+  defp refuse do
+    IO.puts("""
+    Refusing to run: this backfill was already applied on 2026-07-26.
+
+    It adds a difference to the stored figures, so applying it again would
+    subtract the traspaso adjustment a second time. Use --dry-run to inspect,
+    or --force if you are certain the snapshots have not had it applied.
+    """)
+  end
 
   def run(dry_run?) do
     operations = Sheetfolio.MyinvestorEmails.cached_operations() |> Sheetfolio.OperationHistory.patch()
@@ -126,4 +150,4 @@ defmodule BackfillTraspasoBasis do
   end
 end
 
-BackfillTraspasoBasis.run("--dry-run" in System.argv())
+BackfillTraspasoBasis.main(System.argv())
