@@ -5,6 +5,7 @@ defmodule SheetfolioWeb.PortfolioLive do
   alias Sheetfolio.UrbanitaeTransactions
 
   @ranges ~w(1m 3m 1y ytd all)
+  @history_views ~w(stacked lines)
 
   # Assigned per category, never by rank, so a slice keeps its colour as the
   # allocation shifts. Same hues the Cash and Expenses charts use.
@@ -33,7 +34,9 @@ defmodule SheetfolioWeb.PortfolioLive do
           urbanitae_by_date: %{},
           range: "all",
           allocation: [],
-          category_history: nil
+          category_history: nil,
+          history_view: "stacked",
+          history_range: "all"
         )
 
       if connected?(socket) do
@@ -160,12 +163,13 @@ defmodule SheetfolioWeb.PortfolioLive do
     end
   end
 
-  defp category_history_payload(history) do
+  defp category_history_payload(history, view) do
     names = AssetCategories.history_categories(history)
     labels = Enum.map(history, & &1.date)
 
     %{
       labels: labels,
+      stacked: view == "stacked",
       datasets:
         Enum.map(names, fn name ->
           %{
@@ -179,6 +183,14 @@ defmodule SheetfolioWeb.PortfolioLive do
 
   def handle_event("set_range", %{"range" => range}, socket) when range in @ranges do
     {:noreply, assign(socket, range: range)}
+  end
+
+  def handle_event("set_history_range", %{"range" => range}, socket) when range in @ranges do
+    {:noreply, assign(socket, history_range: range)}
+  end
+
+  def handle_event("set_history_view", %{"view" => view}, socket) when view in @history_views do
+    {:noreply, assign(socket, history_view: view)}
   end
 
   def render(assigns) do
@@ -205,6 +217,7 @@ defmodule SheetfolioWeb.PortfolioLive do
         .alloc-legend tfoot td { font-weight: 600; border-top: 2px solid #e2e8f0; }
         .alloc-dot { display: inline-block; width: 0.65rem; height: 0.65rem; border-radius: 50%; margin-right: 0.5rem; vertical-align: middle; }
         .alloc-loading { color: #94a3b8; font-size: 0.9rem; padding: 2rem 0; text-align: center; }
+        .alloc-controls { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; }
       </style>
 
       <div class="range-row">
@@ -257,10 +270,22 @@ defmodule SheetfolioWeb.PortfolioLive do
 
         <div class="chart-container" style="margin-top:1.5rem;">
           <div class="alloc-title">Allocation history</div>
+          <div class="alloc-controls">
+            <div class="range-toggle">
+              <%= for {value, label} <- history_view_options() do %>
+                <button class={if @history_view == value, do: "selected"} phx-click="set_history_view" phx-value-view={value}>{label}</button>
+              <% end %>
+            </div>
+            <div class="range-toggle">
+              <%= for {value, label} <- range_options() do %>
+                <button class={if @history_range == value, do: "selected"} phx-click="set_history_range" phx-value-range={value}>{label}</button>
+              <% end %>
+            </div>
+          </div>
           <%= if @category_history == nil do %>
             <div class="alloc-loading">Loading category history…</div>
           <% else %>
-            <div id="category-history-chart" phx-hook="CategoryHistoryChart" data-chart={Jason.encode!(category_history_payload(filter_history(@category_history, @range)))}>
+            <div id="category-history-chart" phx-hook="CategoryHistoryChart" data-chart={Jason.encode!(category_history_payload(filter_history(@category_history, @history_range), @history_view))}>
               <div id="category-history-canvas" phx-update="ignore">
                 <canvas></canvas>
               </div>
@@ -296,6 +321,8 @@ defmodule SheetfolioWeb.PortfolioLive do
   end
 
   defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+
+  defp history_view_options, do: [{"stacked", "Cumulative"}, {"lines", "By category"}]
 
   defp filter_range(snapshots, "all"), do: snapshots
 

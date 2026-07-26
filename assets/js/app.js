@@ -115,6 +115,10 @@ Hooks.CategoryHistoryChart = {
   render() {
     const payload = JSON.parse(this.el.dataset.chart)
     const fmt = (v) => `€${Math.round(v).toLocaleString("es-ES")}`
+    // Stacked: filled bands whose heights add up to the portfolio. Unstacked:
+    // one line per category read against a shared axis, so the fills would
+    // hide each other.
+    const stacked = payload.stacked
 
     if (this.chart) this.chart.destroy()
 
@@ -127,13 +131,13 @@ Hooks.CategoryHistoryChart = {
           label: ds.label,
           data: ds.data,
           borderColor: ds.color,
-          backgroundColor: ds.color + "cc",
-          borderWidth: 1,
+          backgroundColor: stacked ? ds.color + "cc" : ds.color,
+          borderWidth: stacked ? 1 : 2,
           // ~570 daily points: markers would be noise, and the bands carry
           // the shape on their own.
           pointRadius: 0,
           pointHoverRadius: 4,
-          fill: true,
+          fill: stacked,
           tension: 0.2
         }))
       },
@@ -145,7 +149,7 @@ Hooks.CategoryHistoryChart = {
           tooltip: {
             callbacks: {
               label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`,
-              footer: (items) => `Total: ${fmt(items.reduce((a, i) => a + i.parsed.y, 0))}`
+              footer: (items) => stacked ? `Total: ${fmt(items.reduce((a, i) => a + i.parsed.y, 0))}` : null
             }
           }
         },
@@ -156,7 +160,7 @@ Hooks.CategoryHistoryChart = {
             title: {display: true, text: "Date"}
           },
           y: {
-            stacked: true,
+            stacked,
             // Stacked areas encode magnitude by area, so the axis has to start
             // at zero or the bottom band is silently clipped.
             beginAtZero: true,
