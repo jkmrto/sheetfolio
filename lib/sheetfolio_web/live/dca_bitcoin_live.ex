@@ -6,6 +6,7 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
   alias Sheetfolio.PricesApi.YahooFinance
 
   @isin "GB00BJYDH287"
+  @ranges ~w(1m 3m 1y ytd all)
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
@@ -17,7 +18,9 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
           subtab: "bitcoin",
           buys: [],
           position: %{net_qty: 0.0, cost_basis: 0.0},
-          current_price: nil
+          current_price: nil,
+          chart_data: [],
+          range: "all"
         )
 
       if connected?(socket) do
@@ -34,13 +37,8 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
 
         socket =
           socket
-          |> assign(buys: buys, position: position(state_history))
-          |> push_event("update_btc_dca_chart", %{
-            labels: Enum.map(chart_data, & &1.date),
-            invested: Enum.map(chart_data, & &1.invested),
-            value: Enum.map(chart_data, & &1.value),
-            btc: Enum.map(chart_data, & &1.btc)
-          })
+          |> assign(buys: buys, position: position(state_history), chart_data: chart_data)
+          |> push_chart(chart_data, "all")
 
         {:ok, socket}
       else
@@ -61,6 +59,40 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
        current_price: price_eur
      )}
   end
+
+  def handle_event("set_range", %{"range" => range}, socket) when range in @ranges do
+    {:noreply,
+     socket
+     |> assign(range: range)
+     |> push_chart(socket.assigns.chart_data, range)}
+  end
+
+  # The chart is driven by pushed events rather than a data attribute, so
+  # narrowing the range means sending the shorter series again.
+  defp push_chart(socket, chart_data, range) do
+    data = filter_range(chart_data, range)
+
+    push_event(socket, "update_btc_dca_chart", %{
+      labels: Enum.map(data, & &1.date),
+      invested: Enum.map(data, & &1.invested),
+      value: Enum.map(data, & &1.value),
+      btc: Enum.map(data, & &1.btc)
+    })
+  end
+
+  defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+
+  defp filter_range(chart_data, "all"), do: chart_data
+
+  defp filter_range(chart_data, range) do
+    cutoff = range |> cutoff_date(Date.utc_today()) |> Date.to_iso8601()
+    Enum.filter(chart_data, &(&1.date >= cutoff))
+  end
+
+  defp cutoff_date("1m", today), do: Date.shift(today, month: -1)
+  defp cutoff_date("3m", today), do: Date.shift(today, month: -3)
+  defp cutoff_date("1y", today), do: Date.shift(today, year: -1)
+  defp cutoff_date("ytd", today), do: Date.new!(today.year, 1, 1)
 
   def render(assigns) do
     ~H"""
@@ -83,6 +115,10 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
       .card { background: white; border-radius: 12px; padding: 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
       .card-label { font-size: 0.78rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
       .card-value { font-size: 1.4rem; font-weight: 700; }
+      .range-row { display: flex; margin-bottom: 1rem; }
+      .range-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+      .range-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
+      .range-toggle button.selected { background: #1e293b; color: white; }
     </style>
 
     <div class="dca-subtabs">
@@ -130,6 +166,13 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
     </div>
 
     <div class="chart-container" style="margin-bottom: 2rem;">
+      <div class="range-row">
+        <div class="range-toggle">
+          <%= for {value, label} <- range_options() do %>
+            <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}><%= label %></button>
+          <% end %>
+        </div>
+      </div>
       <canvas id="btc-dca-chart" phx-hook="DcaBitcoinChart" phx-update="ignore"></canvas>
     </div>
 

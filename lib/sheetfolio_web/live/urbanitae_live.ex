@@ -162,10 +162,17 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   end
 
   defp render_overview(assigns) do
-    assigns = assign(assigns, chart_payload: chart_payload(assigns.transactions))
+    assigns = assign(assigns, chart_payload: chart_payload(assigns.transactions, assigns.range))
 
     ~H"""
     <div class="chart-container" id="urbanitae-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(@chart_payload)}>
+      <div class="range-row">
+        <div class="range-toggle">
+          <%= for {value, label} <- range_options() do %>
+            <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}>{label}</button>
+          <% end %>
+        </div>
+      </div>
       <div id="urbanitae-chart-canvas" phx-update="ignore">
         <canvas id="urbanitaeChartCanvas"></canvas>
       </div>
@@ -173,8 +180,11 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     """
   end
 
-  defp chart_payload(transactions) do
-    series = UrbanitaeTransactions.time_series(transactions)
+  # The series is built from the whole history and only then trimmed: both
+  # lines are running totals, so dropping the earlier transactions first would
+  # restart the balance from zero inside the window.
+  defp chart_payload(transactions, range) do
+    series = transactions |> UrbanitaeTransactions.time_series() |> filter_series(range)
 
     %{
       metric: "value",
@@ -362,6 +372,13 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   defp type_label(type), do: Map.get(@type_labels, type, type)
 
   defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+
+  defp filter_series(series, "all"), do: series
+
+  defp filter_series(series, range) do
+    cutoff = range |> cutoff_date(Date.utc_today()) |> Date.to_iso8601()
+    Enum.filter(series, &(&1.date >= cutoff))
+  end
 
   defp filter_range(transactions, "all"), do: transactions
 
