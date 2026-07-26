@@ -26,6 +26,28 @@ defmodule Sheetfolio.SyntheticOperations do
       importe_with_comision: "1000.19 EUR",
       traspaso: true
     },
+    # The weekly Fidelity subscriptions whose emails never arrived. Gmail jumps
+    # 17/11 -> 04/12 and 12/12 -> 31/12/2025, the same two holes that swallowed
+    # the Bitcoin and pension emails; four weekly buys are missing from them.
+    #
+    # The total is exact rather than guessed: MyInvestor reports 2298.724 units
+    # for 33233.76 EUR against the 2228.177 for 32233.49 the emails account for.
+    # Four 250 EUR buys at the NAVs of those weeks come to 69.913 units, which
+    # is the shape of it but not to the cent, so the gap is recorded as one
+    # operation carrying the exact difference instead of four invented ones.
+    # Dated in the first hole; the individual dates are not recoverable.
+    %{
+      fecha: "01/12/2025",
+      asset: "S&P 500 INDEX P ACC EUR",
+      isin: "IE00BYX5MX67",
+      tipo: "Suscripcion",
+      cantidad: "70.547",
+      precio: "14.1788 EUR",
+      importe_without_comision: "1000.27 EUR",
+      comision: "",
+      importe_with_comision: "1000.27 EUR",
+      traspaso: false
+    },
     # The fourth pension contribution. Gmail holds three (05/11/2024,
     # 18/09/2025, 16/10/2025) totalling 158.615 units for 2497.00 €, while
     # MyInvestor reports 187.889 units for 2997.00 €. The 29.274-unit,
