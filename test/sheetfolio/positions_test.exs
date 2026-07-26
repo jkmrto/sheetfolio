@@ -211,4 +211,148 @@ defmodule Sheetfolio.PositionsTest do
       assert last_state[@isin].cost_basis == built[@isin].cost_basis
     end
   end
+
+  describe "traspasos" do
+    @from "IE00SOURCE001"
+    @to "IE00TARGET001"
+
+    defp leg(fecha, tipo, isin, cantidad, importe) do
+      %{
+        fecha: fecha,
+        asset: "TEST FUND",
+        isin: isin,
+        tipo: tipo,
+        cantidad: cantidad,
+        precio: "0 EUR",
+        importe_without_comision: importe,
+        comision: "",
+        importe_with_comision: importe,
+        traspaso: true,
+        traspaso_from: @from,
+        traspaso_to: @to
+      }
+    end
+
+    defp out(fecha, cantidad, importe), do: leg(fecha, "Reembolso", @from, cantidad, importe)
+    defp into(fecha, cantidad, importe), do: leg(fecha, "Suscripcion", @to, cantidad, importe)
+
+    defp buy(fecha, isin, cantidad, importe) do
+      %{leg(fecha, "Compra", isin, cantidad, importe) | traspaso: false}
+    end
+
+    test "moving a fund at a gain realizes nothing and carries the cost across" do
+      assets =
+        Positions.build(
+          [
+            buy("01/01/2024", @from, "100", "1000 EUR"),
+            out("01/06/2024", "100", "1500 EUR"),
+            into("03/06/2024", "50", "1500 EUR")
+          ],
+          1.0,
+          1.0
+        )
+
+      assert assets[@from].realized == 0.0
+      assert assets[@from].net_qty == 0.0
+
+      # The 500 € gain rides along as a lower basis instead of being booked.
+      assert_in_delta assets[@to].cost_basis, 1000.0, 0.01
+      assert assets[@to].net_qty == 50.0
+    end
+
+    test "a traspaso produces no realized event, so it can't look like a sale" do
+      events =
+        Positions.realized_events(
+          [
+            buy("01/01/2024", @from, "100", "1000 EUR"),
+            out("01/06/2024", "100", "1500 EUR"),
+            into("03/06/2024", "50", "1500 EUR")
+          ],
+          1.0,
+          1.0
+        )
+
+      assert events == []
+    end
+
+    test "the deferred gain is realized when the destination is genuinely sold" do
+      ops = [
+        buy("01/01/2024", @from, "100", "1000 EUR"),
+        out("01/06/2024", "100", "1500 EUR"),
+        into("03/06/2024", "50", "1500 EUR"),
+        %{buy("01/09/2024", @to, "50", "1600 EUR") | tipo: "Venta"}
+      ]
+
+      assets = Positions.build(ops, 1.0, 1.0)
+
+      # 1600 sale against the original 1000 cost: the full gain, booked once.
+      assert_in_delta assets[@to].realized, 600.0, 0.01
+    end
+
+    test "one outgoing leg feeding several subscriptions splits the basis" do
+      assets =
+        Positions.build(
+          [
+            buy("01/01/2024", @from, "100", "1000 EUR"),
+            out("01/06/2024", "100", "1500 EUR"),
+            into("03/06/2024", "30", "900 EUR"),
+            into("04/06/2024", "20", "600 EUR")
+          ],
+          1.0,
+          1.0
+        )
+
+      assert assets[@to].net_qty == 50.0
+      assert_in_delta assets[@to].cost_basis, 1000.0, 0.01
+    end
+
+    test "a source with no buy history transfers the value it moved, not zero" do
+      # The buy emails for the source were never received, so there is no cost
+      # to carry — the destination has to start from what actually moved or the
+      # whole transfer later reads as gain.
+      assets =
+        Positions.build(
+          [
+            out("01/06/2024", "100", "1500 EUR"),
+            into("03/06/2024", "50", "1500 EUR")
+          ],
+          1.0,
+          1.0
+        )
+
+      assert assets[@from].realized == 0.0
+      assert_in_delta assets[@to].cost_basis, 1500.0, 0.01
+    end
+
+    test "a partly covered source blends known cost with the rest at market" do
+      # 50 of the 100 units moved have a recorded cost of 500; the other 50
+      # have none and travel at the 750 they were worth.
+      assets =
+        Positions.build(
+          [
+            buy("01/01/2024", @from, "50", "500 EUR"),
+            out("01/06/2024", "100", "1500 EUR"),
+            into("03/06/2024", "50", "1500 EUR")
+          ],
+          1.0,
+          1.0
+        )
+
+      assert_in_delta assets[@to].cost_basis, 1250.0, 0.01
+    end
+
+    test "an ordinary sale still realizes, so only traspasos are exempt" do
+      assets =
+        Positions.build(
+          [
+            buy("01/01/2024", @from, "100", "1000 EUR"),
+            %{out("01/06/2024", "100", "1500 EUR") | traspaso: false}
+          ],
+          1.0,
+          1.0
+        )
+
+      assert_in_delta assets[@from].realized, 500.0, 0.01
+    end
+  end
 end

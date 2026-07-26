@@ -33,26 +33,30 @@ defmodule Sheetfolio.Positions do
   def history(operations, eur_usd, eur_cad) do
     operations
     |> Enum.sort_by(&settlement_key/1)
-    |> Enum.group_by(& &1.fecha)
-    |> Enum.sort_by(fn {fecha, _ops} -> date_sort_key(fecha) end)
-    |> Enum.map_reduce(%{}, fn {fecha, ops}, assets ->
-      assets = Enum.reduce(ops, assets, &apply_op(&2, &1, eur_usd, eur_cad))
-      {{fecha, assets}, assets}
+    |> Enum.chunk_by(& &1.fecha)
+    |> Enum.map_reduce({%{}, %{}}, fn ops, {assets, carried} ->
+      {assets, _events, carried} =
+        Enum.reduce(ops, {assets, [], carried}, &step(&2, &1, eur_usd, eur_cad))
+
+      {{hd(ops).fecha, assets}, {assets, carried}}
     end)
     |> elem(0)
   end
 
-  defp apply_op(assets, data, eur_usd, eur_cad), do: elem(update_asset(assets, data, eur_usd, eur_cad), 0)
-
   defp replay(operations, eur_usd, eur_cad) do
-    operations
-    |> Enum.sort_by(&settlement_key/1)
-    |> Enum.reduce({%{}, []}, fn data, {assets, events} ->
-      case update_asset(assets, data, eur_usd, eur_cad) do
-        {assets, nil} -> {assets, events}
-        {assets, event} -> {assets, [event | events]}
-      end
-    end)
+    {assets, events, _carried} =
+      operations
+      |> Enum.sort_by(&settlement_key/1)
+      |> Enum.reduce({%{}, [], %{}}, &step(&2, &1, eur_usd, eur_cad))
+
+    {assets, events}
+  end
+
+  defp step({assets, events, carried}, data, eur_usd, eur_cad) do
+    case update_asset(assets, carried, data, eur_usd, eur_cad) do
+      {assets, carried, nil} -> {assets, events, carried}
+      {assets, carried, event} -> {assets, [event | events], carried}
+    end
   end
 
   # Within one date, buys settle before sells: you can only sell units you
@@ -60,9 +64,15 @@ defmodule Sheetfolio.Positions do
   # same-day sell first would treat units as uncovered that the same day's
   # buy actually covered, wrongly realizing P&L and then re-adding the full
   # cost of units that had already been sold.
-  defp settlement_key(op), do: {date_sort_key(op.fecha), sell?(op.tipo)}
+  #
+  # A traspaso's two legs sit between those: its outgoing leg has to run
+  # before its incoming one so there is a cost basis to hand over, and both
+  # before any ordinary sell that might empty the position first. In practice
+  # the legs are always days apart, so this only matters as a guarantee.
+  defp settlement_key(op), do: {date_sort_key(op.fecha), phase(op)}
 
-  defp sell?(tipo), do: if(buy?(tipo), do: 0, else: 1)
+  defp phase(%{traspaso: true} = op), do: if(buy?(op.tipo), do: 2, else: 1)
+  defp phase(op), do: if(buy?(op.tipo), do: 0, else: 3)
 
   defp date_sort_key(fecha) do
     case String.split(fecha, "/") do
@@ -71,7 +81,7 @@ defmodule Sheetfolio.Positions do
     end
   end
 
-  defp update_asset(assets, data, eur_usd, eur_cad) do
+  defp update_asset(assets, carried, data, eur_usd, eur_cad) do
     qty = parse_cantidad(data.cantidad)
     cost_eur = amount_in_eur(data.importe_with_comision, data.precio, qty, eur_usd, eur_cad)
 
@@ -83,24 +93,78 @@ defmodule Sheetfolio.Positions do
       })
 
     if buy?(data.tipo) do
-      a = %{a | net_qty: a.net_qty + qty, cost_basis: a.cost_basis + cost_eur, total_bought: a.total_bought + cost_eur}
-      {Map.put(assets, data.isin, a), nil}
+      buy(assets, carried, a, data, qty, cost_eur)
     else
-      avg_cost = if a.net_qty > 0, do: a.cost_basis / a.net_qty, else: 0.0
-      covered = min(qty, max(a.net_qty, 0.0))
-      cost = covered * avg_cost
-      realized = if qty > 0, do: covered * (cost_eur / qty) - cost, else: 0.0
+      sell(assets, carried, a, data, qty, cost_eur)
+    end
+  end
 
-      a = %{a | net_qty: a.net_qty - qty, cost_basis: a.cost_basis - cost,
-            total_received: a.total_received + cost_eur, realized: a.realized + realized}
+  defp buy(assets, carried, a, data, qty, cost_eur) do
+    basis = cost_eur * basis_ratio(carried, data)
+
+    a = %{a | net_qty: a.net_qty + qty, cost_basis: a.cost_basis + basis,
+          total_bought: a.total_bought + basis}
+
+    {Map.put(assets, data.isin, a), carried, nil}
+  end
+
+  defp sell(assets, carried, a, data, qty, cost_eur) do
+    avg_cost = if a.net_qty > 0, do: a.cost_basis / a.net_qty, else: 0.0
+    covered = min(qty, max(a.net_qty, 0.0))
+    cost = covered * avg_cost
+    realized = if qty > 0, do: covered * (cost_eur / qty) - cost, else: 0.0
+
+    a = %{a | net_qty: a.net_qty - qty, cost_basis: a.cost_basis - cost,
+          total_received: a.total_received + cost_eur}
+
+    if traspaso?(data) do
+      # Money moving between funds is not a disposal: the units leave at their
+      # market value but their cost basis travels with them, so nothing is
+      # realized here and the incoming leg starts from the original cost
+      # rather than from today's price.
+      {Map.put(assets, data.isin, a),
+       remember_basis(carried, data, transferred_basis(cost, covered, qty, cost_eur), cost_eur), nil}
+    else
+      a = %{a | realized: a.realized + realized}
 
       event = %{
         fecha: data.fecha, asset: data.asset, isin: data.isin, tipo: data.tipo,
         qty: qty, uncovered: qty - covered, proceeds: cost_eur, cost: cost, realized: realized
       }
 
-      {Map.put(assets, data.isin, a), event}
+      {Map.put(assets, data.isin, a), carried, event}
     end
+  end
+
+  defp traspaso?(data), do: Map.get(data, :traspaso, false) and Map.has_key?(data, :traspaso_to)
+
+  # The basis that travels with the units. Units the buy history doesn't cover
+  # have no known cost, so they move at the price they transferred at — the
+  # same assumption the destination made for everything before traspasos were
+  # tracked. Without this a source with no recorded buys would hand over a
+  # basis of zero and the whole transfer would later show up as gain.
+  defp transferred_basis(cost, covered, qty, proceeds) when qty > 0 do
+    cost + (qty - covered) * (proceeds / qty)
+  end
+
+  defp transferred_basis(cost, _covered, _qty, _proceeds), do: cost
+
+  # What fraction of the transferred market value was cost. Held as a ratio
+  # rather than an amount so one outgoing leg can feed several incoming ones —
+  # MyInvestor splits a traspaso into separate subscriptions — each taking its
+  # own share of the basis.
+  defp remember_basis(carried, data, basis, proceeds) when proceeds > 0 do
+    Map.put(carried, {data.traspaso_from, data.traspaso_to}, basis / proceeds)
+  end
+
+  defp remember_basis(carried, _data, _basis, _proceeds), do: carried
+
+  # An incoming traspaso leg whose source we never saw (a missing email) keeps
+  # today's value as its basis, which is what happened before any of this.
+  defp basis_ratio(carried, data) do
+    if traspaso?(data),
+      do: Map.get(carried, {data.traspaso_from, data.traspaso_to}, 1.0),
+      else: 1.0
   end
 
   def buy?(tipo), do: tipo in ["Suscripcion", "Compra", "Traspaso Entrada"]

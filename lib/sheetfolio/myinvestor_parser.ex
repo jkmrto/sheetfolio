@@ -12,11 +12,17 @@ defmodule Sheetfolio.MyinvestorParser do
              {:ok, fecha} <- extract_fecha(html_body),
              {:ok, {cantidad, precio, importe_bruto}} <- extract_traspaso_amounts(html_body),
              {:ok, importe_neto} <- extract_traspaso_importe_neto(html_body) do
+          # Both emails of a traspaso name both funds, so each leg carries the
+          # pair. That's what lets the accounting hand the outgoing leg's cost
+          # basis to the incoming one instead of realizing a gain that never
+          # happened — the two legs arrive as separate emails, usually days
+          # apart, with nothing else linking them.
           base = %{
             fecha: fecha,
             cantidad: cantidad, precio: precio,
             importe_without_comision: importe_bruto, comision: "",
-            importe_with_comision: importe_neto, traspaso: true
+            importe_with_comision: importe_neto, traspaso: true,
+            traspaso_from: reemb_isin, traspaso_to: suscr_isin
           }
 
           {:ok, [traspaso_operation(tipo_raw, base, html_body, subject, reemb_isin, suscr_isin)]}
