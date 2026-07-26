@@ -50,14 +50,14 @@ defmodule SheetfolioWeb.PortfolioLive do
           )
           |> Enum.to_list()
 
-        urbanitae_by_date = urbanitae_by_date(snapshots)
+        transactions = UrbanitaeTransactions.all()
 
         {:ok,
          assign(socket,
            snapshots: snapshots,
            cash: cash,
-           urbanitae_by_date: urbanitae_by_date,
-           allocation: allocation()
+           urbanitae_by_date: urbanitae_by_date(snapshots, transactions),
+           allocation: allocation(transactions)
          )}
       else
         {:ok, socket}
@@ -66,17 +66,34 @@ defmodule SheetfolioWeb.PortfolioLive do
   end
 
   # The latest snapshot already carries each position's value, so the
-  # allocation needs no price fetching. Cash isn't a market position, so each
-  # account is folded in as its own entry under the Efectivo category.
-  defp allocation do
+  # allocation needs no price fetching. Cash and Urbanitae aren't market
+  # positions, so both are folded in from their own sources.
+  defp allocation(transactions) do
     case Mongo.find_one(:mongo, "portfolio_snapshots", %{}, sort: %{date: -1}) do
       nil ->
         []
 
       doc ->
-        positions = (doc["positions"] || []) ++ cash_entries()
+        positions =
+          (doc["positions"] || [])
+          |> Enum.reject(&(&1["isin"] == "URBANITAE"))
+          |> Enum.concat(urbanitae_entries(transactions))
+          |> Enum.concat(cash_entries())
+
         AssetCategories.breakdown(positions, AssetCategories.get())
     end
+  end
+
+  # The snapshot's Urbanitae figure is the spreadsheet's invested plus
+  # cumulative gains, which counts yield that has already been repaid and now
+  # sits in cash — so it overstates what is actually tied up in property. The
+  # transaction ledger's outstanding balance is the money still in projects,
+  # which is what an allocation should show.
+  defp urbanitae_entries(transactions) do
+    {outstanding, _earnings} =
+      UrbanitaeTransactions.state_at(transactions, Date.to_iso8601(Date.utc_today()))
+
+    [%{"isin" => "URBANITAE", "asset" => "Urbanitae", "value" => Float.round(outstanding, 2)}]
   end
 
   defp cash_entries do
@@ -274,9 +291,7 @@ defmodule SheetfolioWeb.PortfolioLive do
     end
   end
 
-  defp urbanitae_by_date(snapshots) do
-    transactions = UrbanitaeTransactions.all()
-
+  defp urbanitae_by_date(snapshots, transactions) do
     snapshots
     |> Enum.map(& &1["date"])
     |> Enum.uniq()
