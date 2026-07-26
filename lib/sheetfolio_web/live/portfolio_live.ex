@@ -32,7 +32,8 @@ defmodule SheetfolioWeb.PortfolioLive do
           cash: [],
           urbanitae_by_date: %{},
           range: "all",
-          allocation: []
+          allocation: [],
+          category_history: nil
         )
 
       if connected?(socket) do
@@ -51,6 +52,10 @@ defmodule SheetfolioWeb.PortfolioLive do
           |> Enum.to_list()
 
         transactions = UrbanitaeTransactions.all()
+
+        # Re-reading every snapshot with its positions costs ~1.5s, so the page
+        # renders first and the category history arrives after.
+        send(self(), :load_category_history)
 
         {:ok,
          assign(socket,
@@ -109,6 +114,69 @@ defmodule SheetfolioWeb.PortfolioLive do
 
   defp category_color(category), do: Map.get(@category_colors, category, @other_color)
 
+  def handle_info(:load_category_history, socket) do
+    {:noreply, assign(socket, category_history: category_history(socket.assigns))}
+  end
+
+  # One point per recorded snapshot, with Urbanitae and cash folded in the same
+  # way the doughnut does so the two agree at the right-hand edge.
+  defp category_history(%{cash: cash, urbanitae_by_date: urbanitae_by_date}) do
+    categories = AssetCategories.get()
+
+    Mongo.find(:mongo, "portfolio_snapshots", %{},
+      sort: %{date: 1},
+      projection: %{date: 1, "positions.isin": 1, "positions.value": 1}
+    )
+    |> Enum.map(&dated_positions(&1, cash, urbanitae_by_date))
+    |> AssetCategories.history(categories)
+  end
+
+  defp dated_positions(doc, cash, urbanitae_by_date) do
+    date = doc["date"]
+
+    positions =
+      (doc["positions"] || [])
+      |> Enum.reject(&(&1["isin"] == "URBANITAE"))
+      |> Enum.concat(urbanitae_at(urbanitae_by_date, date))
+      |> Enum.concat(cash_at_entry(cash, date))
+
+    {date, positions}
+  end
+
+  defp urbanitae_at(urbanitae_by_date, date) do
+    case Map.get(urbanitae_by_date, date) do
+      {outstanding, _earnings} when outstanding > 0 ->
+        [%{"isin" => "URBANITAE", "value" => Float.round(outstanding, 2)}]
+
+      _ ->
+        []
+    end
+  end
+
+  defp cash_at_entry(cash, date) do
+    case cash_at(cash, date) do
+      nil -> []
+      amount -> [%{"isin" => "EFECTIVO", "value" => amount}]
+    end
+  end
+
+  defp category_history_payload(history) do
+    names = AssetCategories.history_categories(history)
+    labels = Enum.map(history, & &1.date)
+
+    %{
+      labels: labels,
+      datasets:
+        Enum.map(names, fn name ->
+          %{
+            label: name,
+            color: category_color(name),
+            data: Enum.map(history, &Map.get(&1.totals, name, 0.0))
+          }
+        end)
+    }
+  end
+
   def handle_event("set_range", %{"range" => range}, socket) when range in @ranges do
     {:noreply, assign(socket, range: range)}
   end
@@ -136,6 +204,7 @@ defmodule SheetfolioWeb.PortfolioLive do
         .alloc-legend td.pct { text-align: right; white-space: nowrap; color: #64748b; width: 3.5rem; }
         .alloc-legend tfoot td { font-weight: 600; border-top: 2px solid #e2e8f0; }
         .alloc-dot { display: inline-block; width: 0.65rem; height: 0.65rem; border-radius: 50%; margin-right: 0.5rem; vertical-align: middle; }
+        .alloc-loading { color: #94a3b8; font-size: 0.9rem; padding: 2rem 0; text-align: center; }
       </style>
 
       <div class="range-row">
@@ -185,9 +254,29 @@ defmodule SheetfolioWeb.PortfolioLive do
             </div>
           </div>
         </div>
+
+        <div class="chart-container" style="margin-top:1.5rem;">
+          <div class="alloc-title">Allocation history</div>
+          <%= if @category_history == nil do %>
+            <div class="alloc-loading">Loading category history…</div>
+          <% else %>
+            <div id="category-history-chart" phx-hook="CategoryHistoryChart" data-chart={Jason.encode!(category_history_payload(filter_history(@category_history, @range)))}>
+              <div id="category-history-canvas" phx-update="ignore">
+                <canvas></canvas>
+              </div>
+            </div>
+          <% end %>
+        </div>
       <% end %>
     <% end %>
     """
+  end
+
+  defp filter_history(history, "all"), do: history
+
+  defp filter_history(history, range) do
+    cutoff = range |> cutoff_date(Date.utc_today()) |> Date.to_iso8601()
+    Enum.filter(history, &(&1.date >= cutoff))
   end
 
   defp allocation_total(allocation) do

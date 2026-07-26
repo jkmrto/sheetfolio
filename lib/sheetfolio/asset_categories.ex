@@ -34,13 +34,22 @@ defmodule Sheetfolio.AssetCategories do
   #   URBANITAE, EFECTIVO       — tracked in columns that carry no ISIN; cash
   #                                comes from cash_snapshots rather than from
   #                                a market position
+  # Sold-out holdings that only appear in older snapshots. Each is an earlier
+  # share class of a fund the sheet does list under its current ISIN, so the
+  # sheet alone can't categorise the history:
+  #   ES0170156048 — Santalucía Renta Fija, now ES0158457037
+  #   IE0032126645 — Vanguard US 500, traspaso'd into Fidelity IE00BYX5MX67
+  #   IE00B04GQX83 — Vanguard US Investment Grade, now IE00BZ163M45
   @fallback_categories %{
     "DE000A1E0HS6" => "Silver",
     "CA50077N1024" => "Custom Stocks",
     "US8629451027" => "Custom Stocks",
     "IE000RHYOR04" => "Renta fija corto plazo",
     "URBANITAE" => "Inmobiliario",
-    "EFECTIVO" => "Efectivo"
+    "EFECTIVO" => "Efectivo",
+    "ES0170156048" => "Renta fija corto plazo",
+    "IE0032126645" => "Indexados",
+    "IE00B04GQX83" => "Renta fija largo plazo"
   }
 
   # Regrouping applied on top of whatever the sheet says, so the dashboard can
@@ -165,4 +174,51 @@ defmodule Sheetfolio.AssetCategories do
 
   defp percentage(_value, total) when total <= 0, do: 0.0
   defp percentage(value, total), do: Float.round(value / total * 100, 1)
+
+  @doc """
+  Category totals for a series of dated position lists, in the order given:
+
+      [%{date: "2025-01-01", totals: %{"Indexados" => 1234.0, ...}}, ...]
+
+  A category absent on a date is absent from that date's map rather than
+  present as zero, so callers can tell "not held yet" from "held, worth
+  nothing".
+  """
+  def history(dated_positions, categories) do
+    Enum.map(dated_positions, fn {date, positions} ->
+      totals =
+        positions
+        |> breakdown(categories)
+        |> Map.new(&{&1.category, &1.value})
+
+      %{date: date, totals: totals}
+    end)
+  end
+
+  # A stacked chart is easiest to read with its steadiest series on the bottom:
+  # every band above it then moves with its own value instead of inheriting the
+  # floor's wobble. Urbanitae's outstanding balance only changes when a project
+  # opens or closes, so Inmobiliario leads.
+  @leading_categories ["Inmobiliario"]
+
+  @doc """
+  Every category appearing anywhere in a `history/2` series, in stacking order:
+  the steady categories first, then the rest largest total first.
+  """
+  def history_categories(history) do
+    totals =
+      Enum.reduce(history, %{}, fn %{totals: totals}, acc ->
+        Map.merge(acc, totals, fn _category, running, value -> running + value end)
+      end)
+
+    leading = Enum.filter(@leading_categories, &Map.has_key?(totals, &1))
+
+    rest =
+      totals
+      |> Map.drop(@leading_categories)
+      |> Enum.sort_by(fn {_category, total} -> -total end)
+      |> Enum.map(&elem(&1, 0))
+
+    leading ++ rest
+  end
 end

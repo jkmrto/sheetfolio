@@ -108,6 +108,66 @@ Hooks.CategoryPie = {
   }
 }
 
+Hooks.CategoryHistoryChart = {
+  mounted() { this.render() },
+  updated() { this.render() },
+  destroyed() { if (this.chart) this.chart.destroy() },
+  render() {
+    const payload = JSON.parse(this.el.dataset.chart)
+    const fmt = (v) => `€${Math.round(v).toLocaleString("es-ES")}`
+
+    if (this.chart) this.chart.destroy()
+
+    const ctx = this.el.querySelector("canvas").getContext("2d")
+    this.chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels: payload.labels,
+        datasets: payload.datasets.map((ds) => ({
+          label: ds.label,
+          data: ds.data,
+          borderColor: ds.color,
+          backgroundColor: ds.color + "cc",
+          borderWidth: 1,
+          // ~570 daily points: markers would be noise, and the bands carry
+          // the shape on their own.
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          fill: true,
+          tension: 0.2
+        }))
+      },
+      options: {
+        responsive: true,
+        interaction: {mode: "index", intersect: false},
+        plugins: {
+          legend: {position: "top"},
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`,
+              footer: (items) => `Total: ${fmt(items.reduce((a, i) => a + i.parsed.y, 0))}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: "time",
+            time: {minUnit: "day", tooltipFormat: "dd/MM/yyyy", displayFormats: {day: "dd MMM", month: "MMM yyyy"}},
+            title: {display: true, text: "Date"}
+          },
+          y: {
+            stacked: true,
+            // Stacked areas encode magnitude by area, so the axis has to start
+            // at zero or the bottom band is silently clipped.
+            beginAtZero: true,
+            ticks: {callback: (v) => fmt(v)}
+          }
+        }
+      }
+    })
+  }
+}
+
 Hooks.DcaChart = {
   mounted() {
     const ctx = this.el.getContext('2d')

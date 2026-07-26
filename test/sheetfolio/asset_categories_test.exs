@@ -193,4 +193,80 @@ defmodule Sheetfolio.AssetCategoriesTest do
       assert AssetCategories.breakdown([], %{}) == []
     end
   end
+
+  describe "history/2" do
+    test "gives each date's category totals, in the order the dates came in" do
+      dated = [
+        {"2025-01-01", [position("A", "Fund A", 100.0)]},
+        {"2025-01-02", [position("A", "Fund A", 150.0), position("B", "Fund B", 50.0)]}
+      ]
+
+      categories = %{"A" => "Indexados", "B" => "Bitcoin"}
+
+      assert [first, second] = AssetCategories.history(dated, categories)
+
+      assert first == %{date: "2025-01-01", totals: %{"Indexados" => 100.0}}
+      assert second.date == "2025-01-02"
+      assert second.totals == %{"Indexados" => 150.0, "Bitcoin" => 50.0}
+    end
+
+    test "a category not held on a date is absent rather than zero" do
+      dated = [{"2025-01-01", [position("A", "Fund A", 100.0)]}]
+
+      [point] = AssetCategories.history(dated, %{"A" => "Indexados", "B" => "Bitcoin"})
+
+      refute Map.has_key?(point.totals, "Bitcoin")
+    end
+
+    test "positions of sold-out share classes still categorize through the fallbacks" do
+      # These only appear in older snapshots; the sheet lists their successors.
+      dated = [
+        {"2025-01-01",
+         [
+           position("IE0032126645", "Vanguard US 500", 1000.0),
+           position("ES0170156048", "Santalucia Renta Fija", 500.0),
+           position("IE00B04GQX83", "Vanguard US Inv Grade", 250.0)
+         ]}
+      ]
+
+      [point] = AssetCategories.history(dated, %{})
+
+      assert point.totals == %{
+               "Indexados" => 1000.0,
+               "Renta fija corto plazo" => 500.0,
+               "Renta fija largo plazo" => 250.0
+             }
+
+      refute Map.has_key?(point.totals, AssetCategories.uncategorized())
+    end
+  end
+
+  describe "history_categories/1" do
+    test "lists every category seen, largest cumulative total first" do
+      history = [
+        %{date: "2025-01-01", totals: %{"Indexados" => 100.0, "Bitcoin" => 500.0}},
+        %{date: "2025-01-02", totals: %{"Indexados" => 900.0}}
+      ]
+
+      assert AssetCategories.history_categories(history) == ["Indexados", "Bitcoin"]
+    end
+
+    test "Inmobiliario leads regardless of size, so the flat band sits at the bottom" do
+      history = [
+        %{date: "2025-01-01", totals: %{"Indexados" => 900.0, "Inmobiliario" => 100.0}}
+      ]
+
+      assert AssetCategories.history_categories(history) == ["Inmobiliario", "Indexados"]
+    end
+
+    test "Inmobiliario is skipped when the history never held any" do
+      history = [%{date: "2025-01-01", totals: %{"Indexados" => 900.0}}]
+
+      assert AssetCategories.history_categories(history) == ["Indexados"]
+    end
+
+    test "an empty history has no categories" do
+      assert AssetCategories.history_categories([]) == []
+    end
+  end
 end
