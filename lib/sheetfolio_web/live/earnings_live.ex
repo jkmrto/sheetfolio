@@ -12,8 +12,10 @@ defmodule SheetfolioWeb.EarningsLive do
           authenticated: true,
           realized_events: [],
           unrealized: [],
+          dividends: [],
           view: "by_asset",
-          expanded_assets: MapSet.new()
+          expanded_assets: MapSet.new(),
+          expanded_dividends: MapSet.new()
         )
 
       if connected?(socket) do
@@ -24,7 +26,12 @@ defmodule SheetfolioWeb.EarningsLive do
           Sheetfolio.Positions.realized_events(operations, eur_usd, eur_cad)
           |> Enum.reverse()
 
-        {:ok, assign(socket, realized_events: realized_events, unrealized: unrealized_positions())}
+        {:ok,
+         assign(socket,
+           realized_events: realized_events,
+           unrealized: unrealized_positions(),
+           dividends: Sheetfolio.Dividends.all()
+         )}
       else
         {:ok, socket}
       end
@@ -46,11 +53,21 @@ defmodule SheetfolioWeb.EarningsLive do
     {:noreply, assign(socket, expanded_assets: expanded)}
   end
 
+  def handle_event("toggle_dividend_asset", %{"asset" => asset}, socket) do
+    {:noreply, assign(socket, expanded_dividends: toggle(socket.assigns.expanded_dividends, asset))}
+  end
+
+  defp toggle(set, key) do
+    if MapSet.member?(set, key), do: MapSet.delete(set, key), else: MapSet.put(set, key)
+  end
+
   def render(assigns) do
     assigns =
       assign(assigns,
         realized_sum: Enum.reduce(assigns.realized_events, 0.0, &(&1.realized + &2)),
         unrealized_sum: Enum.reduce(assigns.unrealized, 0.0, &(&1.value - &1.invested + &2)),
+        dividends_sum: Sheetfolio.Dividends.total(assigns.dividends),
+        dividends_by_asset: Sheetfolio.Dividends.by_asset(assigns.dividends),
         by_asset: group_by_asset(assigns.realized_events)
       )
 
@@ -89,8 +106,9 @@ defmodule SheetfolioWeb.EarningsLive do
 
     <div class="earnings-total">
       Realized <strong class={sign_class(@realized_sum)}><%= eur(@realized_sum) %></strong>
+      + Dividends <strong class={sign_class(@dividends_sum)}><%= eur(@dividends_sum) %></strong>
       + Unrealized <strong class={sign_class(@unrealized_sum)}><%= eur(@unrealized_sum) %></strong>
-      = <strong class={sign_class(@realized_sum + @unrealized_sum)}><%= eur(@realized_sum + @unrealized_sum) %></strong>
+      = <strong class={sign_class(@realized_sum + @dividends_sum + @unrealized_sum)}><%= eur(@realized_sum + @dividends_sum + @unrealized_sum) %></strong>
     </div>
 
     <div class="earnings-section">Realized</div>
@@ -187,6 +205,50 @@ defmodule SheetfolioWeb.EarningsLive do
         <tr class="sum">
           <td class="left" colspan="6">Total realized</td>
           <td class={sign_class(@realized_sum)}><%= eur(@realized_sum) %></td>
+        </tr>
+      </table>
+    <% end %>
+
+    <div class="earnings-section">Dividends — net cash distributions received</div>
+    <%= if @dividends_by_asset == [] do %>
+      <div class="earnings-total muted">No distributions recorded yet.</div>
+    <% else %>
+      <table class="earnings-table">
+        <tr>
+          <th class="left">Asset</th><th>Payments</th><th>First</th><th>Last</th><th>Received</th>
+        </tr>
+        <%= for row <- @dividends_by_asset do %>
+          <% open? = MapSet.member?(@expanded_dividends, row.asset) %>
+          <tr class="asset-row" phx-click="toggle_dividend_asset" phx-value-asset={row.asset}>
+            <td class="left">
+              <span class={"chevron#{if open?, do: " open"}"}>▶</span><%= row.asset %>
+            </td>
+            <td><%= row.count %></td>
+            <td><%= row.first_date %></td>
+            <td><%= row.last_date %></td>
+            <td class="pos"><%= eur(row.total) %></td>
+          </tr>
+          <%= if open? do %>
+            <tr class="details-row">
+              <td colspan="5">
+                <div class="details-inner">
+                  <table class="details-table">
+                    <tr><th class="left">Fecha</th><th>Amount</th></tr>
+                    <%= for p <- row.payments do %>
+                      <tr>
+                        <td class="left"><%= p["date"] %></td>
+                        <td class="pos"><%= eur(p["amount"]) %></td>
+                      </tr>
+                    <% end %>
+                  </table>
+                </div>
+              </td>
+            </tr>
+          <% end %>
+        <% end %>
+        <tr class="sum">
+          <td class="left" colspan="4">Total dividends</td>
+          <td class="pos"><%= eur(@dividends_sum) %></td>
         </tr>
       </table>
     <% end %>
