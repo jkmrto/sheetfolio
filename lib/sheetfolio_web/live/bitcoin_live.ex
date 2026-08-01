@@ -8,6 +8,7 @@ defmodule SheetfolioWeb.BitcoinLive do
 
   @isin "GB00BJYDH287"
   @chart_from ~D[2025-01-01]
+  @ranges ~w(1m 3m 1y ytd all)
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
@@ -20,7 +21,8 @@ defmodule SheetfolioWeb.BitcoinLive do
           etp_price: nil,
           coinbase: CryptoHoldings.position([], nil),
           btc_price: nil,
-          exposure: nil
+          exposure: nil,
+          range: "all"
         )
 
       if connected?(socket), do: {:ok, load(socket)}, else: {:ok, socket}
@@ -71,6 +73,26 @@ defmodule SheetfolioWeb.BitcoinLive do
   end
 
   def handle_info({:price_result, _isin, _price}, socket), do: {:noreply, socket}
+
+  def handle_event("set_range", %{"range" => range}, socket) when range in @ranges do
+    {:noreply, assign(socket, range: range)}
+  end
+
+  defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+
+  # "All" is the whole charted series, which starts in 2025 — see
+  # BitcoinExposure on why it can't reach further back.
+  defp filter_range(series, "all"), do: series
+
+  defp filter_range(series, range) do
+    cutoff = range |> cutoff_date(Date.utc_today()) |> Date.to_iso8601()
+    Enum.filter(series, &(&1.date >= cutoff))
+  end
+
+  defp cutoff_date("1m", today), do: Date.shift(today, month: -1)
+  defp cutoff_date("3m", today), do: Date.shift(today, month: -3)
+  defp cutoff_date("1y", today), do: Date.shift(today, year: -1)
+  defp cutoff_date("ytd", today), do: Date.new!(today.year, 1, 1)
 
   # The snapshots and the price series are both slow reads, so the page paints
   # its totals first and the chart arrives after.
@@ -135,6 +157,10 @@ defmodule SheetfolioWeb.BitcoinLive do
       .btc-link { display: inline-block; margin-top: 1.25rem; color: #2563eb; font-size: 0.9rem; }
       .btc-chart-card { background: white; border-radius: 12px; padding: 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 1rem; }
       .btc-loading { color: #64748b; font-size: 0.9rem; padding: 2rem 0; text-align: center; }
+      .range-row { display: flex; margin-bottom: 1rem; }
+      .range-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+      .range-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
+      .range-toggle button.selected { background: #1e293b; color: white; }
     </style>
 
     <div class="btc-cards">
@@ -163,7 +189,14 @@ defmodule SheetfolioWeb.BitcoinLive do
       <%= if @exposure == nil do %>
         <div class="btc-loading">Loading exposure history…</div>
       <% else %>
-        <div id="btc-exposure-chart" phx-hook="CategoryHistoryChart" data-chart={Jason.encode!(chart_payload(@exposure))}>
+        <div class="range-row">
+          <div class="range-toggle">
+            <%= for {value, label} <- range_options() do %>
+              <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}>{label}</button>
+            <% end %>
+          </div>
+        </div>
+        <div id="btc-exposure-chart" phx-hook="CategoryHistoryChart" data-chart={Jason.encode!(chart_payload(filter_range(@exposure, @range)))}>
           <div id="btc-exposure-canvas" phx-update="ignore">
             <canvas></canvas>
           </div>
