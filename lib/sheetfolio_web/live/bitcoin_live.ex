@@ -2,10 +2,12 @@ defmodule SheetfolioWeb.BitcoinLive do
   use SheetfolioWeb, :live_view
 
   alias Sheetfolio.BitcoinDca
+  alias Sheetfolio.BitcoinExposure
   alias Sheetfolio.CryptoHoldings
   alias Sheetfolio.PricesApi.YahooFinance
 
   @isin "GB00BJYDH287"
+  @chart_from ~D[2025-01-01]
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
@@ -17,7 +19,8 @@ defmodule SheetfolioWeb.BitcoinLive do
           etp: %{net_qty: 0.0, cost_basis: 0.0},
           etp_price: nil,
           coinbase: CryptoHoldings.position([], nil),
-          btc_price: nil
+          btc_price: nil,
+          exposure: nil
         )
 
       if connected?(socket), do: {:ok, load(socket)}, else: {:ok, socket}
@@ -30,6 +33,7 @@ defmodule SheetfolioWeb.BitcoinLive do
 
     Sheetfolio.EarningsServer.request_price(@isin, self())
     request_btc_price()
+    request_exposure()
 
     assign(socket,
       etp: etp_position(BitcoinDca.state_history(operations, eur_usd, eur_cad)),
@@ -60,11 +64,54 @@ defmodule SheetfolioWeb.BitcoinLive do
 
   def handle_info({:btc_price, _error}, socket), do: {:noreply, socket}
 
+  def handle_info({:exposure, series}, socket), do: {:noreply, assign(socket, exposure: series)}
+
   def handle_info({:price_result, @isin, price_eur}, socket) do
     {:noreply, assign(socket, etp_price: price_eur)}
   end
 
   def handle_info({:price_result, _isin, _price}, socket), do: {:noreply, socket}
+
+  # The snapshots and the price series are both slow reads, so the page paints
+  # its totals first and the chart arrives after.
+  defp request_exposure do
+    caller = self()
+
+    Task.Supervisor.start_child(Sheetfolio.TaskSupervisor, fn ->
+      send(caller, {:exposure, build_exposure()})
+    end)
+  end
+
+  defp build_exposure do
+    units = CryptoHoldings.by_symbol("BTC") |> Enum.reduce(0.0, &(&1["units"] + &2))
+    BitcoinExposure.series(snapshots_since(@chart_from), btc_series(), units, @isin)
+  end
+
+  defp btc_series do
+    case YahooFinance.fetch_series("BTC-EUR", @chart_from, Date.utc_today()) do
+      {:ok, prices, _currency} -> prices
+      _ -> %{}
+    end
+  end
+
+  defp snapshots_since(from) do
+    :mongo
+    |> Mongo.find("portfolio_snapshots", %{date: %{"$gte" => Date.to_iso8601(from)}},
+      sort: %{date: 1}
+    )
+    |> Enum.to_list()
+  end
+
+  defp chart_payload(series) do
+    %{
+      stacked: true,
+      labels: Enum.map(series, & &1.date),
+      datasets: [
+        %{label: "Coinbase — spot BTC", color: "#f7931a", data: Enum.map(series, & &1.coinbase)},
+        %{label: "WisdomTree Bitcoin ETP", color: "#1e40af", data: Enum.map(series, & &1.etp)}
+      ]
+    }
+  end
 
   def render(assigns) do
     assigns = assign(assigns, totals: totals(assigns))
@@ -86,6 +133,8 @@ defmodule SheetfolioWeb.BitcoinLive do
       .btc-pos { color: #16a34a; font-weight: 600; }
       .btc-neg { color: #dc2626; font-weight: 600; }
       .btc-link { display: inline-block; margin-top: 1.25rem; color: #2563eb; font-size: 0.9rem; }
+      .btc-chart-card { background: white; border-radius: 12px; padding: 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 1rem; }
+      .btc-loading { color: #64748b; font-size: 0.9rem; padding: 2rem 0; text-align: center; }
     </style>
 
     <div class="btc-cards">
@@ -107,6 +156,19 @@ defmodule SheetfolioWeb.BitcoinLive do
         <div class="btc-card-label">BTC Spot</div>
         <div class="btc-card-value"><%= eur_or_dash(@btc_price) %></div>
       </div>
+    </div>
+
+    <div class="btc-section">Exposure since 2025</div>
+    <div class="btc-chart-card">
+      <%= if @exposure == nil do %>
+        <div class="btc-loading">Loading exposure history…</div>
+      <% else %>
+        <div id="btc-exposure-chart" phx-hook="CategoryHistoryChart" data-chart={Jason.encode!(chart_payload(@exposure))}>
+          <div id="btc-exposure-canvas" phx-update="ignore">
+            <canvas></canvas>
+          </div>
+        </div>
+      <% end %>
     </div>
 
     <div class="btc-section">Exposure</div>
