@@ -37,6 +37,7 @@ defmodule SheetfolioWeb.Router do
       live "/summary/settled", SummaryLive, :settled
       live "/summary/dca", DcaLive
       live "/summary/dca/bitcoin", DcaBitcoinLive
+      live "/bitcoin", BitcoinLive
       live "/snapshot", SnapshotLive
     end
   end
