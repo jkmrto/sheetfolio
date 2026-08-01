@@ -37,4 +37,15 @@ defmodule Sheetfolio.SnapshotRecorderTest do
       assert SnapshotRecorder.unit_prices(positions) == %{}
     end
   end
+
+  describe "crypto_isin/2" do
+    test "builds a synthetic identifier per platform and coin" do
+      assert SnapshotRecorder.crypto_isin("Coinbase", "BTC") == "COINBASE-BTC"
+    end
+
+    test "is stable regardless of how the capture cased the platform" do
+      assert SnapshotRecorder.crypto_isin("coinbase", "btc") ==
+               SnapshotRecorder.crypto_isin("Coinbase", "BTC")
+    end
+  end
 end

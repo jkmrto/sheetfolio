@@ -34,6 +34,9 @@ defmodule Sheetfolio.AssetCategories do
   #   URBANITAE, EFECTIVO       — tracked in columns that carry no ISIN; cash
   #                                comes from cash_snapshots rather than from
   #                                a market position
+  #   COINBASE-BTC              — coins held on an exchange, synthesised by
+  #                                SnapshotRecorder; grouped with the Bitcoin
+  #                                ETP so the donut shows one Bitcoin slice
   #   N5396                     — the MyInvestor Indexado Global pension plan,
   #                                identified by its DGS code; the sheet
   #                                doesn't track it at all
@@ -49,6 +52,7 @@ defmodule Sheetfolio.AssetCategories do
     "US8629451027" => "Custom Stocks",
     "IE000RHYOR04" => "Renta fija corto plazo",
     "URBANITAE" => "Inmobiliario",
+    "COINBASE-BTC" => "Bitcoin",
     "EFECTIVO" => "Efectivo",
     "ES0170156048" => "Renta fija corto plazo",
     "IE0032126645" => "Indexados",

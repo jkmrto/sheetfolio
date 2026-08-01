@@ -8,6 +8,9 @@ defmodule Sheetfolio.SnapshotRecorder do
 
   require Logger
 
+  alias Sheetfolio.CryptoHoldings
+  alias Sheetfolio.PricesApi.YahooFinance
+
   @collection "portfolio_snapshots"
   @daily_hour_utc 22
 
@@ -56,7 +59,11 @@ defmodule Sheetfolio.SnapshotRecorder do
       |> Sheetfolio.PriceFetcher.fetch_prices()
 
     carry_forward = previous_prices()
-    position_docs = Enum.map(positions, &position_doc(&1, prices, carry_forward))
+
+    position_docs =
+      Enum.map(positions, &position_doc(&1, prices, carry_forward)) ++
+        crypto_positions(carry_forward)
+
     warn_about_stale_prices(position_docs)
 
     position_docs = position_docs ++ urbanitae_positions()
@@ -140,6 +147,45 @@ defmodule Sheetfolio.SnapshotRecorder do
     case Enum.filter(position_docs, & &1.stale_price) do
       [] -> :ok
       stale -> Logger.warning("SnapshotRecorder: no quote for #{Enum.map_join(stale, ", ", & &1.isin)}, carried forward the previous snapshot's price")
+    end
+  end
+
+  # Coins held on an exchange have no ISIN and no operation history, so they
+  # can't come through Positions: the cost basis is captured from the exchange
+  # and the value is quoted live against the coin's EUR pair. Unlike Urbanitae
+  # these are ordinary market positions, so they do count in the day's
+  # invested/value totals.
+  defp crypto_positions(carry_forward) do
+    Enum.map(CryptoHoldings.all(), &crypto_position_doc(&1, carry_forward))
+  end
+
+  defp crypto_position_doc(holding, carry_forward) do
+    isin = crypto_isin(holding["platform"], holding["symbol"])
+
+    {value, stale} =
+      position_value(
+        holding["units"] * 1.0,
+        spot_price(holding["symbol"]),
+        Map.get(carry_forward, isin)
+      )
+
+    %{
+      isin: isin,
+      asset: "#{String.upcase(holding["symbol"])} (#{String.upcase(holding["platform"])})",
+      units: holding["units"] * 1.0,
+      invested: Float.round(holding["cost_basis"] * 1.0, 2),
+      value: value,
+      stale_price: stale
+    }
+  end
+
+  @doc "Synthetic identifier for an exchange holding, e.g. `COINBASE-BTC`."
+  def crypto_isin(platform, symbol), do: String.upcase("#{platform}-#{symbol}")
+
+  defp spot_price(symbol) do
+    case YahooFinance.fetch_price("#{symbol}-EUR") do
+      {:ok, price, "EUR"} -> price
+      _ -> nil
     end
   end
 
