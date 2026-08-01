@@ -105,8 +105,14 @@ defmodule SheetfolioWeb.BitcoinLive do
   end
 
   defp build_exposure do
-    units = CryptoHoldings.by_symbol("BTC") |> Enum.reduce(0.0, &(&1["units"] + &2))
-    BitcoinExposure.series(snapshots_since(@chart_from), btc_series(), units, @isin)
+    holdings = CryptoHoldings.by_symbol("BTC")
+
+    coinbase = %{
+      units: Enum.reduce(holdings, 0.0, &(&1["units"] + &2)),
+      cost_basis: Enum.reduce(holdings, 0.0, &(&1["cost_basis"] + &2))
+    }
+
+    BitcoinExposure.series(snapshots_since(@chart_from), btc_series(), coinbase, @isin)
   end
 
   defp btc_series do
@@ -130,7 +136,16 @@ defmodule SheetfolioWeb.BitcoinLive do
       labels: Enum.map(series, & &1.date),
       datasets: [
         %{label: "Coinbase — spot BTC", color: "#f7931a", data: Enum.map(series, & &1.coinbase)},
-        %{label: "WisdomTree Bitcoin ETP", color: "#1e40af", data: Enum.map(series, & &1.etp)}
+        %{label: "WisdomTree Bitcoin ETP", color: "#1e40af", data: Enum.map(series, & &1.etp)},
+        %{
+          label: "Invested",
+          color: "#0f172a",
+          data: Enum.map(series, & &1.invested),
+          fill: false,
+          stack: "invested",
+          width: 2,
+          dash: [6, 4]
+        }
       ]
     }
   end

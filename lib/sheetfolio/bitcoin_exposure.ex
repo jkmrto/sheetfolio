@@ -1,17 +1,18 @@
 defmodule Sheetfolio.BitcoinExposure do
   @moduledoc """
   Bitcoin exposure over time, split between the WisdomTree ETP and coins held
-  on an exchange.
+  on an exchange, alongside what was paid for both.
 
-  The ETP's value comes from the daily portfolio snapshots, so the chart agrees
-  with what /history and the overview already report. The coins can't: they only
-  entered the snapshots on 2026-08-01, so their history is reconstructed as
-  `units * BTC price on the day`.
+  The ETP's value and cost basis come from the daily portfolio snapshots, so
+  the chart agrees with what /history and the overview already report. The
+  coins can't: they only entered the snapshots on 2026-08-01, so their value is
+  reconstructed as `units * BTC price on the day` and their cost basis is held
+  flat at what the exchange reports today.
 
-  That reconstruction holds the unit count constant, which is only safe over a
-  window with no exchange activity. The last Coinbase purchase was 2024-06-25,
-  so it is true for 2025 onwards — the range this page charts — and would not be
-  for a window reaching further back.
+  Both reconstructions assume the position never changed over the window, which
+  is only safe with no exchange activity in it. The last Coinbase purchase was
+  2024-06-25, so it is true for 2025 onwards — the range this page charts — and
+  would not be for a window reaching further back.
   """
 
   alias Sheetfolio.BitcoinDca
@@ -19,24 +20,36 @@ defmodule Sheetfolio.BitcoinExposure do
   @doc """
   One point per snapshot, oldest first:
 
-      %{date: "2025-01-01", etp: 0.0, coinbase: 812.44}
+      %{date: "2025-01-01", etp: 0.0, coinbase: 812.44, invested: 826.13}
+
+  `invested` is the combined cost basis as it stood that day, so the gap
+  between it and the stacked bands is the unrealized gain or loss.
 
   A snapshot with no usable BTC price is dropped rather than charted as a gap:
   a stacked band reading zero for a day would look like the position was sold.
   """
-  def series(snapshots, btc_prices, units, etp_isin) do
+  def series(snapshots, btc_prices, coinbase, etp_isin) do
     snapshots
     |> Enum.sort_by(& &1["date"])
-    |> Enum.map(&point(&1, btc_prices, units, etp_isin))
+    |> Enum.map(&point(&1, btc_prices, coinbase, etp_isin))
     |> Enum.reject(&is_nil/1)
   end
 
-  defp point(snapshot, btc_prices, units, etp_isin) do
+  defp point(snapshot, btc_prices, coinbase, etp_isin) do
     date = snapshot["date"]
+    position = etp_position(snapshot, etp_isin)
 
-    case coinbase_value(date, btc_prices, units) do
-      nil -> nil
-      value -> %{date: date, etp: etp_value(snapshot, etp_isin), coinbase: value}
+    case coinbase_value(date, btc_prices, coinbase.units) do
+      nil ->
+        nil
+
+      value ->
+        %{
+          date: date,
+          etp: field(position, "value"),
+          coinbase: value,
+          invested: Float.round(field(position, "invested") + coinbase.cost_basis, 2)
+        }
     end
   end
 
@@ -49,13 +62,20 @@ defmodule Sheetfolio.BitcoinExposure do
     end
   end
 
-  defp etp_value(snapshot, etp_isin) do
+  defp etp_position(snapshot, etp_isin) do
     snapshot["positions"]
     |> List.wrap()
     |> Enum.find(&(&1["isin"] == etp_isin))
-    |> position_value()
   end
 
-  defp position_value(%{"value" => value}) when is_number(value), do: Float.round(value * 1.0, 2)
-  defp position_value(_position), do: 0.0
+  # A date before the ETP was bought has no position at all, and a stored
+  # position can carry a nil value when its quote failed.
+  defp field(nil, _key), do: 0.0
+
+  defp field(position, key) do
+    case position[key] do
+      value when is_number(value) -> Float.round(value * 1.0, 2)
+      _ -> 0.0
+    end
+  end
 end

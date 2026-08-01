@@ -127,17 +127,22 @@ Hooks.CategoryHistoryChart = {
       type: "line",
       data: {
         labels: payload.labels,
+        // A dataset can opt out of the stack (`stack` in its own group, and
+        // `fill: false`) to ride over the bands as a reference line instead of
+        // adding to them — the invested line on the Bitcoin page does this.
         datasets: payload.datasets.map((ds) => ({
           label: ds.label,
           data: ds.data,
           borderColor: ds.color,
           backgroundColor: stacked ? ds.color + "cc" : ds.color,
-          borderWidth: stacked ? 1 : 2,
+          borderWidth: ds.width || (stacked ? 1 : 2),
+          borderDash: ds.dash || [],
+          stack: ds.stack,
           // ~570 daily points: markers would be noise, and the bands carry
           // the shape on their own.
           pointRadius: 0,
           pointHoverRadius: 4,
-          fill: stacked,
+          fill: ds.fill === undefined ? stacked : ds.fill,
           tension: 0.2
         }))
       },
@@ -149,7 +154,12 @@ Hooks.CategoryHistoryChart = {
           tooltip: {
             callbacks: {
               label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`,
-              footer: (items) => stacked ? `Total: ${fmt(items.reduce((a, i) => a + i.parsed.y, 0))}` : null
+              // Only the filled bands make up the total; an unstacked
+              // reference line sits alongside them and must not be added in.
+              footer: (items) => {
+                const bands = items.filter((i) => i.dataset.fill)
+                return stacked && bands.length ? `Total: ${fmt(bands.reduce((a, i) => a + i.parsed.y, 0))}` : null
+              }
             }
           }
         },
