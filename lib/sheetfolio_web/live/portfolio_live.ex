@@ -236,14 +236,19 @@ defmodule SheetfolioWeb.PortfolioLive do
           <div class="kpi">
             <div class="kpi-label">Net worth</div>
             <div class="kpi-value"><%= eur(k.net_worth) %></div>
-            <div class="kpi-sub">
-              <%= if k.net_change do %>
-                <span class={delta_class(k.net_change.amount)}><%= signed(k.net_change.amount) %></span>
-                <%= if k.net_change.pct, do: "(#{signed_pct(k.net_change.pct)})" %> since the previous day
-              <% else %>
-                portfolio + cash + Urbanitae
+            <%= if k.day_change == nil and k.week_change == nil do %>
+              <div class="kpi-sub">portfolio + cash + Urbanitae</div>
+            <% end %>
+            <%= for {change, label} <- [{k.day_change, "vs yesterday"}, {k.week_change, "vs last week"}] do %>
+              <%= if change do %>
+                <div class="kpi-sub">
+                  <span class={delta_class(change.amount)}>
+                    <%= arrow(change.amount) %> <%= signed(change.amount) %>
+                  </span>
+                  <%= if change.pct, do: "(#{signed_pct(change.pct)})" %> <%= label %>
+                </div>
               <% end %>
-            </div>
+            <% end %>
           </div>
           <div class="kpi">
             <div class="kpi-label">Portfolio value</div>
@@ -258,9 +263,8 @@ defmodule SheetfolioWeb.PortfolioLive do
           <div class="kpi">
             <div class="kpi-label">Total earnings</div>
             <div class={"kpi-value #{delta_class(k.earnings)}"}><%= signed(k.earnings) %></div>
-            <div class="kpi-sub">
-              <%= eur(k.realized) %> realized · <%= eur(k.dividends) %> dividends
-            </div>
+            <div class="kpi-sub"><%= eur(k.realized) %> realized · <%= eur(k.unrealized) %> unrealized</div>
+            <div class="kpi-sub"><%= eur(k.dividends) %> dividends · <%= eur(k.urbanitae) %> Urbanitae</div>
           </div>
         </div>
 
@@ -396,6 +400,9 @@ defmodule SheetfolioWeb.PortfolioLive do
   defp delta_class(value) when value >= 0, do: "kpi-up"
   defp delta_class(_value), do: "kpi-down"
 
+  defp arrow(value) when value >= 0, do: "▲"
+  defp arrow(_value), do: "▼"
+
   defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
 
   defp history_view_options, do: [{"stacked", "Cumulative"}, {"lines", "By category"}]
@@ -459,18 +466,22 @@ defmodule SheetfolioWeb.PortfolioLive do
     value = number(latest["total_value"])
     realized = number(latest["total_realized"])
     unrealized = Float.round(value - invested, 2)
+    {_outstanding, urbanitae} = Map.get(assigns.urbanitae_by_date, latest["date"], {0.0, 0.0})
+    urbanitae = Float.round(urbanitae, 2)
 
     %{
       date: latest["date"],
       net_worth: net_worth(net),
-      net_change: net_change(net),
+      day_change: change_since(net, 1),
+      week_change: change_since(net, 7),
       invested: invested,
       value: value,
       unrealized: unrealized,
       unrealized_pct: percentage(unrealized, invested),
       realized: realized,
       dividends: assigns.dividends,
-      earnings: Float.round(realized + assigns.dividends + unrealized, 2),
+      urbanitae: urbanitae,
+      earnings: Float.round(realized + assigns.dividends + urbanitae + unrealized, 2),
       partial: latest["partial"] == true
     }
   end
@@ -478,12 +489,24 @@ defmodule SheetfolioWeb.PortfolioLive do
   defp net_worth([]), do: nil
   defp net_worth(points), do: List.last(points).y
 
-  defp net_change(points) when length(points) < 2, do: nil
+  # Compares against the point `days` back on the calendar rather than N
+  # entries back in the list, so a gap in recording can't silently turn a
+  # "last week" comparison into a much older one.
+  defp change_since(points, _days) when length(points) < 2, do: nil
 
-  defp net_change(points) do
-    [previous, current] = Enum.take(points, -2)
+  defp change_since(points, days) do
+    current = List.last(points)
+    cutoff = current.x |> Date.from_iso8601!() |> Date.shift(day: -days) |> Date.to_iso8601()
+
+    case Enum.filter(points, &(&1.x <= cutoff)) do
+      [] -> nil
+      earlier -> delta(List.last(earlier), current)
+    end
+  end
+
+  defp delta(previous, current) do
     change = Float.round(current.y - previous.y, 2)
-    %{amount: change, pct: percentage(change, previous.y)}
+    %{amount: change, pct: percentage(change, previous.y), from: previous.x}
   end
 
   defp percentage(_change, base) when base in [0, 0.0] or base < 0, do: nil

@@ -13,6 +13,7 @@ defmodule SheetfolioWeb.EarningsLive do
           realized_events: [],
           unrealized: [],
           dividends: [],
+          urbanitae: [],
           view: "by_asset",
           expanded_assets: MapSet.new(),
           expanded_dividends: MapSet.new()
@@ -30,7 +31,8 @@ defmodule SheetfolioWeb.EarningsLive do
          assign(socket,
            realized_events: realized_events,
            unrealized: unrealized_positions(),
-           dividends: Sheetfolio.Dividends.all()
+           dividends: Sheetfolio.Dividends.all(),
+           urbanitae: urbanitae_earnings()
          )}
       else
         {:ok, socket}
@@ -68,6 +70,7 @@ defmodule SheetfolioWeb.EarningsLive do
         unrealized_sum: Enum.reduce(assigns.unrealized, 0.0, &(&1.value - &1.invested + &2)),
         dividends_sum: Sheetfolio.Dividends.total(assigns.dividends),
         dividends_by_asset: Sheetfolio.Dividends.by_asset(assigns.dividends),
+        urbanitae_sum: Enum.reduce(assigns.urbanitae, 0.0, &(&1.earnings + &2)),
         by_asset: group_by_asset(assigns.realized_events)
       )
 
@@ -104,11 +107,13 @@ defmodule SheetfolioWeb.EarningsLive do
       .details-table tr:last-child td { border-bottom: none; }
     </style>
 
+    <% total_sum = @realized_sum + @dividends_sum + @urbanitae_sum + @unrealized_sum %>
     <div class="earnings-total">
       Realized <strong class={sign_class(@realized_sum)}><%= eur(@realized_sum) %></strong>
       + Dividends <strong class={sign_class(@dividends_sum)}><%= eur(@dividends_sum) %></strong>
+      + Urbanitae <strong class={sign_class(@urbanitae_sum)}><%= eur(@urbanitae_sum) %></strong>
       + Unrealized <strong class={sign_class(@unrealized_sum)}><%= eur(@unrealized_sum) %></strong>
-      = <strong class={sign_class(@realized_sum + @dividends_sum + @unrealized_sum)}><%= eur(@realized_sum + @dividends_sum + @unrealized_sum) %></strong>
+      = <strong class={sign_class(total_sum)}><%= eur(total_sum) %></strong>
     </div>
 
     <div class="earnings-section">Realized</div>
@@ -253,6 +258,32 @@ defmodule SheetfolioWeb.EarningsLive do
       </table>
     <% end %>
 
+    <div class="earnings-section">Urbanitae — yield repaid and gains on closed projects</div>
+    <%= if @urbanitae == [] do %>
+      <div class="earnings-total muted">No Urbanitae earnings recorded yet.</div>
+    <% else %>
+      <table class="earnings-table">
+        <tr>
+          <th class="left">Project</th><th class="left">Type</th><th class="left">Status</th>
+          <th>Yield</th><th>Closure gain</th><th>Earnings</th>
+        </tr>
+        <%= for row <- @urbanitae do %>
+          <tr>
+            <td class="left"><%= row.project %></td>
+            <td class="left"><%= row.type || "—" %></td>
+            <td class="left"><%= row.status %></td>
+            <td><%= eur(row.yield) %></td>
+            <td><%= eur(row.closure_gain) %></td>
+            <td class="pos"><%= eur(row.earnings) %></td>
+          </tr>
+        <% end %>
+        <tr class="sum">
+          <td class="left" colspan="5">Total Urbanitae</td>
+          <td class="pos"><%= eur(@urbanitae_sum) %></td>
+        </tr>
+      </table>
+    <% end %>
+
     <div class="earnings-section">Unrealized — open positions at the latest snapshot</div>
     <table class="earnings-table">
       <tr>
@@ -290,6 +321,30 @@ defmodule SheetfolioWeb.EarningsLive do
       }
     end)
     |> Enum.sort_by(& &1.realized, :desc)
+  end
+
+  # Yield repaid on projects still running, plus the surplus over capital on
+  # ones that have closed — the same two components UrbanitaeTransactions
+  # reports as a single earnings figure, split so the source is visible.
+  defp urbanitae_earnings do
+    Sheetfolio.UrbanitaeTransactions.all()
+    |> Sheetfolio.UrbanitaeTransactions.rollup_by_project()
+    |> Enum.map(&urbanitae_row/1)
+    |> Enum.filter(&(&1.earnings > 0.005))
+    |> Enum.sort_by(& &1.earnings, :desc)
+  end
+
+  defp urbanitae_row(project) do
+    closure_gain = Float.round(max(project.principal_returned - project.invested, 0.0), 2)
+
+    %{
+      project: "#{project.city} · #{project.project}",
+      type: project.type,
+      status: project.status,
+      yield: project.yield_returned,
+      closure_gain: closure_gain,
+      earnings: Float.round(project.yield_returned + closure_gain, 2)
+    }
   end
 
   defp unrealized_positions do
