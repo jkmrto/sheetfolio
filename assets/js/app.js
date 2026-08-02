@@ -36,11 +36,23 @@ Hooks.HistoryChart = {
         }
 
     const ctx = this.el.querySelector("canvas").getContext("2d")
+    // Only charts that ask for it become clickable; the rest keep no handler.
+    const pushOnClick = payload.clickEvent
+      ? (evt, _els, chart) => {
+          const points = chart.getElementsAtEventForMode(evt, "index", {intersect: false}, true)
+          if (!points.length) return
+          const point = chart.data.datasets[points[0].datasetIndex].data[points[0].index]
+          const date = point && point.x
+          if (date) this.pushEvent(payload.clickEvent, {date: String(date).slice(0, 10)})
+        }
+      : undefined
+
     this.chart = new Chart(ctx, {
       type: "line",
       data: {labels: payload.labels, datasets},
       options: {
         responsive: true,
+        onClick: pushOnClick,
         interaction: {mode: "index", intersect: false},
         plugins: {
           legend: {position: "top"},

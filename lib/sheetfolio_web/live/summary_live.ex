@@ -82,10 +82,19 @@ defmodule SheetfolioWeb.SummaryLive do
       .summary-table tfoot td { background: #f8fafc; font-weight: 600; border-top: 2px solid #e2e8f0; }
       .positive { color: #16a34a; font-weight: 600; }
       .negative { color: #dc2626; font-weight: 600; }
+      .positions-subtabs { display: flex; gap: 0.5rem; border-bottom: 1px solid #e2e8f0; flex: 1; }
+      .positions-subtabs a { border: none; background: none; color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
+      .positions-subtabs a:hover { color: #1e293b; }
+      .positions-subtabs a.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
+      .positions-bar { display: flex; align-items: flex-end; gap: 1rem; margin-bottom: 1rem; }
     </style>
 
-    <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
-      <button phx-click="refresh_prices" style="background: #1e293b; color: white; border: none; padding: 0.4rem 0.9rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer;">
+    <div class="positions-bar">
+      <div class="positions-subtabs">
+        <.link navigate="/summary" class={if @live_action == :active, do: "active", else: ""}>Active</.link>
+        <.link navigate="/summary/settled" class={if @live_action == :settled, do: "active", else: ""}>Settled</.link>
+      </div>
+      <button phx-click="refresh_prices" style="background: #1e293b; color: white; border: none; padding: 0.4rem 0.9rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer; white-space: nowrap;">
         ↺ Refresh prices
       </button>
     </div>

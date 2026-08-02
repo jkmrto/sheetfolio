@@ -16,7 +16,8 @@ defmodule SheetfolioWeb.HistoryLive do
           asset_list: [],
           color_map: %{},
           metric: "value",
-          range: "all"
+          range: "all",
+          selected_date: nil
         )
 
       if connected?(socket) do
@@ -32,7 +33,13 @@ defmodule SheetfolioWeb.HistoryLive do
             [] -> %{}
           end
 
-        {:ok, assign(socket, snapshots: snapshots, asset_list: asset_list, color_map: color_map)}
+        {:ok,
+         assign(socket,
+           snapshots: snapshots,
+           asset_list: asset_list,
+           color_map: color_map,
+           selected_date: latest_date(snapshots)
+         )}
       else
         {:ok, socket}
       end
@@ -67,6 +74,17 @@ defmodule SheetfolioWeb.HistoryLive do
     {:noreply, assign(socket, range: range)}
   end
 
+  def handle_event("set_date", %{"date" => date}, socket) when date != "" do
+    {:noreply, assign(socket, selected_date: date)}
+  end
+
+  def handle_event("set_date", _params, socket), do: {:noreply, socket}
+
+  # Clicking a point on the chart drills the table below to that day.
+  def handle_event("select_point", %{"date" => date}, socket) do
+    {:noreply, assign(socket, selected_date: date)}
+  end
+
   def render(assigns) do
     ~H"""
     <style>
@@ -80,6 +98,20 @@ defmodule SheetfolioWeb.HistoryLive do
       .metric-toggle button.selected { background: #1e293b; color: white; }
       .range-toggle { margin-left: 0; }
       .empty-note { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); color: #64748b; font-size: 0.9rem; }
+      .date-bar { display: flex; align-items: center; gap: 1rem; margin: 2rem 0 1rem; }
+      .date-bar label { font-size: 0.9rem; font-weight: 600; color: #475569; }
+      .date-bar input[type=date] { padding: 0.4rem 0.7rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; color: #1e293b; background: white; }
+      .price-note { font-size: 0.8rem; color: #94a3b8; margin-left: auto; }
+      .snapshot-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+      .snapshot-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; }
+      .snapshot-table th:not(:first-child) { text-align: right; }
+      .snapshot-table td { padding: 0.65rem 1rem; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
+      .snapshot-table td:not(:first-child) { text-align: right; }
+      .snapshot-table tr:last-child td { border-bottom: none; }
+      .snapshot-table tr:hover td { background: #f8fafc; }
+      .snapshot-table tfoot td { background: #f8fafc; font-weight: 600; border-top: 2px solid #e2e8f0; }
+      .positive { color: #16a34a; font-weight: 600; }
+      .negative { color: #dc2626; font-weight: 600; }
     </style>
 
     <%= if @snapshots == [] do %>
@@ -113,8 +145,132 @@ defmodule SheetfolioWeb.HistoryLive do
           <canvas id="historyChartCanvas"></canvas>
         </div>
       </div>
+
+      <div class="date-bar">
+        <label>Positions on</label>
+        <form phx-change="set_date" style="display:contents;">
+          <input type="date" name="date" value={@selected_date}
+                 min={first_date(@snapshots)} max={latest_date(@snapshots)} />
+        </form>
+        <span class="price-note">Click a point on the chart to jump to that day</span>
+      </div>
+
+      <%= case positions_on(@snapshots, @selected_date) do %>
+        <% nil -> %>
+          <div class="empty-note">No snapshot recorded for <%= @selected_date %>.</div>
+        <% positions -> %>
+          <table class="snapshot-table">
+            <thead>
+              <tr>
+                <th>Asset</th><th>Units held</th><th>Invested (€)</th>
+                <th>Value (€)</th><th>Gain/Loss (€)</th><th>Gain/Loss (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for p <- positions do %>
+                <tr>
+                  <td>
+                    <strong><%= p.asset %></strong><br/>
+                    <small style="color:#94a3b8"><%= p.isin %></small>
+                    <%= if p.stale_price do %>
+                      <br/><small style="color:#f59e0b">⚠ price carried forward from an earlier day</small>
+                    <% end %>
+                  </td>
+                  <td><%= format_qty(p.units) %></td>
+                  <td><%= format_eur(p.invested) %></td>
+                  <td><%= format_eur(p.value) %></td>
+                  <td class={earnings_class(p.gain)}><%= format_abs(p.gain) %></td>
+                  <td class={earnings_class(p.gain_pct)}><%= format_pct(p.gain_pct) %></td>
+                </tr>
+              <% end %>
+            </tbody>
+            <tfoot>
+              <% totals = totals(positions) %>
+              <tr>
+                <td>Total</td>
+                <td></td>
+                <td><%= format_eur(totals.invested) %></td>
+                <td><%= format_eur(totals.value) %></td>
+                <td class={earnings_class(totals.gain)}><%= format_abs(totals.gain) %></td>
+                <td class={earnings_class(totals.gain_pct)}><%= format_pct(totals.gain_pct) %></td>
+              </tr>
+            </tfoot>
+          </table>
+      <% end %>
     <% end %>
     """
+  end
+
+  defp latest_date([]), do: nil
+  defp latest_date(snapshots), do: List.last(snapshots)["date"]
+
+  defp first_date([]), do: nil
+  defp first_date([first | _rest]), do: first["date"]
+
+  # Read straight from the stored snapshot rather than replaying the operation
+  # history: those figures are what every other page reports, and they already
+  # carry the average-cost basis Positions computed when the day was recorded.
+  defp positions_on(_snapshots, nil), do: nil
+
+  defp positions_on(snapshots, date) do
+    case Enum.find(snapshots, &(&1["date"] == date)) do
+      nil -> nil
+      snapshot -> snapshot["positions"] |> List.wrap() |> Enum.map(&position_row/1) |> sort_rows()
+    end
+  end
+
+  defp sort_rows(rows), do: Enum.sort_by(rows, & &1.invested, :desc)
+
+  defp position_row(position) do
+    invested = number(position["invested"])
+    value = number(position["value"])
+    gain = Float.round(value - invested, 2)
+
+    %{
+      isin: position["isin"],
+      asset: position["asset"],
+      units: number(position["units"]),
+      invested: invested,
+      value: value,
+      gain: gain,
+      gain_pct: percentage(gain, invested),
+      stale_price: position["stale_price"] == true
+    }
+  end
+
+  defp totals(rows) do
+    invested = rows |> Enum.reduce(0.0, &(&1.invested + &2)) |> Float.round(2)
+    value = rows |> Enum.reduce(0.0, &(&1.value + &2)) |> Float.round(2)
+    gain = Float.round(value - invested, 2)
+
+    %{invested: invested, value: value, gain: gain, gain_pct: percentage(gain, invested)}
+  end
+
+  defp percentage(_gain, invested) when invested <= 0, do: nil
+  defp percentage(gain, invested), do: Float.round(gain / invested * 100, 2)
+
+  defp number(value) when is_number(value), do: value * 1.0
+  defp number(_value), do: 0.0
+
+  defp earnings_class(nil), do: ""
+  defp earnings_class(value) when value >= 0, do: "positive"
+  defp earnings_class(_value), do: "negative"
+
+  defp format_eur(nil), do: "—"
+  defp format_eur(value), do: "#{:erlang.float_to_binary(value * 1.0, decimals: 2)} €"
+
+  defp format_abs(nil), do: "—"
+  defp format_abs(value) when value >= 0, do: "+#{format_eur(value)}"
+  defp format_abs(value), do: format_eur(value)
+
+  defp format_pct(nil), do: "—"
+  defp format_pct(value) when value >= 0, do: "+#{value}%"
+  defp format_pct(value), do: "#{value}%"
+
+  defp format_qty(value) do
+    :erlang.float_to_binary(value * 1.0, decimals: 4)
+    |> String.trim_trailing("0")
+    |> String.trim_trailing(".")
   end
 
   defp build_asset_list(snapshots) do
@@ -150,7 +306,7 @@ defmodule SheetfolioWeb.HistoryLive do
         }
       end)
 
-    %{metric: assigns.metric, datasets: datasets}
+    %{metric: assigns.metric, datasets: datasets, clickEvent: "select_point"}
   end
 
   defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
