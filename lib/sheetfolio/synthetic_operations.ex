@@ -80,35 +80,41 @@ defmodule Sheetfolio.SyntheticOperations do
   # Amounts come from the spreadsheet's "Registro de Operaciones", and each
   # implied gain reproduces that asset's figure in "Ganancias" exactly.
   #
-  # Held at Trading212, so MyInvestor never emailed any of it — the only sales
-  # it confirmed on 02/01/2026 were Palantir and the PIMCO USD ETF. Without
-  # these, 3829.42 EUR of realized P&L went uncounted.
+  # Held at Trading212, so MyInvestor never emailed any of it and the Gmail
+  # pipeline could never have seen it. Eleven positions across two liquidation
+  # days — 15/01/2024, 20/09/2024 and 02/01/2026 — carrying 3593.69 EUR of
+  # realized P&L that was going uncounted.
   #
   # ISINs, share counts and proceeds are Trading212's own, from its
-  # 2024-08..2025-08 and 2025-08..2026-08 exports. Those start after most of
-  # the purchases, so a cost basis is only quoted directly where the export
-  # holds the buys (the gold ETC, whose four lots on 20/09/2024 come to exactly
-  # the 2510.55 recorded here). Everywhere else it is proceeds minus the
-  # `Result` column — Trading212's own realized figure — which reproduces its
-  # accounting exactly instead of guessing at an entry price. Meta and Alphabet
-  # were topped up by a euro or two several times and paid small dividends;
-  # both sit inside that derived basis already, so the top-ups are not repeated
-  # as operations.
+  # 2023-08.., 2024-08.. and 2025-08.. exports. Those all start after most of
+  # the purchases, so a cost basis is only quoted directly where an export
+  # holds the buys — the EUR-hedged gold ETC, whose four lots on 20/09/2024
+  # come to exactly the 2510.55 below, which is the check that the method is
+  # sound. Everywhere else it is proceeds minus the `Result` column,
+  # Trading212's own realized figure, which reproduces its accounting exactly
+  # instead of guessing at an entry price. Small recurring top-ups and
+  # dividends on Meta and Alphabet already sit inside that derived basis, so
+  # they are not repeated as operations.
   #
-  # Purchase dates come from the spreadsheet's "Registro de Operaciones". Where
-  # an asset was bought more than once the whole basis sits on the first date:
-  # the split is not recoverable and only the total moves a closed position.
+  # Purchase dates, where known, come from the spreadsheet's "Registro de
+  # Operaciones"; where an asset was bought more than once the whole basis sits
+  # on the first date, since the split is not recoverable and only the total
+  # moves a closed position. The rest — everything bought before the earliest
+  # export — is dated on the day it was sold. That is the one invented field
+  # here, it is visible only in the Settled detail rows, and it still nets the
+  # position out and realizes the exact figure. An export reaching back to 2021
+  # would replace those dates with real ones.
   #
-  # The Xtrackers inverse ETF appears in neither the spreadsheet nor any export
-  # covering its purchase, so its date is the one invented field here — it is
-  # recorded on the day it was sold, which nets the position out on that date
-  # and still realizes the exact loss. An export from before 2024-08 would
-  # replace it with the real one.
+  # The silver ETC shares DE000A1E0HS6 with an open MyInvestor holding, and
+  # keeps that holding's name so the position is not renamed underneath it. The
+  # Trading212 lot is bought and sold in January 2024, well before MyInvestor
+  # bought in December 2025, so the two never blend.
   #
-  # Not included: a 0.13-share VanEck Gold Miners lot sold 02/01/2026 for a
-  # 1.18 EUR gain. It shares ISIN IE00BQQP9F84 with the open MyInvestor
-  # holding, so folding it in would disturb that position's average cost for a
-  # rounding error's worth of P&L.
+  # Not included, for the opposite reason: a 0.13-share VanEck Gold Miners lot
+  # sold 02/01/2026 for a 1.18 EUR gain. Trading212 bought it on 08/10/2025,
+  # the very day MyInvestor bought its 134 units of the same IE00BQQP9F84, so
+  # the two would blend and the sale would realize against a merged average
+  # cost rather than its own.
   defp trading212 do
     [
       {"IE0009JOT9U1", "ISHARES PHYSICAL GOLD EUR HEDGED", "20/09/2024", "2510.55", "02/01/2026",
@@ -122,7 +128,17 @@ defmodule Sheetfolio.SyntheticOperations do
       {"US01609W1027", "ALIBABA GROUP HOLDING ADR", "20/04/2021", "1494.88", "02/01/2026",
        [{"9.5382478", "1242.63"}]},
       {"LU0411078636", "XTRACKERS S&P 500 2X INVERSE DAILY", "20/09/2024", "2250.00",
-       "20/09/2024", [{"2968.4", "700.84"}, {"2006.1741", "473.86"}]}
+       "20/09/2024", [{"2968.4", "700.84"}, {"2006.1741", "473.86"}]},
+      {"IE00B4ND3602", "ISHARES PHYSICAL GOLD ETC", "15/01/2024", "306.70", "15/01/2024",
+       [{"10.537627", "383.69"}]},
+      {"IE00B4556L06", "ISHARES PHYSICAL PALLADIUM", "15/01/2024", "456.75", "15/01/2024",
+       [{"8.03680342", "205.17"}]},
+      {"DE000A1E0HS6", "ETF DB PHYSICAL SILVER EUR", "15/01/2024", "457.06", "15/01/2024",
+       [{"2.0780307", "415.40"}]},
+      {"IE00B1TXLS18", "ISHARES UK PROPERTY", "15/01/2024", "150.87", "15/01/2024",
+       [{"23.929324", "129.55"}]},
+      {"IE00B1FZS350", "ISHARES DEVELOPED MARKETS PROPERTY", "15/01/2024", "148.34", "15/01/2024",
+       [{"7.13031845", "150.18"}]}
     ]
     |> Enum.flat_map(&asset_operations/1)
   end
