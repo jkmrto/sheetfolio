@@ -85,24 +85,26 @@ defmodule Sheetfolio.SyntheticOperations do
   # days — 15/01/2024, 20/09/2024 and 02/01/2026 — carrying 3593.69 EUR of
   # realized P&L that was going uncounted.
   #
-  # ISINs, share counts and proceeds are Trading212's own, from its
-  # 2023-08.., 2024-08.. and 2025-08.. exports. Those all start after most of
-  # the purchases, so a cost basis is only quoted directly where an export
-  # holds the buys — the EUR-hedged gold ETC, whose four lots on 20/09/2024
-  # come to exactly the 2510.55 below, which is the check that the method is
-  # sound. Everywhere else it is proceeds minus the `Result` column,
-  # Trading212's own realized figure, which reproduces its accounting exactly
-  # instead of guessing at an entry price. Small recurring top-ups and
-  # dividends on Meta and Alphabet already sit inside that derived basis, so
-  # they are not repeated as operations.
+  # ISINs, share counts and proceeds are Trading212's own, from its exports
+  # running 2022-08 onwards. Those start after most of the purchases, so a cost
+  # basis is only quoted directly where an export holds the buys. Everywhere
+  # else it is proceeds minus the `Result` column, Trading212's own realized
+  # figure, which reproduces its accounting exactly instead of guessing at an
+  # entry price. Two positions later turned up with their buys on record and
+  # confirmed the derivation to the cent — the EUR-hedged gold ETC (four lots
+  # on 20/09/2024 totalling 2510.55) and the inverse ETF (two lots on
+  # 28/11/2022 totalling 2250.00) — which is the check that the method is
+  # sound. Small recurring top-ups and dividends on several holdings already
+  # sit inside the derived bases, so they are not repeated as operations.
   #
-  # Purchase dates, where known, come from the spreadsheet's "Registro de
-  # Operaciones"; where an asset was bought more than once the whole basis sits
-  # on the first date, since the split is not recoverable and only the total
-  # moves a closed position. The rest — everything bought before the earliest
-  # export — is dated on the day it was sold. That is the one invented field
-  # here, it is visible only in the Settled detail rows, and it still nets the
-  # position out and realizes the exact figure. An export reaching back to 2021
+  # Purchase dates come from those exports where available and otherwise from
+  # the spreadsheet's "Registro de Operaciones"; where an asset was bought more
+  # than once the whole basis sits on the first date, since the split is not
+  # always recoverable and only the total moves a closed position. The five
+  # sold on 15/01/2024 were bought before any export covers them, so they are
+  # dated on the day they were sold. That is the only invented field here, it
+  # shows up only in the Settled detail rows, and it still nets each position
+  # out and realizes the exact figure. An export reaching back past 2022-08
   # would replace those dates with real ones.
   #
   # The silver ETC shares DE000A1E0HS6 with an open MyInvestor holding, and
@@ -127,7 +129,7 @@ defmodule Sheetfolio.SyntheticOperations do
        [{"25.0", "1344.79"}]},
       {"US01609W1027", "ALIBABA GROUP HOLDING ADR", "20/04/2021", "1494.88", "02/01/2026",
        [{"9.5382478", "1242.63"}]},
-      {"LU0411078636", "XTRACKERS S&P 500 2X INVERSE DAILY", "20/09/2024", "2250.00",
+      {"LU0411078636", "XTRACKERS S&P 500 2X INVERSE DAILY", "28/11/2022", "2250.00",
        "20/09/2024", [{"2968.4", "700.84"}, {"2006.1741", "473.86"}]},
       {"IE00B4ND3602", "ISHARES PHYSICAL GOLD ETC", "15/01/2024", "306.70", "15/01/2024",
        [{"10.537627", "383.69"}]},
