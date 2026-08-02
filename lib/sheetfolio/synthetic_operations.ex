@@ -71,5 +71,87 @@ defmodule Sheetfolio.SyntheticOperations do
     }
   ]
 
-  def all, do: @ops
+  # Five holdings bought and sold at Trading212, all liquidated on 02/01/2026.
+  # MyInvestor never emailed them because they were never held there — the only
+  # sales it confirmed that day were Palantir and the PIMCO USD ETF — so
+  # nothing in the Gmail pipeline could ever surface them, and 4910.00 EUR of
+  # realized P&L was going uncounted.
+  #
+  # Amounts come from the spreadsheet's "Registro de Operaciones", and each
+  # implied gain reproduces that asset's figure in "Ganancias" exactly.
+  #
+  # Held at Trading212, so MyInvestor never emailed any of it — the only sales
+  # it confirmed on 02/01/2026 were Palantir and the PIMCO USD ETF. Without
+  # these, 3829.42 EUR of realized P&L went uncounted.
+  #
+  # ISINs, share counts and proceeds are Trading212's own, from its
+  # 2024-08..2025-08 and 2025-08..2026-08 exports. Those start after most of
+  # the purchases, so a cost basis is only quoted directly where the export
+  # holds the buys (the gold ETC, whose four lots on 20/09/2024 come to exactly
+  # the 2510.55 recorded here). Everywhere else it is proceeds minus the
+  # `Result` column — Trading212's own realized figure — which reproduces its
+  # accounting exactly instead of guessing at an entry price. Meta and Alphabet
+  # were topped up by a euro or two several times and paid small dividends;
+  # both sit inside that derived basis already, so the top-ups are not repeated
+  # as operations.
+  #
+  # Purchase dates come from the spreadsheet's "Registro de Operaciones". Where
+  # an asset was bought more than once the whole basis sits on the first date:
+  # the split is not recoverable and only the total moves a closed position.
+  #
+  # The Xtrackers inverse ETF appears in neither the spreadsheet nor any export
+  # covering its purchase, so its date is the one invented field here — it is
+  # recorded on the day it was sold, which nets the position out on that date
+  # and still realizes the exact loss. An export from before 2024-08 would
+  # replace it with the real one.
+  #
+  # Not included: a 0.13-share VanEck Gold Miners lot sold 02/01/2026 for a
+  # 1.18 EUR gain. It shares ISIN IE00BQQP9F84 with the open MyInvestor
+  # holding, so folding it in would disturb that position's average cost for a
+  # rounding error's worth of P&L.
+  defp trading212 do
+    [
+      {"IE0009JOT9U1", "ISHARES PHYSICAL GOLD EUR HEDGED", "20/09/2024", "2510.55", "02/01/2026",
+       [{"52.0", "4031.30"}, {"0.617631", "47.88"}]},
+      {"US02079K3059", "ALPHABET INC CLASS A", "16/06/2021", "1006.30", "02/01/2026",
+       [{"9.899507", "2701.94"}]},
+      {"US30303M1027", "META PLATFORMS INC", "16/06/2021", "1007.34", "02/01/2026",
+       [{"3.32629336", "1876.08"}, {"0.25346378", "141.72"}]},
+      {"IE00BMC38736", "VANECK SEMICONDUCTOR ETF", "08/02/2021", "462.55", "02/01/2026",
+       [{"25.0", "1344.79"}]},
+      {"US01609W1027", "ALIBABA GROUP HOLDING ADR", "20/04/2021", "1494.88", "02/01/2026",
+       [{"9.5382478", "1242.63"}]},
+      {"LU0411078636", "XTRACKERS S&P 500 2X INVERSE DAILY", "20/09/2024", "2250.00",
+       "20/09/2024", [{"2968.4", "700.84"}, {"2006.1741", "473.86"}]}
+    ]
+    |> Enum.flat_map(&asset_operations/1)
+  end
+
+  defp asset_operations({isin, asset, bought_on, cost, sold_on, sales}) do
+    units = sales |> Enum.map(fn {qty, _total} -> String.to_float(qty) end) |> Enum.sum()
+
+    [operation(isin, asset, "Compra", bought_on, units, cost)] ++
+      Enum.map(sales, fn {qty, total} ->
+        operation(isin, asset, "Venta", sold_on, String.to_float(qty), total)
+      end)
+  end
+
+  defp operation(isin, asset, tipo, fecha, units, amount) do
+    unit_price = amount |> String.to_float() |> Kernel./(units)
+
+    %{
+      fecha: fecha,
+      asset: asset,
+      isin: isin,
+      tipo: tipo,
+      cantidad: :erlang.float_to_binary(units, decimals: 8),
+      precio: "#{:erlang.float_to_binary(unit_price, decimals: 4)} EUR",
+      importe_without_comision: "#{amount} EUR",
+      comision: "",
+      importe_with_comision: "#{amount} EUR",
+      traspaso: false
+    }
+  end
+
+  def all, do: @ops ++ trading212()
 end
