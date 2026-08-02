@@ -4,11 +4,17 @@ defmodule SheetfolioWeb.Endpoint do
   plug Plug.RequestId
   plug Plug.Logger
 
+  # Without max_age the cookie carries no Expires, so the browser drops it when
+  # the browsing session ends — which on Chrome for Android means every time the
+  # OS reclaims the tab process, forcing the password back in several times a
+  # day. 90 days keeps the login alive in practice while still expiring on a
+  # device that goes missing.
   @session_options [
     store: :cookie,
     key: "_sheetfolio_session",
     signing_salt: "sheetfolio_salt",
-    same_site: "Lax"
+    same_site: "Lax",
+    max_age: 90 * 24 * 60 * 60
   ]
 
   socket "/live", Phoenix.LiveView.Socket,
