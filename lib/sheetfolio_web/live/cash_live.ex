@@ -67,6 +67,10 @@ defmodule SheetfolioWeb.CashLive do
 
     ~H"""
     <style>
+      .money-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+      .money-subtabs a { color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
+      .money-subtabs a:hover { color: #1e293b; }
+      .money-subtabs a.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
       .cash-form { background: white; border-radius: 12px; padding: 1.5rem 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
       .cash-form form { display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end; }
       .cash-field { display: flex; flex-direction: column; gap: 0.3rem; }
@@ -80,6 +84,11 @@ defmodule SheetfolioWeb.CashLive do
       .range-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
       .range-toggle button.selected { background: #1e293b; color: white; }
     </style>
+
+    <div class="money-subtabs">
+      <.link navigate="/cash" class="active">Cash</.link>
+      <.link navigate="/expenses">Expenses</.link>
+    </div>
 
     <div class="cash-form">
       <form phx-submit="save">

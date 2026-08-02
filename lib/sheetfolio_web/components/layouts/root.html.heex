@@ -17,6 +17,9 @@
       nav a { color: #94a3b8; text-decoration: none; font-size: 0.95rem; padding: 0.25rem 0.5rem; border-radius: 6px; white-space: nowrap; }
       nav a:hover { color: white; }
       nav a.active { color: white; background: rgba(255,255,255,0.1); }
+      .nav-gear { margin-left: auto; color: #94a3b8; text-decoration: none; font-size: 1.2rem; line-height: 1; padding: 0.3rem 0.5rem; border-radius: 6px; }
+      .nav-gear:hover { color: white; }
+      .nav-gear.active { color: white; background: rgba(255,255,255,0.1); }
       main { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
       .chart-container { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
     </style>
@@ -30,14 +33,14 @@
           <a href="/summary" class={if current_path(assigns) in ["/summary", "/summary/settled"], do: "active", else: ""}>Positions</a>
           <a href="/summary/dca" class={if String.starts_with?(current_path(assigns), "/summary/dca"), do: "active", else: ""}>DCA Impact</a>
           <a href="/history" class={if current_path(assigns) == "/history", do: "active", else: ""}>History</a>
-          <a href="/cash" class={if current_path(assigns) == "/cash", do: "active", else: ""}>Cash</a>
-          <a href="/expenses" class={if current_path(assigns) == "/expenses", do: "active", else: ""}>Expenses</a>
+          <a href="/cash" class={if current_path(assigns) in ["/cash", "/expenses"], do: "active", else: ""}>Money</a>
           <a href="/urbanitae" class={if current_path(assigns) == "/urbanitae", do: "active", else: ""}>Urbanitae</a>
           <a href="/bitcoin" class={if current_path(assigns) == "/bitcoin", do: "active", else: ""}>Bitcoin</a>
           <a href="/earnings" class={if current_path(assigns) == "/earnings", do: "active", else: ""}>Earnings</a>
           <a href="/operations" class={if current_path(assigns) == "/operations", do: "active", else: ""}>Operations</a>
-          <a href="/control" class={if current_path(assigns) == "/control", do: "active", else: ""}>Control</a>
         </nav>
+        <a href="/control" title="Control" aria-label="Control"
+           class={"nav-gear#{if current_path(assigns) == "/control", do: " active", else: ""}"}>⚙</a>
       <% end %>
     </header>
     <main><%= @inner_content %></main>

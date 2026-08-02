@@ -62,6 +62,10 @@ defmodule SheetfolioWeb.ExpensesLive do
     ~H"""
     <style>
       .expenses-loading { color: #64748b; padding: 2rem; text-align: center; }
+      .money-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+      .money-subtabs a { color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
+      .money-subtabs a:hover { color: #1e293b; }
+      .money-subtabs a.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
       .expenses-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
       .expenses-subtabs button, .expenses-subtabs a { border: none; background: none; color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
       .expenses-subtabs button:hover, .expenses-subtabs a:hover { color: #1e293b; }
@@ -84,6 +88,11 @@ defmodule SheetfolioWeb.ExpensesLive do
       .expenses-table tfoot tr:first-child td { border-top: 2px solid #1e293b; }
       .expenses-dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.35rem; }
     </style>
+
+    <div class="money-subtabs">
+      <.link navigate="/cash">Cash</.link>
+      <.link navigate="/expenses" class="active">Expenses</.link>
+    </div>
 
     <%= if @expenses == nil do %>
       <div class="expenses-loading">Loading Wise activities…</div>
