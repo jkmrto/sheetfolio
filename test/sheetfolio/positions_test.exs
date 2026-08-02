@@ -22,6 +22,40 @@ defmodule Sheetfolio.PositionsTest do
 
   defp build(ops), do: Positions.build(ops, 1.0, 1.0) |> Map.fetch!(@isin)
 
+  describe "per-operation FX rates" do
+    # MyInvestor zeroes importe on foreign-currency confirmations, so the cost
+    # has to come from precio times quantity — which is where the rate matters.
+    defp usd_op(fecha, tipo, cantidad, precio) do
+      %{op(fecha, tipo, cantidad, "0.00 USD") | precio: precio}
+    end
+
+    test "converts at the rate stored on the operation, not the current one" do
+      op = Map.merge(usd_op("01/01/2024", "Compra", "10", "110.00 USD"), %{fx_usd: 1.10, fx_cad: 1.5})
+      position = Positions.build([op], 2.0, 2.0) |> Map.fetch!(@isin)
+
+      # 1100 USD at 1.10 is 1000 EUR; the 2.0 passed to build/3 would give 550.
+      assert_in_delta position.cost_basis, 1000.0, 0.001
+    end
+
+    test "falls back to the passed-in rate when the operation carries none" do
+      op = usd_op("01/01/2024", "Compra", "10", "110.00 USD")
+      position = Positions.build([op], 1.10, 1.10) |> Map.fetch!(@isin)
+
+      assert_in_delta position.cost_basis, 1000.0, 0.001
+    end
+
+    test "a later rate move leaves an earlier purchase's cost basis alone" do
+      buy = Map.merge(usd_op("01/01/2024", "Compra", "10", "110.00 USD"), %{fx_usd: 1.10, fx_cad: 1.5})
+      sell = Map.merge(usd_op("01/06/2024", "Venta", "10", "110.00 USD"), %{fx_usd: 1.375, fx_cad: 1.5})
+
+      position = Positions.build([buy, sell], 9.9, 9.9) |> Map.fetch!(@isin)
+
+      # Same 1100 USD back, but the euro strengthened: 800 EUR for a 200 loss.
+      assert_in_delta position.cost_basis, 0.0, 0.001
+      assert_in_delta position.realized, -200.0, 0.001
+    end
+  end
+
   test "a single buy sets units and cost basis from the actual EUR amount" do
     position = build([op("01/01/2024", "Compra", "10", "1000 EUR")])
 

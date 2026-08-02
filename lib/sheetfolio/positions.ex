@@ -83,7 +83,8 @@ defmodule Sheetfolio.Positions do
 
   defp update_asset(assets, carried, data, eur_usd, eur_cad) do
     qty = parse_cantidad(data.cantidad)
-    cost_eur = amount_in_eur(data.importe_with_comision, data.precio, qty, eur_usd, eur_cad)
+    {rate_usd, rate_cad} = rates_for(data, eur_usd, eur_cad)
+    cost_eur = amount_in_eur(data.importe_with_comision, data.precio, qty, rate_usd, rate_cad)
 
     a =
       Map.get(assets, data.isin, %{
@@ -98,6 +99,16 @@ defmodule Sheetfolio.Positions do
       sell(assets, carried, a, data, qty, cost_eur)
     end
   end
+
+  # An operation carrying the rates of its own day converts at those; anything
+  # without them falls back to the rates the caller passed in. A foreign-currency
+  # cost basis is what it cost on the day, not what that day would cost today,
+  # so without this a 2021 purchase moved every time the euro did.
+  defp rates_for(%{fx_usd: usd, fx_cad: cad}, _eur_usd, _eur_cad)
+       when is_number(usd) and is_number(cad),
+       do: {usd, cad}
+
+  defp rates_for(_data, eur_usd, eur_cad), do: {eur_usd, eur_cad}
 
   defp buy(assets, carried, a, data, qty, cost_eur) do
     basis = cost_eur * basis_ratio(carried, data)

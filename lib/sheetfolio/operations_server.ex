@@ -13,6 +13,7 @@ defmodule Sheetfolio.OperationsServer do
   use GenServer
   require Logger
 
+  alias Sheetfolio.HistoricalFx
   alias Sheetfolio.MyinvestorEmails
   alias Sheetfolio.MyinvestorEmailStore
   alias Sheetfolio.OperationHistory
@@ -38,11 +39,15 @@ defmodule Sheetfolio.OperationsServer do
   end
 
   defp boot(cached, state) do
-    operations = OperationHistory.patch(MyinvestorEmails.cached_operations())
+    operations = history(MyinvestorEmails.cached_operations())
     Logger.info("[OperationsServer] Serving #{length(operations)} operations from #{cached} cached emails")
 
     %{state | status: :ready, operations: operations} |> sync()
   end
+
+  # Patching stays pure; the FX rates each operation converts at are looked up
+  # here, once per load, because they need the network.
+  defp history(operations), do: operations |> OperationHistory.patch() |> HistoricalFx.attach()
 
   defp sync(state) do
     server = self()
@@ -60,7 +65,7 @@ defmodule Sheetfolio.OperationsServer do
   end
 
   def handle_info({:load_done, {:ok, ops}}, state) do
-    ops = OperationHistory.patch(ops)
+    ops = history(ops)
     Enum.each(state.pending, &GenServer.reply(&1, ops))
     {:noreply, %{state | status: :ready, operations: ops, pending: [], syncing: false}}
   end
