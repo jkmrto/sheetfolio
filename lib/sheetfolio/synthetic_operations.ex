@@ -71,15 +71,6 @@ defmodule Sheetfolio.SyntheticOperations do
     }
   ]
 
-  # Five holdings bought and sold at Trading212, all liquidated on 02/01/2026.
-  # MyInvestor never emailed them because they were never held there — the only
-  # sales it confirmed that day were Palantir and the PIMCO USD ETF — so
-  # nothing in the Gmail pipeline could ever surface them, and 4910.00 EUR of
-  # realized P&L was going uncounted.
-  #
-  # Amounts come from the spreadsheet's "Registro de Operaciones", and each
-  # implied gain reproduces that asset's figure in "Ganancias" exactly.
-  #
   # Held at Trading212, so MyInvestor never emailed any of it and the Gmail
   # pipeline could never have seen it. Eleven positions across two liquidation
   # days — 15/01/2024, 20/09/2024 and 02/01/2026 — carrying 3593.69 EUR of
@@ -98,14 +89,17 @@ defmodule Sheetfolio.SyntheticOperations do
   # sit inside the derived bases, so they are not repeated as operations.
   #
   # Purchase dates come from those exports where available and otherwise from
-  # the spreadsheet's "Registro de Operaciones"; where an asset was bought more
-  # than once the whole basis sits on the first date, since the split is not
-  # always recoverable and only the total moves a closed position. The five
-  # sold on 15/01/2024 were bought before any export covers them, so they are
-  # dated on the day they were sold. That is the only invented field here, it
-  # shows up only in the Settled detail rows, and it still nets each position
-  # out and realizes the exact figure. An export reaching back past 2022-08
-  # would replace those dates with real ones.
+  # the spreadsheet's "Registro de Operaciones". Every date here is now a real
+  # one. Where an asset was bought repeatedly the whole basis sits on the first
+  # of those dates rather than being split across them, since only the total
+  # moves a closed position: the five sold on 15/01/2024 were each accumulated
+  # over several buys in 2020-2021, and the property ETF in particular was
+  # mostly sold off before the lot recorded here.
+  #
+  # Not recorded at all: the 2020-2021 export holds 89 further sales across
+  # some thirty instruments, together worth 252.49 EUR. Thirty more closed
+  # positions to carry a rounding error's worth of P&L is a bad trade, so that
+  # window stays out.
   #
   # The silver ETC shares DE000A1E0HS6 with an open MyInvestor holding, and
   # keeps that holding's name so the position is not renamed underneath it. The
@@ -117,7 +111,17 @@ defmodule Sheetfolio.SyntheticOperations do
   # the very day MyInvestor bought its 134 units of the same IE00BQQP9F84, so
   # the two would blend and the sale would realize against a merged average
   # cost rather than its own.
-  defp trading212 do
+  @doc """
+  The ISINs held at Trading212, so pages can mark where an operation happened.
+
+  Note DE000A1E0HS6 is in here and also held at MyInvestor: only its *realized*
+  events came from Trading212, the open units are MyInvestor's.
+  """
+  def trading212_isins, do: trading212_positions() |> MapSet.new(&elem(&1, 0))
+
+  defp trading212, do: Enum.flat_map(trading212_positions(), &asset_operations/1)
+
+  defp trading212_positions do
     [
       {"IE0009JOT9U1", "ISHARES PHYSICAL GOLD EUR HEDGED", "20/09/2024", "2510.55", "02/01/2026",
        [{"52.0", "4031.30"}, {"0.617631", "47.88"}]},
@@ -131,18 +135,17 @@ defmodule Sheetfolio.SyntheticOperations do
        [{"9.5382478", "1242.63"}]},
       {"LU0411078636", "XTRACKERS S&P 500 2X INVERSE DAILY", "28/11/2022", "2250.00",
        "20/09/2024", [{"2968.4", "700.84"}, {"2006.1741", "473.86"}]},
-      {"IE00B4ND3602", "ISHARES PHYSICAL GOLD ETC", "15/01/2024", "306.70", "15/01/2024",
+      {"IE00B4ND3602", "ISHARES PHYSICAL GOLD ETC", "23/02/2021", "306.70", "15/01/2024",
        [{"10.537627", "383.69"}]},
-      {"IE00B4556L06", "ISHARES PHYSICAL PALLADIUM", "15/01/2024", "456.75", "15/01/2024",
+      {"IE00B4556L06", "ISHARES PHYSICAL PALLADIUM", "23/02/2021", "456.75", "15/01/2024",
        [{"8.03680342", "205.17"}]},
-      {"DE000A1E0HS6", "ETF DB PHYSICAL SILVER EUR", "15/01/2024", "457.06", "15/01/2024",
+      {"DE000A1E0HS6", "ETF DB PHYSICAL SILVER EUR", "23/02/2021", "457.06", "15/01/2024",
        [{"2.0780307", "415.40"}]},
-      {"IE00B1TXLS18", "ISHARES UK PROPERTY", "15/01/2024", "150.87", "15/01/2024",
+      {"IE00B1TXLS18", "ISHARES UK PROPERTY", "23/02/2021", "150.87", "15/01/2024",
        [{"23.929324", "129.55"}]},
-      {"IE00B1FZS350", "ISHARES DEVELOPED MARKETS PROPERTY", "15/01/2024", "148.34", "15/01/2024",
+      {"IE00B1FZS350", "ISHARES DEVELOPED MARKETS PROPERTY", "16/11/2020", "148.34", "15/01/2024",
        [{"7.13031845", "150.18"}]}
     ]
-    |> Enum.flat_map(&asset_operations/1)
   end
 
   defp asset_operations({isin, asset, bought_on, cost, sold_on, sales}) do

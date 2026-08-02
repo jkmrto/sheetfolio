@@ -71,7 +71,8 @@ defmodule SheetfolioWeb.EarningsLive do
         dividends_sum: Sheetfolio.Dividends.total(assigns.dividends),
         dividends_by_asset: Sheetfolio.Dividends.by_asset(assigns.dividends),
         urbanitae_sum: Enum.reduce(assigns.urbanitae, 0.0, &(&1.earnings + &2)),
-        by_asset: group_by_asset(assigns.realized_events)
+        by_asset: group_by_asset(assigns.realized_events),
+        trading212: Sheetfolio.SyntheticOperations.trading212_isins()
       )
 
     ~H"""
@@ -93,6 +94,7 @@ defmodule SheetfolioWeb.EarningsLive do
       .pos { color: #008300; }
       .neg { color: #e34948; }
       .warn { color: #b45309; font-size: 0.78rem; }
+      .broker-tag { font-size: 0.68rem; background: #e0e7ff; color: #4338ca; border-radius: 4px; padding: 1px 5px; margin-left: 0.4rem; vertical-align: middle; white-space: nowrap; }
       .muted { color: #64748b; font-size: 0.78rem; }
       .earnings-table tr.asset-row { cursor: pointer; }
       .earnings-table tr.asset-row:hover td { background: #eef2f7; }
@@ -141,6 +143,9 @@ defmodule SheetfolioWeb.EarningsLive do
           <tr class="asset-row" phx-click="toggle_asset" phx-value-asset={row.asset}>
             <td class="left">
               <span class={"chevron#{if open?, do: " open"}"}>▶</span><%= row.asset %>
+              <%= if MapSet.member?(@trading212, row.isin) do %>
+                <span class="broker-tag">Trading212</span>
+              <% end %>
               <%= if row.uncovered > 0.001 do %>
                 <div class="warn">⚠ <%= Float.round(row.uncovered, 2) %> units without buy history — excluded</div>
               <% end %>
@@ -196,6 +201,9 @@ defmodule SheetfolioWeb.EarningsLive do
             <td class="left"><%= e.fecha %></td>
             <td class="left">
               <%= e.asset %>
+              <%= if MapSet.member?(@trading212, e.isin) do %>
+                <span class="broker-tag">Trading212</span>
+              <% end %>
               <%= if e.uncovered > 0.001 do %>
                 <div class="warn">⚠ <%= Float.round(e.uncovered, 2) %> units without buy history — excluded</div>
               <% end %>
@@ -311,6 +319,7 @@ defmodule SheetfolioWeb.EarningsLive do
     |> Enum.map(fn {asset, evs} ->
       %{
         asset: asset,
+        isin: hd(evs).isin,
         events: evs,
         sells: length(evs),
         qty: Enum.reduce(evs, 0.0, &(&1.qty + &2)),
