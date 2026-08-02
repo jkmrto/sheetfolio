@@ -236,7 +236,7 @@ defmodule SheetfolioWeb.PortfolioLive do
           <div class="kpi">
             <div class="kpi-label">Net worth</div>
             <div class="kpi-value"><%= eur(k.net_worth) %></div>
-            <%= if k.day_change == nil and k.week_change == nil do %>
+            <%= if k.day_change == nil and k.week_change == nil and k.peak == nil do %>
               <div class="kpi-sub">portfolio + cash + Urbanitae</div>
             <% end %>
             <%= for {change, label} <- [{k.day_change, "vs yesterday"}, {k.week_change, "vs last week"}] do %>
@@ -248,6 +248,18 @@ defmodule SheetfolioWeb.PortfolioLive do
                   <%= if change.pct, do: "(#{signed_pct(change.pct)})" %> <%= label %>
                 </div>
               <% end %>
+            <% end %>
+            <%= if k.peak do %>
+              <div class="kpi-sub">
+                <%= if k.peak.at_peak do %>
+                  <span class="kpi-up">▲ at its all-time high</span>
+                <% else %>
+                  <span class={delta_class(k.peak.amount)}>
+                    <%= arrow(k.peak.amount) %> <%= signed(k.peak.amount) %>
+                  </span>
+                  <%= if k.peak.pct, do: "(#{signed_pct(k.peak.pct)})" %> vs peak <%= k.peak.from %>
+                <% end %>
+              </div>
             <% end %>
           </div>
           <div class="kpi">
@@ -474,6 +486,7 @@ defmodule SheetfolioWeb.PortfolioLive do
       net_worth: net_worth(net),
       day_change: change_since(net, 1),
       week_change: change_since(net, 7),
+      peak: peak_change(net),
       invested: invested,
       value: value,
       unrealized: unrealized,
@@ -507,6 +520,19 @@ defmodule SheetfolioWeb.PortfolioLive do
   defp delta(previous, current) do
     change = Float.round(current.y - previous.y, 2)
     %{amount: change, pct: percentage(change, previous.y), from: previous.x}
+  end
+
+  # Distance from the best net worth ever recorded. Ties count as being at the
+  # high, so a new peak reads as one rather than as a 0,00 € drawdown.
+  defp peak_change(points) when length(points) < 2, do: nil
+
+  defp peak_change(points) do
+    current = List.last(points)
+    peak = Enum.max_by(points, & &1.y)
+
+    if peak.y <= current.y,
+      do: %{at_peak: true, from: peak.x, amount: 0.0, pct: nil},
+      else: peak |> delta(current) |> Map.put(:at_peak, false)
   end
 
   defp percentage(_change, base) when base in [0, 0.0] or base < 0, do: nil
