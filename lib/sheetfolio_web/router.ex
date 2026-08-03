@@ -26,6 +26,7 @@ defmodule SheetfolioWeb.Router do
     live "/loading", LoadingLive
     live "/control", ControlLive
     live "/history", HistoryLive
+    live "/comparison", ComparisonLive
     live "/cash", CashLive
     live "/expenses", ExpensesLive
     live "/urbanitae", UrbanitaeLive

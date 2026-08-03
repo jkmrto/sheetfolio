@@ -228,6 +228,8 @@ defmodule SheetfolioWeb.PortfolioLive do
         .kpi-up { color: #16a34a; font-weight: 600; }
         .kpi-down { color: #dc2626; font-weight: 600; }
         .kpi-warn { background: #fffbeb; border: 1px solid #fde68a; color: #b45309; border-radius: 8px; padding: 0.55rem 0.9rem; font-size: 0.82rem; margin-bottom: 1.5rem; }
+        .kpi-compare { display: block; text-decoration: none; color: inherit; }
+        .kpi-compare:hover .kpi-sub { text-decoration: underline; }
       </style>
 
       <% k = kpis(assigns) %>
@@ -239,14 +241,16 @@ defmodule SheetfolioWeb.PortfolioLive do
             <%= if k.day_change == nil and k.week_change == nil and k.peak == nil do %>
               <div class="kpi-sub">portfolio + cash + Urbanitae</div>
             <% end %>
-            <%= for {change, label} <- [{k.day_change, "vs yesterday"}, {k.week_change, "vs last week"}] do %>
+            <%= for {change, label, period} <- [{k.day_change, "vs yesterday", "1d"}, {k.week_change, "vs last week", "1w"}] do %>
               <%= if change do %>
-                <div class="kpi-sub">
-                  <span class={delta_class(change.amount)}>
-                    <%= arrow(change.amount) %> <%= signed(change.amount) %>
-                  </span>
-                  <%= if change.pct, do: "(#{signed_pct(change.pct)})" %> <%= label %>
-                </div>
+                <.link navigate={"/comparison?period=#{period}"} class="kpi-compare" title="Compare holdings over this period">
+                  <div class="kpi-sub">
+                    <span class={delta_class(change.amount)}>
+                      <%= arrow(change.amount) %> <%= signed(change.amount) %>
+                    </span>
+                    <%= if change.pct, do: "(#{signed_pct(change.pct)})" %> <%= label %>
+                  </div>
+                </.link>
               <% end %>
             <% end %>
             <%= if k.peak do %>

@@ -33,6 +33,7 @@
           <a href="/summary" class={if current_path(assigns) in ["/summary", "/summary/settled"], do: "active", else: ""}>Positions</a>
           <a href="/summary/dca" class={if String.starts_with?(current_path(assigns), "/summary/dca"), do: "active", else: ""}>DCA Impact</a>
           <a href="/history" class={if current_path(assigns) == "/history", do: "active", else: ""}>History</a>
+          <a href="/comparison" class={if current_path(assigns) == "/comparison", do: "active", else: ""}>Compare</a>
           <a href="/cash" class={if current_path(assigns) in ["/cash", "/expenses"], do: "active", else: ""}>Money</a>
           <a href="/urbanitae" class={if current_path(assigns) == "/urbanitae", do: "active", else: ""}>Urbanitae</a>
           <a href="/bitcoin" class={if current_path(assigns) == "/bitcoin", do: "active", else: ""}>Bitcoin</a>
