@@ -6,6 +6,7 @@ defmodule SheetfolioWeb.ComparisonLive do
 
   @presets ~w(1d 1w 1m 3m 1y ytd)
   @views ~w(category asset)
+  @sort_keys ~w(from to delta pct)
 
   # Same hues the Portfolio doughnut uses, so a category keeps its colour here.
   @category_colors %{
@@ -35,7 +36,9 @@ defmodule SheetfolioWeb.ComparisonLive do
           view: "category",
           period: "1w",
           from_date: nil,
-          to_date: nil
+          to_date: nil,
+          sort_key: "to",
+          sort_dir: "desc"
         )
 
       if connected?(socket) do
@@ -78,6 +81,14 @@ defmodule SheetfolioWeb.ComparisonLive do
     {:noreply, assign(socket, view: view)}
   end
 
+  # First click on a column sorts it largest first; clicking the active column
+  # again flips to ascending.
+  def handle_event("set_sort", %{"key" => key}, socket) when key in @sort_keys do
+    %{sort_key: current, sort_dir: dir} = socket.assigns
+    new_dir = if current == key and dir == "desc", do: "asc", else: "desc"
+    {:noreply, assign(socket, sort_key: key, sort_dir: new_dir)}
+  end
+
   # Editing either date drops out of the presets — the pair is now whatever the
   # inputs say.
   def handle_event("set_dates", %{"from" => from, "to" => to}, socket) do
@@ -105,6 +116,9 @@ defmodule SheetfolioWeb.ComparisonLive do
       .cmp-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); font-variant-numeric: tabular-nums; }
       .cmp-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; }
       .cmp-table th:not(:first-child) { text-align: right; }
+      .cmp-table th.text, .cmp-table td.text { text-align: left; }
+      .cmp-table th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+      .cmp-table th.sortable:hover { background: #0f172a; }
       .cmp-table td { padding: 0.65rem 1rem; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
       .cmp-table td:not(:first-child) { text-align: right; }
       .cmp-table tr:last-child td { border-bottom: none; }
@@ -166,10 +180,13 @@ defmodule SheetfolioWeb.ComparisonLive do
             <thead>
               <tr>
                 <th><%= if @view == "category", do: "Category", else: "Asset" %></th>
-                <th><%= cmp.from_resolved %> (€)</th>
-                <th><%= cmp.to_resolved %> (€)</th>
-                <th>Change (€)</th>
-                <th>Change (%)</th>
+                <%= if @view == "asset" do %>
+                  <th class="text">Category</th>
+                <% end %>
+                <th class="sortable" phx-click="set_sort" phx-value-key="from"><%= cmp.from_resolved %> (€)<%= caret(@sort_key, @sort_dir, "from") %></th>
+                <th class="sortable" phx-click="set_sort" phx-value-key="to"><%= cmp.to_resolved %> (€)<%= caret(@sort_key, @sort_dir, "to") %></th>
+                <th class="sortable" phx-click="set_sort" phx-value-key="delta">Change (€)<%= caret(@sort_key, @sort_dir, "delta") %></th>
+                <th class="sortable" phx-click="set_sort" phx-value-key="pct">Change (%)<%= caret(@sort_key, @sort_dir, "pct") %></th>
               </tr>
             </thead>
             <tbody>
@@ -181,6 +198,11 @@ defmodule SheetfolioWeb.ComparisonLive do
                     <% end %>
                     <%= row.label %>
                   </td>
+                  <%= if @view == "asset" do %>
+                    <td class="text">
+                      <span class="cmp-dot" style={"background:#{category_color(asset_category(row.key, @categories))}"}></span><%= asset_category(row.key, @categories) %>
+                    </td>
+                  <% end %>
                   <td><%= format_eur(row.from) %></td>
                   <td><%= format_eur(row.to) %></td>
                   <td class={delta_class(row.delta)}><%= signed(row.delta) %></td>
@@ -191,6 +213,9 @@ defmodule SheetfolioWeb.ComparisonLive do
             <tfoot>
               <tr>
                 <td>Total</td>
+                <%= if @view == "asset" do %>
+                  <td></td>
+                <% end %>
                 <td><%= format_eur(cmp.from_total) %></td>
                 <td><%= format_eur(cmp.to_total) %></td>
                 <td class={delta_class(cmp.delta)}><%= signed(cmp.delta) %></td>
@@ -224,7 +249,7 @@ defmodule SheetfolioWeb.ComparisonLive do
     rows =
       MapSet.union(MapSet.new(Map.keys(from_map)), MapSet.new(Map.keys(to_map)))
       |> Enum.map(&row(&1, from_map, to_map))
-      |> Enum.sort_by(&{-&1.to, -&1.from})
+      |> sort_rows(assigns.sort_key, assigns.sort_dir)
 
     from_total = total(rows, & &1.from)
     to_total = total(rows, & &1.to)
@@ -249,6 +274,7 @@ defmodule SheetfolioWeb.ComparisonLive do
     delta = Float.round(to_value - from_value, 2)
 
     %{
+      key: key,
       label: (to && to.label) || from.label,
       from: from_value,
       to: to_value,
@@ -256,6 +282,22 @@ defmodule SheetfolioWeb.ComparisonLive do
       pct: percentage(delta, from_value)
     }
   end
+
+  # A position opened inside the window has no starting % baseline, so it can't
+  # be ranked by percentage — those rows drop to the bottom rather than pretend
+  # a number. Every other key is always present.
+  defp sort_rows(rows, key, dir) do
+    {sortable, rest} = Enum.split_with(rows, &(sort_value(&1, key) != nil))
+    Enum.sort_by(sortable, &sort_value(&1, key), sort_order(dir)) ++ rest
+  end
+
+  defp sort_value(row, "from"), do: row.from
+  defp sort_value(row, "to"), do: row.to
+  defp sort_value(row, "delta"), do: row.delta
+  defp sort_value(row, "pct"), do: row.pct
+
+  defp sort_order("asc"), do: :asc
+  defp sort_order(_desc), do: :desc
 
   defp value_of(nil), do: 0.0
   defp value_of(%{value: value}), do: value
@@ -365,6 +407,12 @@ defmodule SheetfolioWeb.ComparisonLive do
   defp view_options, do: [{"category", "By category"}, {"asset", "By asset"}]
 
   defp category_color(category), do: Map.get(@category_colors, category, @other_color)
+
+  defp asset_category(isin, categories), do: AssetCategories.category_for(isin, categories)
+
+  defp caret(active, "asc", column) when active == column, do: " ▲"
+  defp caret(active, "desc", column) when active == column, do: " ▼"
+  defp caret(_active, _dir, _column), do: ""
 
   defp percentage(_change, base) when base in [0, 0.0] or base < 0, do: nil
   defp percentage(change, base), do: Float.round(change / base * 100, 2)
