@@ -386,7 +386,11 @@ Hooks.SpanishDate = {
     this.native.addEventListener("input", () => this.toText())
 
     this.text.addEventListener("change", () => this.commit())
-    this.text.addEventListener("keydown", (e) => { if (e.key === "Enter") this.commit() })
+    // Stop Enter from implicitly submitting the surrounding form (which would
+    // navigate away); commit the typed date instead.
+    this.text.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); this.commit() }
+    })
   },
   toText() {
     this.text.value = this.native.value ? this.native.value.split("-").reverse().join("/") : ""

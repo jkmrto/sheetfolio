@@ -85,6 +85,31 @@ defmodule SheetfolioWeb.HistoryLive do
     {:noreply, assign(socket, selected_date: date)}
   end
 
+  # dd/mm/yyyy text field over a hidden native date input (see the SpanishDate
+  # JS hook). The text is what the user reads and edits; the native input holds
+  # the ISO value the form submits and supplies the calendar the button opens.
+  defp es_date_field(assigns) do
+    ~H"""
+    <div class="es-date" id={"date-#{@name}"} phx-hook="SpanishDate">
+      <input type="text" class="es-date-text" value={es_date(@value)} inputmode="numeric"
+             placeholder="dd/mm/aaaa" autocomplete="off" />
+      <button type="button" class="es-date-btn" tabindex="-1" aria-label="Abrir calendario">📅</button>
+      <input type="date" class="es-date-native" name={@name} value={@value} min={@min} max={@max}
+             tabindex="-1" aria-hidden="true" />
+    </div>
+    """
+  end
+
+  # dd/mm/yyyy, the Spanish convention the rest of the app's dates follow.
+  defp es_date(nil), do: ""
+
+  defp es_date(iso) do
+    case String.split(iso, "-") do
+      [year, month, day] -> "#{day}/#{month}/#{year}"
+      _ -> iso
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <style>
@@ -100,7 +125,11 @@ defmodule SheetfolioWeb.HistoryLive do
       .empty-note { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); color: #64748b; font-size: 0.9rem; }
       .date-bar { display: flex; align-items: center; gap: 1rem; margin: 2rem 0 1rem; }
       .date-bar label { font-size: 0.9rem; font-weight: 600; color: #475569; }
-      .date-bar input[type=date] { padding: 0.4rem 0.7rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; color: #1e293b; background: white; }
+      .es-date { position: relative; display: inline-flex; align-items: center; border: 1px solid #cbd5e1; border-radius: 6px; background: white; padding: 0 0.35rem 0 0.7rem; }
+      .es-date-text { border: none; outline: none; padding: 0.4rem 0; font-size: 0.9rem; color: #1e293b; width: 6rem; background: transparent; font-variant-numeric: tabular-nums; }
+      .es-date-btn { border: none; background: transparent; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0.2rem 0.25rem; color: #475569; }
+      .es-date-btn:hover { color: #1e293b; }
+      .es-date-native { position: absolute; left: 0; bottom: 0; width: 100%; height: 1px; opacity: 0; pointer-events: none; }
       .price-note { font-size: 0.8rem; color: #94a3b8; margin-left: auto; }
       .snapshot-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
       .snapshot-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; }
@@ -149,15 +178,14 @@ defmodule SheetfolioWeb.HistoryLive do
       <div class="date-bar">
         <label>Positions on</label>
         <form phx-change="set_date" style="display:contents;">
-          <input type="date" name="date" value={@selected_date}
-                 min={first_date(@snapshots)} max={latest_date(@snapshots)} />
+          <.es_date_field name="date" value={@selected_date} min={first_date(@snapshots)} max={latest_date(@snapshots)} />
         </form>
         <span class="price-note">Click a point on the chart to jump to that day</span>
       </div>
 
       <%= case positions_on(@snapshots, @selected_date) do %>
         <% nil -> %>
-          <div class="empty-note">No snapshot recorded for <%= @selected_date %>.</div>
+          <div class="empty-note">No snapshot recorded for <%= es_date(@selected_date) %>.</div>
         <% positions -> %>
           <table class="snapshot-table">
             <thead>
