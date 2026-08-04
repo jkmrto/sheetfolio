@@ -154,10 +154,10 @@ defmodule SheetfolioWeb.ComparisonLive do
 
       <form class="date-bar" phx-change="set_dates">
         <label>From</label>
-        <input type="date" name="from" value={@from_date}
+        <input type="date" name="from" lang="es" value={@from_date}
                min={first_date(@snapshots)} max={latest_date(@snapshots)} />
         <label>To</label>
-        <input type="date" name="to" value={@to_date}
+        <input type="date" name="to" lang="es" value={@to_date}
                min={first_date(@snapshots)} max={latest_date(@snapshots)} />
       </form>
 
@@ -175,7 +175,7 @@ defmodule SheetfolioWeb.ComparisonLive do
             <div class="headline-sub">
               <span class={delta_class(cmp.delta)}><%= arrow(cmp.delta) %> <%= signed(cmp.delta) %></span>
               <%= if cmp.pct, do: "(#{signed_pct(cmp.pct)})" %>
-              over <%= cmp.from_resolved %> → <%= cmp.to_resolved %>
+              over <%= es_date(cmp.from_resolved) %> → <%= es_date(cmp.to_resolved) %>
             </div>
           </div>
 
@@ -186,7 +186,7 @@ defmodule SheetfolioWeb.ComparisonLive do
                 <%= if @view == "asset" do %>
                   <th class="text">Category</th>
                 <% end %>
-                <th class="sortable" phx-click="set_sort" phx-value-key="to"><%= cmp.to_resolved %> (€)<%= caret(@sort_key, @sort_dir, "to") %></th>
+                <th class="sortable" phx-click="set_sort" phx-value-key="to"><%= es_date(cmp.to_resolved) %> (€)<%= caret(@sort_key, @sort_dir, "to") %></th>
                 <th class="sortable" phx-click="set_sort" phx-value-key="flows">Money in/out (€)<%= caret(@sort_key, @sort_dir, "flows") %></th>
                 <th class="sortable" phx-click="set_sort" phx-value-key="earnings">Earnings (€)<%= caret(@sort_key, @sort_dir, "earnings") %></th>
                 <th class="sortable" phx-click="set_sort" phx-value-key="return">Return %<%= caret(@sort_key, @sort_dir, "return") %></th>
@@ -497,6 +497,16 @@ defmodule SheetfolioWeb.ComparisonLive do
   defp view_options, do: [{"category", "By category"}, {"asset", "By asset"}]
 
   defp category_color(category), do: Map.get(@category_colors, category, @other_color)
+
+  # dd/mm/yyyy, the Spanish convention the rest of the app's dates follow.
+  defp es_date(nil), do: ""
+
+  defp es_date(iso) do
+    case String.split(iso, "-") do
+      [year, month, day] -> "#{day}/#{month}/#{year}"
+      _ -> iso
+    end
+  end
 
   defp asset_category(isin, categories), do: AssetCategories.category_for(isin, categories)
 
