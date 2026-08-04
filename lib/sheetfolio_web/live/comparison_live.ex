@@ -246,12 +246,13 @@ defmodule SheetfolioWeb.ComparisonLive do
   end
 
   defp build_comparison(assigns, from, to) do
-    from_map = grouped(from.positions, assigns.view, assigns.categories)
-    to_map = grouped(to.positions, assigns.view, assigns.categories)
+    from_by_isin = Map.new(from.entries, &{&1.isin, &1})
+    to_by_isin = Map.new(to.entries, &{&1.isin, &1})
 
     rows =
-      MapSet.union(MapSet.new(Map.keys(from_map)), MapSet.new(Map.keys(to_map)))
-      |> Enum.map(&row(&1, from_map, to_map))
+      MapSet.union(MapSet.new(Map.keys(from_by_isin)), MapSet.new(Map.keys(to_by_isin)))
+      |> Enum.map(&metric(&1, from_by_isin, to_by_isin, assigns.categories))
+      |> rows_for(assigns.view)
       |> sort_rows(assigns.sort_key, assigns.sort_dir)
 
     from_total = total(rows, & &1.from)
@@ -274,27 +275,78 @@ defmodule SheetfolioWeb.ComparisonLive do
     }
   end
 
-  # Splits each holding's value change into the money moved in or out (the change
-  # in cost basis) and what the market earned on top (the rest). Cash has no cost
-  # basis, so its whole move is money in/out; Urbanitae's basis is set so its
-  # repaid yield lands in earnings (see urbanitae_entry/2).
-  defp row(key, from_map, to_map) do
-    from = Map.get(from_map, key)
-    to = Map.get(to_map, key)
-    from_value = field(from, :value)
-    to_value = field(to, :value)
-    flows = Float.round(field(to, :invested) - field(from, :invested), 2)
-    earnings = Float.round(to_value - from_value - flows, 2)
+  # Splits one holding's value change into money moved in or out and the earnings
+  # on top. Money in/out is a real trade — a change in units held — and shows as
+  # the matching cost-basis move; a cost basis that shifts while the units stay
+  # put is currency revaluation of a foreign holding, not a contribution, so it
+  # stays in earnings. Cash and Urbanitae carry no units, so their whole basis
+  # move counts (cash is all money in/out, Urbanitae's basis already isolates its
+  # yield). Distributions are credited to earnings on top, everywhere the same.
+  defp metric(isin, from_by_isin, to_by_isin, categories) do
+    from = Map.get(from_by_isin, isin)
+    to = Map.get(to_by_isin, isin)
+
+    value_from = amount(from, :value)
+    value_to = amount(to, :value)
+    dividends = amount(to, :dividends) - amount(from, :dividends)
+
+    traded =
+      if traded?(units(from), units(to)),
+        do: amount(to, :invested) - amount(from, :invested),
+        else: 0.0
+
+    flows = Float.round(traded - dividends, 2)
+    earnings = Float.round(value_to - value_from - flows, 2)
 
     %{
-      key: key,
-      label: (to && to.label) || from.label,
-      from: from_value,
-      to: to_value,
+      key: isin,
+      label: label(to) || label(from),
+      category: AssetCategories.category_for(isin, categories),
+      from: value_from,
+      to: value_to,
       flows: flows,
-      earnings: earnings,
-      return_pct: percentage(earnings, from_value)
+      earnings: earnings
     }
+  end
+
+  defp amount(nil, _key), do: 0.0
+  defp amount(entry, key), do: Map.get(entry, key, 0.0)
+
+  defp units(nil), do: nil
+  defp units(entry), do: entry.units
+
+  defp label(nil), do: nil
+  defp label(entry), do: entry.label
+
+  # No units on one side means a holding without units to compare (cash,
+  # Urbanitae) or one fully bought or sold in the window — all real movements.
+  defp traded?(nil, _to), do: true
+  defp traded?(_from, nil), do: true
+  defp traded?(from, to), do: from != to
+
+  # The asset view is one row per holding; the category view rolls the per-ISIN
+  # figures up so money in/out and earnings stay separated within each category.
+  defp rows_for(metrics, "asset") do
+    Enum.map(metrics, &Map.put(&1, :return_pct, percentage(&1.earnings, &1.from)))
+  end
+
+  defp rows_for(metrics, "category") do
+    metrics
+    |> Enum.group_by(& &1.category)
+    |> Enum.map(fn {category, group} ->
+      from = total(group, & &1.from)
+      earnings = total(group, & &1.earnings)
+
+      %{
+        key: category,
+        label: category,
+        from: from,
+        to: total(group, & &1.to),
+        flows: total(group, & &1.flows),
+        earnings: earnings,
+        return_pct: percentage(earnings, from)
+      }
+    end)
   end
 
   # A position opened inside the window has no starting value to earn a return
@@ -313,63 +365,38 @@ defmodule SheetfolioWeb.ComparisonLive do
   defp sort_order("asc"), do: :asc
   defp sort_order(_desc), do: :desc
 
-  defp field(nil, _key), do: 0.0
-  defp field(map, key), do: Map.get(map, key, 0.0)
-
   defp total(rows, fun), do: rows |> Enum.reduce(0.0, &(fun.(&1) + &2)) |> Float.round(2)
 
-  defp grouped(positions, "category", categories) do
-    positions
-    |> Enum.filter(&(is_number(&1["value"]) and &1["value"] > 0))
-    |> Enum.group_by(&AssetCategories.category_for(&1["isin"], categories))
-    |> Map.new(fn {category, group} ->
-      {category, %{label: category, value: sum_field(group, "value"), invested: sum_field(group, "invested")}}
-    end)
-  end
-
-  defp grouped(positions, "asset", _categories) do
-    positions
-    |> Enum.filter(&(is_number(&1["value"]) and &1["value"] > 0))
-    |> Map.new(
-      &{&1["isin"], %{label: &1["asset"], value: number(&1["value"]), invested: number(&1["invested"])}}
-    )
-  end
-
-  defp sum_field(group, field) do
-    group |> Enum.reduce(0.0, &(number(&1[field]) + &2)) |> Float.round(2)
-  end
-
-  # A snapshot with cash and the outstanding Urbanitae balance folded in, the
-  # same shape the Portfolio doughnut and net-worth card feed on.
+  # One entry per holding at a date: its value, cost basis, units held (nil for
+  # cash and Urbanitae, which aren't unit-priced) and the distributions received
+  # so far. Cash and Urbanitae are folded in the way the Portfolio net-worth card
+  # does, so the totals reconcile with the headline delta.
   defp positions_at(assigns, date) do
     case snapshot_asof(assigns.snapshots, date) do
       nil -> nil
-      snap -> %{date: snap["date"], positions: fold_extras(snap, assigns)}
+      snap -> %{date: snap["date"], entries: entries_at(snap, assigns)}
     end
   end
 
-  defp fold_extras(snap, assigns) do
+  defp entries_at(snap, assigns) do
     resolved = snap["date"]
 
     (snap["positions"] || [])
-    |> Enum.reject(&(&1["isin"] == "URBANITAE"))
-    |> Enum.map(&credit_dividends(&1, assigns.dividends_by_isin, resolved))
+    |> Enum.filter(&(&1["isin"] != "URBANITAE" and is_number(&1["value"]) and &1["value"] > 0))
+    |> Enum.map(&market_entry(&1, assigns.dividends_by_isin, resolved))
     |> Enum.concat(urbanitae_entry(assigns.transactions, resolved))
     |> Enum.concat(cash_entry(assigns.cash, resolved))
   end
 
-  # A distribution is paid out rather than growing the fund's value, so like
-  # Urbanitae's yield it never shows up in the price-based split. Lowering the
-  # cost basis by everything distributed so far credits those payouts as
-  # earnings and nets the matching cash inflow back out of money in/out.
-  defp credit_dividends(position, dividends_by_isin, date) do
-    paid = dividends_to(dividends_by_isin, position["isin"], date)
-
-    if paid == 0.0 do
-      position
-    else
-      Map.put(position, "invested", Float.round(number(position["invested"]) - paid, 2))
-    end
+  defp market_entry(position, dividends_by_isin, date) do
+    %{
+      isin: position["isin"],
+      label: position["asset"],
+      value: number(position["value"]),
+      invested: number(position["invested"]),
+      units: position["units"],
+      dividends: dividends_to(dividends_by_isin, position["isin"], date)
+    }
   end
 
   defp dividends_to(dividends_by_isin, isin, date) do
@@ -390,10 +417,12 @@ defmodule SheetfolioWeb.ComparisonLive do
       {outstanding, earnings} when outstanding > 0 ->
         [
           %{
-            "isin" => "URBANITAE",
-            "asset" => "Urbanitae",
-            "value" => Float.round(outstanding, 2),
-            "invested" => Float.round(outstanding - earnings, 2)
+            isin: "URBANITAE",
+            label: "Urbanitae",
+            value: Float.round(outstanding, 2),
+            invested: Float.round(outstanding - earnings, 2),
+            units: nil,
+            dividends: 0.0
           }
         ]
 
@@ -404,8 +433,11 @@ defmodule SheetfolioWeb.ComparisonLive do
 
   defp cash_entry(cash, date) do
     case cash_at(cash, date) do
-      nil -> []
-      amount -> [%{"isin" => "EFECTIVO", "asset" => "Cash", "value" => amount, "invested" => amount}]
+      nil ->
+        []
+
+      amount ->
+        [%{isin: "EFECTIVO", label: "Cash", value: amount, invested: amount, units: nil, dividends: 0.0}]
     end
   end
 
