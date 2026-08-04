@@ -2,6 +2,7 @@ defmodule SheetfolioWeb.ComparisonLive do
   use SheetfolioWeb, :live_view
 
   alias Sheetfolio.AssetCategories
+  alias Sheetfolio.Positions
   alias Sheetfolio.UrbanitaeTransactions
 
   @presets ~w(1d 1w 1m 3m 1y ytd)
@@ -33,6 +34,8 @@ defmodule SheetfolioWeb.ComparisonLive do
           cash: [],
           transactions: [],
           dividends_by_isin: %{},
+          operations: [],
+          fx: {nil, nil},
           categories: %{},
           view: "category",
           period: "1w",
@@ -57,12 +60,17 @@ defmodule SheetfolioWeb.ComparisonLive do
         period = normalize_period(params["period"])
         {from_date, to_date} = default_dates(snapshots, period)
 
+        # The operation history is slow to load and the flow figures don't need
+        # it — only the hover breakdown does — so fetch it off the render path.
+        send(self(), :load_operations)
+
         {:ok,
          assign(socket,
            snapshots: snapshots,
            cash: cash,
            transactions: UrbanitaeTransactions.all(),
            dividends_by_isin: Enum.group_by(Sheetfolio.Dividends.all(), & &1["isin"]),
+           fx: Sheetfolio.EarningsServer.get_fx_rates(),
            categories: AssetCategories.get(),
            period: period,
            from_date: from_date,
@@ -97,6 +105,18 @@ defmodule SheetfolioWeb.ComparisonLive do
     from_date = if from != "", do: from, else: socket.assigns.from_date
     to_date = if to != "", do: to, else: socket.assigns.to_date
     {:noreply, assign(socket, period: "custom", from_date: from_date, to_date: to_date)}
+  end
+
+  # get_operations/1 blocks until the boot load finishes, so do it in a task and
+  # keep the LiveView responsive; the breakdown appears once it lands.
+  def handle_info(:load_operations, socket) do
+    live = self()
+    Task.start(fn -> send(live, {:operations, Sheetfolio.OperationsServer.get_operations(:infinity) || []}) end)
+    {:noreply, socket}
+  end
+
+  def handle_info({:operations, operations}, socket) do
+    {:noreply, assign(socket, operations: operations)}
   end
 
   # dd/mm/yyyy text field over a hidden native date input (see the SpanishDate
@@ -134,7 +154,20 @@ defmodule SheetfolioWeb.ComparisonLive do
       .headline-values { font-size: 1.35rem; font-weight: 700; color: #0f172a; }
       .headline-arrow { color: #94a3b8; margin: 0 0.5rem; font-weight: 400; }
       .headline-sub { font-size: 0.85rem; margin-top: 0.4rem; }
-      .cmp-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); font-variant-numeric: tabular-nums; }
+      .cmp-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); font-variant-numeric: tabular-nums; }
+      .cmp-table thead th:first-child { border-top-left-radius: 12px; }
+      .cmp-table thead th:last-child { border-top-right-radius: 12px; }
+      .cmp-table tfoot td:first-child { border-bottom-left-radius: 12px; }
+      .cmp-table tfoot td:last-child { border-bottom-right-radius: 12px; }
+      .flow-cell { position: relative; cursor: help; border-bottom: 1px dotted #94a3b8; }
+      .flow-tip { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: none; background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 0.45rem 0.65rem; box-shadow: 0 8px 24px rgba(0,0,0,0.28); }
+      .flow-cell:hover .flow-tip { display: block; }
+      .flow-tip-row { display: grid; grid-template-columns: auto 1fr auto; gap: 0.15rem 0.9rem; align-items: baseline; font-size: 0.78rem; font-weight: 400; line-height: 1.55; white-space: nowrap; }
+      .flow-tip-date { color: #94a3b8; }
+      .flow-tip-kind { color: #cbd5e1; text-align: left; }
+      .flow-tip-amt { text-align: right; }
+      .flow-tip .positive { color: #4ade80; }
+      .flow-tip .negative { color: #f87171; }
       .cmp-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; }
       .cmp-table th:not(:first-child) { text-align: right; }
       .cmp-table th.text, .cmp-table td.text { text-align: left; }
@@ -224,7 +257,24 @@ defmodule SheetfolioWeb.ComparisonLive do
                     </td>
                   <% end %>
                   <td><%= format_eur(row.to) %></td>
-                  <td class="flow"><%= signed_or_dash(row.flows) %></td>
+                  <td class="flow">
+                    <%= if row.events == [] do %>
+                      <%= signed_or_dash(row.flows) %>
+                    <% else %>
+                      <span class="flow-cell">
+                        <%= signed_or_dash(row.flows) %>
+                        <span class="flow-tip">
+                          <%= for e <- row.events do %>
+                            <span class="flow-tip-row">
+                              <span class="flow-tip-date"><%= es_date(e.date) %></span>
+                              <span class="flow-tip-kind"><%= e.kind %></span>
+                              <span class={"flow-tip-amt #{num_class(e.amount)}"}><%= signed(e.amount) %></span>
+                            </span>
+                          <% end %>
+                        </span>
+                      </span>
+                    <% end %>
+                  </td>
                   <td class={earnings_class(row.earnings)}><%= signed_or_dash(row.earnings) %></td>
                   <td class={return_class(row)}><%= return_display(row) %></td>
                 </tr>
@@ -266,9 +316,19 @@ defmodule SheetfolioWeb.ComparisonLive do
     from_by_isin = Map.new(from.entries, &{&1.isin, &1})
     to_by_isin = Map.new(to.entries, &{&1.isin, &1})
 
+    ctx = %{
+      categories: assigns.categories,
+      operations: assigns.operations,
+      dividends_by_isin: assigns.dividends_by_isin,
+      transactions: assigns.transactions,
+      fx: assigns.fx,
+      from: from.date,
+      to: to.date
+    }
+
     rows =
       MapSet.union(MapSet.new(Map.keys(from_by_isin)), MapSet.new(Map.keys(to_by_isin)))
-      |> Enum.map(&metric(&1, from_by_isin, to_by_isin, assigns.categories))
+      |> Enum.map(&metric(&1, from_by_isin, to_by_isin, ctx))
       |> rows_for(assigns.view)
       |> sort_rows(assigns.sort_key, assigns.sort_dir)
 
@@ -299,7 +359,7 @@ defmodule SheetfolioWeb.ComparisonLive do
   # stays in earnings. Cash and Urbanitae carry no units, so their whole basis
   # move counts (cash is all money in/out, Urbanitae's basis already isolates its
   # yield). Distributions are credited to earnings on top, everywhere the same.
-  defp metric(isin, from_by_isin, to_by_isin, categories) do
+  defp metric(isin, from_by_isin, to_by_isin, ctx) do
     from = Map.get(from_by_isin, isin)
     to = Map.get(to_by_isin, isin)
 
@@ -318,11 +378,12 @@ defmodule SheetfolioWeb.ComparisonLive do
     %{
       key: isin,
       label: label(to) || label(from),
-      category: AssetCategories.category_for(isin, categories),
+      category: AssetCategories.category_for(isin, ctx.categories),
       from: value_from,
       to: value_to,
       flows: flows,
-      earnings: earnings
+      earnings: earnings,
+      events: balance(events_for(isin, ctx), flows, isin, ctx.to)
     }
   end
 
@@ -340,6 +401,93 @@ defmodule SheetfolioWeb.ComparisonLive do
   defp traded?(nil, _to), do: true
   defp traded?(_from, nil), do: true
   defp traded?(from, to), do: from != to
+
+  # The dated events behind a holding's money in/out, for the hover tooltip:
+  # purchases from the operation history, distributions, and Urbanitae's own
+  # movements. A purchase's recorded cost matches the cost basis the flow is
+  # built from, so those reconcile; sells, closures and currency residue don't
+  # map to a single operation, so `balance/4` folds whatever is left into one
+  # "Withdrawal" line. Operations arrive after the first render, so until then a
+  # market holding shows just that balancing line.
+  defp events_for(isin, ctx) do
+    (buy_events(isin, ctx) ++ dividend_events(isin, ctx) ++ urbanitae_events(isin, ctx))
+    |> Enum.sort_by(& &1.date)
+  end
+
+  defp buy_events(isin, ctx) do
+    ctx.operations
+    |> Enum.filter(fn op -> buy?(op) and op.isin == isin and in_window?(iso_of(op.fecha), ctx) end)
+    |> Enum.map(&%{date: iso_of(&1.fecha), amount: buy_amount(&1, ctx.fx), kind: "Buy"})
+  end
+
+  defp buy?(%{traspaso: true}), do: false
+  defp buy?(%{tipo: tipo}), do: tipo in ["Compra", "Suscripcion"]
+  defp buy?(_op), do: false
+
+  defp buy_amount(op, {eur_usd, eur_cad}) do
+    {rate_usd, rate_cad} = op_fx(op, eur_usd, eur_cad)
+    qty = Positions.parse_cantidad(Map.get(op, :cantidad, "0"))
+    importe = Map.get(op, :importe_with_comision, "")
+    Float.round(Positions.amount_in_eur(importe, Map.get(op, :precio, ""), qty, rate_usd, rate_cad), 2)
+  end
+
+  # A purchase converted at the operation's own day rate holds still; only fall
+  # back to today's rate when the pin is missing.
+  defp op_fx(%{fx_usd: usd, fx_cad: cad}, _eur_usd, _eur_cad) when is_number(usd) and is_number(cad),
+    do: {usd, cad}
+
+  defp op_fx(_op, eur_usd, eur_cad), do: {eur_usd, eur_cad}
+
+  # Cash and Urbanitae already reconcile from their own ledgers; every other
+  # holding gets the gap between its listed events and its actual money in/out
+  # dropped in as a withdrawal (money out) or, rarely, an unexplained inflow.
+  defp balance(events, _flows, isin, _to) when isin in ["EFECTIVO", "URBANITAE"], do: events
+
+  defp balance(events, flows, _isin, to) do
+    gap = Float.round(flows - Enum.reduce(events, 0.0, &(&1.amount + &2)), 2)
+
+    # Ignore sub-euro gaps: they're the cent-level rounding of summed buys, not a
+    # real movement (sells and closures run to tens of euros or more).
+    if abs(gap) < 0.5,
+      do: events,
+      else: events ++ [%{date: to, amount: gap, kind: if(gap < 0, do: "Withdrawal", else: "Other")}]
+  end
+
+  defp dividend_events(isin, ctx) do
+    ctx.dividends_by_isin
+    |> Map.get(isin, [])
+    |> Enum.filter(&in_window?(&1["date"], ctx))
+    |> Enum.map(&%{date: &1["date"], amount: -Float.round(&1["amount"], 2), kind: "Dividend"})
+  end
+
+  defp urbanitae_events("URBANITAE", ctx) do
+    ctx.transactions
+    |> Enum.filter(&in_window?(&1["date"], ctx))
+    |> Enum.map(&urbanitae_event/1)
+  end
+
+  defp urbanitae_events(_isin, _ctx), do: []
+
+  defp urbanitae_event(%{"kind" => "investment"} = tx),
+    do: %{date: tx["date"], amount: Float.round(tx["amount"], 2), kind: "Property"}
+
+  defp urbanitae_event(%{"repayment_kind" => "principal"} = tx),
+    do: %{date: tx["date"], amount: -Float.round(tx["amount"], 2), kind: "Property back"}
+
+  defp urbanitae_event(tx),
+    do: %{date: tx["date"], amount: -Float.round(tx["amount"], 2), kind: "Property yield"}
+
+  defp in_window?(date, %{from: from, to: to}), do: date > from and date <= to
+
+  defp iso_of(fecha) do
+    case String.split(fecha, "/") do
+      [day, month, year] ->
+        "#{year}-#{String.pad_leading(month, 2, "0")}-#{String.pad_leading(day, 2, "0")}"
+
+      _ ->
+        fecha
+    end
+  end
 
   # The asset view is one row per holding; the category view rolls the per-ISIN
   # figures up so money in/out and earnings stay separated within each category.
@@ -361,7 +509,8 @@ defmodule SheetfolioWeb.ComparisonLive do
         to: total(group, & &1.to),
         flows: total(group, & &1.flows),
         earnings: earnings,
-        return_pct: percentage(earnings, from)
+        return_pct: percentage(earnings, from),
+        events: group |> Enum.flat_map(& &1.events) |> Enum.sort_by(& &1.date)
       }
     end)
   end
