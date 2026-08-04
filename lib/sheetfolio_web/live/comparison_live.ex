@@ -32,6 +32,7 @@ defmodule SheetfolioWeb.ComparisonLive do
           snapshots: [],
           cash: [],
           transactions: [],
+          dividends_by_isin: %{},
           categories: %{},
           view: "category",
           period: "1w",
@@ -61,6 +62,7 @@ defmodule SheetfolioWeb.ComparisonLive do
            snapshots: snapshots,
            cash: cash,
            transactions: UrbanitaeTransactions.all(),
+           dividends_by_isin: Enum.group_by(Sheetfolio.Dividends.all(), & &1["isin"]),
            categories: AssetCategories.get(),
            period: period,
            from_date: from_date,
@@ -351,8 +353,32 @@ defmodule SheetfolioWeb.ComparisonLive do
 
     (snap["positions"] || [])
     |> Enum.reject(&(&1["isin"] == "URBANITAE"))
+    |> Enum.map(&credit_dividends(&1, assigns.dividends_by_isin, resolved))
     |> Enum.concat(urbanitae_entry(assigns.transactions, resolved))
     |> Enum.concat(cash_entry(assigns.cash, resolved))
+  end
+
+  # A distribution is paid out rather than growing the fund's value, so like
+  # Urbanitae's yield it never shows up in the price-based split. Lowering the
+  # cost basis by everything distributed so far credits those payouts as
+  # earnings and nets the matching cash inflow back out of money in/out.
+  defp credit_dividends(position, dividends_by_isin, date) do
+    paid = dividends_to(dividends_by_isin, position["isin"], date)
+
+    if paid == 0.0 do
+      position
+    else
+      Map.put(position, "invested", Float.round(number(position["invested"]) - paid, 2))
+    end
+  end
+
+  defp dividends_to(dividends_by_isin, isin, date) do
+    dividends_by_isin
+    |> Map.get(isin, [])
+    |> Enum.reduce(0.0, fn payment, acc ->
+      if payment["date"] <= date, do: acc + payment["amount"], else: acc
+    end)
+    |> Float.round(2)
   end
 
   # Urbanitae's yield leaves the outstanding balance the moment it's repaid, so
