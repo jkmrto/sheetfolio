@@ -99,6 +99,21 @@ defmodule SheetfolioWeb.ComparisonLive do
     {:noreply, assign(socket, period: "custom", from_date: from_date, to_date: to_date)}
   end
 
+  # dd/mm/yyyy text field over a hidden native date input (see the SpanishDate
+  # JS hook). The text is what the user reads and edits; the native input holds
+  # the ISO value the form submits and supplies the calendar the button opens.
+  defp es_date_field(assigns) do
+    ~H"""
+    <div class="es-date" id={"date-#{@name}"} phx-hook="SpanishDate">
+      <input type="text" class="es-date-text" value={es_date(@value)} inputmode="numeric"
+             placeholder="dd/mm/aaaa" autocomplete="off" />
+      <button type="button" class="es-date-btn" tabindex="-1" aria-label="Abrir calendario">📅</button>
+      <input type="date" class="es-date-native" name={@name} value={@value} min={@min} max={@max}
+             tabindex="-1" aria-hidden="true" />
+    </div>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <style>
@@ -109,7 +124,11 @@ defmodule SheetfolioWeb.ComparisonLive do
       .cmp-view { margin-left: auto; }
       .date-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
       .date-bar label { font-size: 0.85rem; font-weight: 600; color: #475569; }
-      .date-bar input[type=date] { padding: 0.4rem 0.7rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; color: #1e293b; background: white; }
+      .es-date { position: relative; display: inline-flex; align-items: center; border: 1px solid #cbd5e1; border-radius: 6px; background: white; padding: 0 0.35rem 0 0.7rem; }
+      .es-date-text { border: none; outline: none; padding: 0.4rem 0; font-size: 0.9rem; color: #1e293b; width: 6rem; background: transparent; font-variant-numeric: tabular-nums; }
+      .es-date-btn { border: none; background: transparent; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0.2rem 0.25rem; color: #475569; }
+      .es-date-btn:hover { color: #1e293b; }
+      .es-date-native { position: absolute; left: 0; bottom: 0; width: 100%; height: 1px; opacity: 0; pointer-events: none; }
       .headline { background: white; border-radius: 12px; padding: 1.25rem 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
       .headline-label { font-size: 0.72rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
       .headline-values { font-size: 1.35rem; font-weight: 700; color: #0f172a; }
@@ -154,11 +173,9 @@ defmodule SheetfolioWeb.ComparisonLive do
 
       <form class="date-bar" phx-change="set_dates">
         <label>From</label>
-        <input type="date" name="from" lang="es" value={@from_date}
-               min={first_date(@snapshots)} max={latest_date(@snapshots)} />
+        <.es_date_field name="from" value={@from_date} min={first_date(@snapshots)} max={latest_date(@snapshots)} />
         <label>To</label>
-        <input type="date" name="to" lang="es" value={@to_date}
-               min={first_date(@snapshots)} max={latest_date(@snapshots)} />
+        <.es_date_field name="to" value={@to_date} min={first_date(@snapshots)} max={latest_date(@snapshots)} />
       </form>
 
       <%= case comparison(assigns) do %>

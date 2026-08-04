@@ -368,6 +368,43 @@ Hooks.DcaBitcoinChart = {
   }
 }
 
+// A dd/mm/yyyy text field over a hidden native date input. The text is what
+// the user reads and types; the native input carries the ISO value the form
+// submits and provides the calendar popup, which browsers render in their own
+// locale but which we only open on demand.
+Hooks.SpanishDate = {
+  mounted() {
+    this.text = this.el.querySelector(".es-date-text")
+    this.native = this.el.querySelector(".es-date-native")
+
+    this.el.querySelector(".es-date-btn").addEventListener("click", () => {
+      try { this.native.showPicker() } catch (_) { this.native.focus() }
+    })
+
+    // A calendar pick already reaches the form's phx-change through the native
+    // input; just mirror it into the text field for instant feedback.
+    this.native.addEventListener("input", () => this.toText())
+
+    this.text.addEventListener("change", () => this.commit())
+    this.text.addEventListener("keydown", (e) => { if (e.key === "Enter") this.commit() })
+  },
+  toText() {
+    this.text.value = this.native.value ? this.native.value.split("-").reverse().join("/") : ""
+  },
+  commit() {
+    const m = this.text.value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    if (!m) return this.toText()
+
+    let iso = `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`
+    if (this.native.min && iso < this.native.min) iso = this.native.min
+    if (this.native.max && iso > this.native.max) iso = this.native.max
+    if (iso === this.native.value) return this.toText()
+
+    this.native.value = iso
+    this.native.dispatchEvent(new Event("input", { bubbles: true }))
+  }
+}
+
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {params: {_csrf_token: csrfToken}, hooks: Hooks})
 liveSocket.connect()
