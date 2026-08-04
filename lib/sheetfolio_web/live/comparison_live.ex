@@ -273,8 +273,9 @@ defmodule SheetfolioWeb.ComparisonLive do
   end
 
   # Splits each holding's value change into the money moved in or out (the change
-  # in cost basis) and what the market earned on top (the rest). Cash and
-  # Urbanitae carry no cost basis, so their whole move counts as money in/out.
+  # in cost basis) and what the market earned on top (the rest). Cash has no cost
+  # basis, so its whole move is money in/out; Urbanitae's basis is set so its
+  # repaid yield lands in earnings (see urbanitae_entry/2).
   defp row(key, from_map, to_map) do
     from = Map.get(from_map, key)
     to = Map.get(to_map, key)
@@ -354,11 +355,21 @@ defmodule SheetfolioWeb.ComparisonLive do
     |> Enum.concat(cash_entry(assigns.cash, resolved))
   end
 
+  # Urbanitae's yield leaves the outstanding balance the moment it's repaid, so
+  # treating the whole balance as cost basis would hide every gain. Setting the
+  # basis to outstanding minus cumulative earnings makes the split credit that
+  # yield as earnings and count only the net cash movement as money in/out.
   defp urbanitae_entry(transactions, date) do
     case UrbanitaeTransactions.state_at(transactions, date) do
-      {outstanding, _earnings} when outstanding > 0 ->
-        rounded = Float.round(outstanding, 2)
-        [%{"isin" => "URBANITAE", "asset" => "Urbanitae", "value" => rounded, "invested" => rounded}]
+      {outstanding, earnings} when outstanding > 0 ->
+        [
+          %{
+            "isin" => "URBANITAE",
+            "asset" => "Urbanitae",
+            "value" => Float.round(outstanding, 2),
+            "invested" => Float.round(outstanding - earnings, 2)
+          }
+        ]
 
       _ ->
         []
