@@ -162,8 +162,10 @@ defmodule SheetfolioWeb.ComparisonLive do
       .flow-cell { position: relative; cursor: help; border-bottom: 1px dotted #94a3b8; }
       .flow-tip { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: none; background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 0.45rem 0.65rem; box-shadow: 0 8px 24px rgba(0,0,0,0.28); }
       .flow-cell:hover .flow-tip { display: block; }
-      .flow-tip-row { display: grid; grid-template-columns: auto 1fr auto; gap: 0.15rem 0.9rem; align-items: baseline; font-size: 0.78rem; font-weight: 400; line-height: 1.55; white-space: nowrap; }
+      .flow-tip-row { display: grid; grid-template-columns: auto auto auto; gap: 0.15rem 0.9rem; align-items: baseline; font-size: 0.78rem; font-weight: 400; line-height: 1.55; white-space: nowrap; }
+      .flow-tip.with-asset .flow-tip-row { grid-template-columns: auto auto auto auto; }
       .flow-tip-date { color: #94a3b8; }
+      .flow-tip-asset { color: #e2e8f0; text-align: left; }
       .flow-tip-kind { color: #cbd5e1; text-align: left; }
       .flow-tip-amt { text-align: right; }
       .flow-tip .positive { color: #4ade80; }
@@ -263,10 +265,13 @@ defmodule SheetfolioWeb.ComparisonLive do
                     <% else %>
                       <span class="flow-cell">
                         <%= signed_or_dash(row.flows) %>
-                        <span class="flow-tip">
+                        <span class={"flow-tip#{if @view == "category", do: " with-asset"}"}>
                           <%= for e <- row.events do %>
                             <span class="flow-tip-row">
                               <span class="flow-tip-date"><%= es_date(e.date) %></span>
+                              <%= if @view == "category" do %>
+                                <span class="flow-tip-asset"><%= e.asset %></span>
+                              <% end %>
                               <span class="flow-tip-kind"><%= e.kind %></span>
                               <span class={"flow-tip-amt #{num_class(e.amount)}"}><%= signed(e.amount) %></span>
                             </span>
@@ -374,16 +379,17 @@ defmodule SheetfolioWeb.ComparisonLive do
 
     flows = Float.round(traded - dividends, 2)
     earnings = Float.round(value_to - value_from - flows, 2)
+    name = label(to) || label(from)
 
     %{
       key: isin,
-      label: label(to) || label(from),
+      label: name,
       category: AssetCategories.category_for(isin, ctx.categories),
       from: value_from,
       to: value_to,
       flows: flows,
       earnings: earnings,
-      events: balance(events_for(isin, ctx), flows, isin, ctx.to)
+      events: balance(events_for(isin, ctx), flows, isin, name, ctx.to)
     }
   end
 
@@ -417,7 +423,9 @@ defmodule SheetfolioWeb.ComparisonLive do
   defp buy_events(isin, ctx) do
     ctx.operations
     |> Enum.filter(fn op -> buy?(op) and op.isin == isin and in_window?(iso_of(op.fecha), ctx) end)
-    |> Enum.map(&%{date: iso_of(&1.fecha), amount: buy_amount(&1, ctx.fx), kind: "Buy"})
+    |> Enum.map(fn op ->
+      %{date: iso_of(op.fecha), asset: Map.get(op, :asset, ""), amount: buy_amount(op, ctx.fx), kind: "Buy"}
+    end)
   end
 
   defp buy?(%{traspaso: true}), do: false
@@ -441,23 +449,23 @@ defmodule SheetfolioWeb.ComparisonLive do
   # Cash and Urbanitae already reconcile from their own ledgers; every other
   # holding gets the gap between its listed events and its actual money in/out
   # dropped in as a withdrawal (money out) or, rarely, an unexplained inflow.
-  defp balance(events, _flows, isin, _to) when isin in ["EFECTIVO", "URBANITAE"], do: events
+  defp balance(events, _flows, isin, _name, _to) when isin in ["EFECTIVO", "URBANITAE"], do: events
 
-  defp balance(events, flows, _isin, to) do
+  defp balance(events, flows, _isin, name, to) do
     gap = Float.round(flows - Enum.reduce(events, 0.0, &(&1.amount + &2)), 2)
 
     # Ignore sub-euro gaps: they're the cent-level rounding of summed buys, not a
     # real movement (sells and closures run to tens of euros or more).
     if abs(gap) < 0.5,
       do: events,
-      else: events ++ [%{date: to, amount: gap, kind: if(gap < 0, do: "Withdrawal", else: "Other")}]
+      else: events ++ [%{date: to, asset: name, amount: gap, kind: if(gap < 0, do: "Withdrawal", else: "Other")}]
   end
 
   defp dividend_events(isin, ctx) do
     ctx.dividends_by_isin
     |> Map.get(isin, [])
     |> Enum.filter(&in_window?(&1["date"], ctx))
-    |> Enum.map(&%{date: &1["date"], amount: -Float.round(&1["amount"], 2), kind: "Dividend"})
+    |> Enum.map(&%{date: &1["date"], asset: &1["asset"], amount: -Float.round(&1["amount"], 2), kind: "Dividend"})
   end
 
   defp urbanitae_events("URBANITAE", ctx) do
@@ -469,13 +477,15 @@ defmodule SheetfolioWeb.ComparisonLive do
   defp urbanitae_events(_isin, _ctx), do: []
 
   defp urbanitae_event(%{"kind" => "investment"} = tx),
-    do: %{date: tx["date"], amount: Float.round(tx["amount"], 2), kind: "Property"}
+    do: %{date: tx["date"], asset: urbanitae_name(tx), amount: Float.round(tx["amount"], 2), kind: "Property"}
 
   defp urbanitae_event(%{"repayment_kind" => "principal"} = tx),
-    do: %{date: tx["date"], amount: -Float.round(tx["amount"], 2), kind: "Property back"}
+    do: %{date: tx["date"], asset: urbanitae_name(tx), amount: -Float.round(tx["amount"], 2), kind: "Property back"}
 
   defp urbanitae_event(tx),
-    do: %{date: tx["date"], amount: -Float.round(tx["amount"], 2), kind: "Property yield"}
+    do: %{date: tx["date"], asset: urbanitae_name(tx), amount: -Float.round(tx["amount"], 2), kind: "Property yield"}
+
+  defp urbanitae_name(tx), do: tx["project"] || "Urbanitae"
 
   defp in_window?(date, %{from: from, to: to}), do: date > from and date <= to
 
