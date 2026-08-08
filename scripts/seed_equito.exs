@@ -7,14 +7,20 @@
 # against its natural key (date + code + kind + amount) before insert, so
 # overlapping screenshots top the ledger up instead of duplicating it.
 #
-# INCOMPLETE — still missing from the Historial, so the totals this produces
-# understate the real position:
+# All six purchases are confirmed from the per-property detail screens.
+# Two gaps remain in the rent stream, so the distributions still understate
+# what has actually been paid out:
 #
-#   * EQT-0103's COMPRA (its first rent lands 01/01/2026 at a part month)
-#   * EQT-0070's COMPRA day (March 2025, cropped in the screenshot)
-#   * August 2025 rents, if there were any
-#   * April–May 2025, between the March purchases and the first rent seen
-#   * anything newer than 01/07/2026
+#   * August 2025 — EQT-0070 and EQT-0072 were both letting by then, but the
+#     Historial screenshots jump from July to September
+#   * August 2026 — the detail screens show the net (EQT-0010 1.08 €,
+#     0070 1.12, 0072 1.16, 0074 1.15, 0103 1.15, 0104 1.14) but not the
+#     RENTA / RET. FISCAL split those nets come from
+#
+# April–May 2025 look genuinely empty rather than missing: each property's
+# first rent trails its purchase by a couple of months, and the part-month
+# amounts line up with a tenancy starting then (EQT-0070's 0.69 € in June,
+# EQT-0010's 0.21 € after a 26/08 purchase).
 
 alias Sheetfolio.{EquitoProperties, EquitoTransactions}
 
@@ -27,10 +33,12 @@ properties = [
   %{code: "EQT-0104", kind: "Apartment", surface_m2: 94, city: "Torrent", status: "Alquilado", yield_pct: 9.66, distributed_pct: 8.46}
 ]
 
-# Every holding is 2 tokens at 100 €.
+# Every holding is 2 tokens at 100 €, dated from each property's detail screen.
 purchases = [
+  {"2025-03-13", "EQT-0070"},
   {"2025-03-20", "EQT-0072"},
   {"2025-03-27", "EQT-0074"},
+  {"2025-08-25", "EQT-0103"},
   {"2025-08-25", "EQT-0104"},
   {"2025-08-26", "EQT-0010"}
 ]
