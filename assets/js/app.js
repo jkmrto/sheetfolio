@@ -3,6 +3,17 @@ import {LiveSocket} from "phoenix_live_view"
 
 const Hooks = {}
 
+// Chart.js sizes a responsive canvas from its width, and the default 2:1 ratio
+// leaves a phone with ~150px of height — most of it eaten by the legend, which
+// wraps to three rows once the labels no longer fit side by side. Narrow
+// viewports get a squarer chart and a tighter legend instead.
+const narrow = () => window.innerWidth <= 768
+const chartAspectRatio = () => narrow() ? 1 : 2
+const legend = (position) => ({
+  position,
+  labels: narrow() ? {boxWidth: 10, boxHeight: 10, padding: 8, font: {size: 10}} : {}
+})
+
 Hooks.HistoryChart = {
   mounted() { this.render() },
   updated() { this.render() },
@@ -52,11 +63,12 @@ Hooks.HistoryChart = {
       data: {labels: payload.labels, datasets},
       options: {
         responsive: true,
+        aspectRatio: chartAspectRatio(),
         onClick: pushOnClick,
         interaction: {mode: "index", intersect: false},
         plugins: {
-          legend: {position: "top"},
-          title: {display: true, text: payload.title || (isPct ? "Gain/Loss evolution (%)" : "Value evolution (€)"), font: {size: 18}},
+          legend: legend("top"),
+          title: {display: true, text: payload.title || (isPct ? "Gain/Loss evolution (%)" : "Value evolution (€)"), font: {size: narrow() ? 14 : 18}},
           tooltip: {
             callbacks: {
               label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`
@@ -160,9 +172,10 @@ Hooks.CategoryHistoryChart = {
       },
       options: {
         responsive: true,
+        aspectRatio: chartAspectRatio(),
         interaction: {mode: "index", intersect: false},
         plugins: {
-          legend: {position: "top"},
+          legend: legend("top"),
           tooltip: {
             callbacks: {
               label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)}`,
@@ -202,9 +215,10 @@ Hooks.DcaChart = {
       data: { datasets: [] },
       options: {
         responsive: true,
+        aspectRatio: chartAspectRatio(),
         interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { position: 'top' },
+          legend: legend('top'),
           tooltip: {
             callbacks: {
               label: item => {
@@ -296,9 +310,10 @@ Hooks.DcaBitcoinChart = {
       data: { datasets: [] },
       options: {
         responsive: true,
+        aspectRatio: chartAspectRatio(),
         interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { position: 'top' },
+          legend: legend('top'),
           tooltip: {
             callbacks: {
               label: item => {

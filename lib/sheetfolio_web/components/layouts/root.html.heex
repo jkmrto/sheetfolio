@@ -35,6 +35,12 @@
         .nav-toggle:checked ~ nav { transform: none; }
         .nav-toggle:checked ~ .nav-backdrop { display: block; position: fixed; inset: 0; z-index: 10; background: rgba(15,23,42,0.5); }
         main { margin: 1.25rem auto; }
+        .chart-container { padding: 1rem; }
+        /* A table can't scroll on its own, so a wide one drags the whole page
+           sideways; display:block gives it a scroll box of its own. The tables
+           set `overflow: hidden` themselves (to clip their rounded corners),
+           and a class beats a plain `main table`, hence the [class] match. */
+        main table, main table[class] { display: block; overflow-x: auto; }
       }
     </style>
   </head>
