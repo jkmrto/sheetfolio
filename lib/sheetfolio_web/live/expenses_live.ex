@@ -83,6 +83,9 @@ defmodule SheetfolioWeb.ExpensesLive do
       .expenses-table th.left, .expenses-table td.left { text-align: left; }
       .expenses-table thead th { color: #64748b; border-bottom: 1px solid #e2e8f0; }
       .expenses-table tbody tr:nth-child(even) { background: #f8fafc; }
+      /* The month column is pinned on mobile, so it paints its own background
+         and would otherwise drop out of the striping. */
+      .expenses-table tbody tr:nth-child(even) td:first-child { background: #f8fafc; }
       .expenses-table td.total { font-weight: 600; }
       .expenses-table tfoot td { font-weight: 600; background: #f1f5f9; }
       .expenses-table tfoot tr:first-child td { border-top: 2px solid #1e293b; }

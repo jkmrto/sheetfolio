@@ -44,6 +44,12 @@
            set `overflow: hidden` themselves (to clip their rounded corners),
            and a class beats a plain `main table`, hence the [class] match. */
         main table, main table[class] { display: block; overflow-x: auto; }
+        /* The label column (asset, category, month) stays put while the
+           numbers scroll past it. A sticky cell has to be opaque, and :where()
+           carries no specificity, so a page that gives its own header, footer
+           or hovered row a background still wins over this fallback. */
+        main table th:first-child, main table td:first-child { position: sticky; left: 0; z-index: 1; }
+        :where(main table th:first-child, main table td:first-child) { background: white; }
       }
     </style>
   </head>
