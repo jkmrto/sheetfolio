@@ -359,7 +359,7 @@ defmodule SheetfolioWeb.ComparisonLive do
       to_total: to_total,
       flows_total: flows_total,
       earnings_total: earnings_total,
-      return_total: percentage(earnings_total, from_total),
+      return_total: percentage(earnings_total, total(rows, & &1.base)),
       delta: delta,
       pct: percentage(delta, from_total),
       from_resolved: from.date,
@@ -390,6 +390,7 @@ defmodule SheetfolioWeb.ComparisonLive do
     flows = Float.round(traded - dividends, 2)
     earnings = Float.round(value_to - value_from - flows, 2)
     name = label(to) || label(from)
+    events = balance(events_for(isin, ctx), flows, isin, name, ctx.to)
 
     %{
       key: isin,
@@ -399,8 +400,39 @@ defmodule SheetfolioWeb.ComparisonLive do
       to: value_to,
       flows: flows,
       earnings: earnings,
-      events: balance(events_for(isin, ctx), flows, isin, name, ctx.to)
+      base: dietz_base(value_from, events, ctx),
+      events: events
     }
+  end
+
+  # The capital the earnings were made on. Dividing them by the opening value
+  # alone reads a category that grew mostly from contributions as a catastrophe
+  # — a full-period loss over a balance that was a fraction of the money at
+  # risk. So each flow is weighted by how much of the window it was invested
+  # for (Modified Dietz). Sells have no date of their own: they arrive as the
+  # balancing line `balance/4` stamps at the end of the window, which carries a
+  # weight of zero, so a position sold down still measures against what it held
+  # at the start.
+  defp dietz_base(value_from, events, ctx) do
+    days = day_offset(ctx.to, ctx.from) || 0
+    weighted = Enum.reduce(events, 0.0, &(weight(&1.date, ctx.from, days) * &1.amount + &2))
+    Float.round(value_from + weighted, 2)
+  end
+
+  defp weight(_date, _from, days) when days <= 0, do: 0.0
+
+  defp weight(date, from, days) do
+    case day_offset(date, from) do
+      nil -> 0.0
+      elapsed -> (days - elapsed) / days
+    end
+  end
+
+  defp day_offset(date, from) do
+    case {Date.from_iso8601(date), Date.from_iso8601(from)} do
+      {{:ok, parsed_date}, {:ok, parsed_from}} -> Date.diff(parsed_date, parsed_from)
+      _unparseable -> nil
+    end
   end
 
   defp amount(nil, _key), do: 0.0
@@ -512,24 +544,25 @@ defmodule SheetfolioWeb.ComparisonLive do
   # The asset view is one row per holding; the category view rolls the per-ISIN
   # figures up so money in/out and earnings stay separated within each category.
   defp rows_for(metrics, "asset") do
-    Enum.map(metrics, &Map.put(&1, :return_pct, percentage(&1.earnings, &1.from)))
+    Enum.map(metrics, &Map.put(&1, :return_pct, percentage(&1.earnings, &1.base)))
   end
 
   defp rows_for(metrics, "category") do
     metrics
     |> Enum.group_by(& &1.category)
     |> Enum.map(fn {category, group} ->
-      from = total(group, & &1.from)
       earnings = total(group, & &1.earnings)
+      base = total(group, & &1.base)
 
       %{
         key: category,
         label: category,
-        from: from,
+        from: total(group, & &1.from),
         to: total(group, & &1.to),
         flows: total(group, & &1.flows),
         earnings: earnings,
-        return_pct: percentage(earnings, from),
+        base: base,
+        return_pct: percentage(earnings, base),
         events: group |> Enum.flat_map(& &1.events) |> Enum.sort_by(& &1.date)
       }
     end)
