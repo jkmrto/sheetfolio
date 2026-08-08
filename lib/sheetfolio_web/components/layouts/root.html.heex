@@ -13,6 +13,8 @@
       body { font-family: system-ui, sans-serif; background: #f8fafc; color: #1e293b; }
       header { background: #1e293b; color: white; padding: 1rem 2rem; display: flex; align-items: center; gap: 2rem; }
       header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.5px; }
+      header h1 a { color: inherit; text-decoration: none; }
+      header h1 a:hover { color: #94a3b8; }
       nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
       nav a { color: #94a3b8; text-decoration: none; font-size: 0.95rem; padding: 0.25rem 0.5rem; border-radius: 6px; white-space: nowrap; }
       nav a:hover { color: white; }
@@ -26,10 +28,9 @@
   </head>
   <body>
     <header>
-      <h1>Sheetfolio</h1>
+      <h1><a href="/">Sheetfolio</a></h1>
       <%= if Map.get(assigns, :authenticated) do %>
         <nav>
-          <a href="/" class={if current_path(assigns) == "/", do: "active", else: ""}>Portfolio</a>
           <a href="/summary" class={if current_path(assigns) in ["/summary", "/summary/settled"], do: "active", else: ""}>Positions</a>
           <a href="/summary/dca" class={if String.starts_with?(current_path(assigns), "/summary/dca"), do: "active", else: ""}>DCA Impact</a>
           <a href="/history" class={if current_path(assigns) == "/history", do: "active", else: ""}>History</a>
