@@ -390,7 +390,10 @@ defmodule SheetfolioWeb.ComparisonLive do
     flows = Float.round(traded - dividends, 2)
     earnings = Float.round(value_to - value_from - flows, 2)
     name = label(to) || label(from)
-    events = balance(events_for(isin, ctx), flows, isin, name, ctx.to)
+    events =
+      events_for(isin, ctx)
+      |> balance(flows, isin, name, ctx)
+      |> Enum.sort_by(& &1.date)
 
     %{
       key: isin,
@@ -454,8 +457,8 @@ defmodule SheetfolioWeb.ComparisonLive do
   # purchases from the operation history, distributions, and Urbanitae's own
   # movements. A purchase's recorded cost matches the cost basis the flow is
   # built from, so those reconcile; sells, closures and currency residue don't
-  # map to a single operation, so `balance/4` folds whatever is left into one
-  # "Withdrawal" line. Operations arrive after the first render, so until then a
+  # map to a single operation, so `balance/5` spreads whatever is left over the
+  # window's sells. Operations arrive after the first render, so until then a
   # market holding shows just that balancing line.
   defp events_for(isin, ctx) do
     (buy_events(isin, ctx) ++ dividend_events(isin, ctx) ++ urbanitae_events(isin, ctx))
@@ -491,17 +494,81 @@ defmodule SheetfolioWeb.ComparisonLive do
   # Cash and Urbanitae already reconcile from their own ledgers; every other
   # holding gets the gap between its listed events and its actual money in/out
   # dropped in as a withdrawal (money out) or, rarely, an unexplained inflow.
-  defp balance(events, _flows, isin, _name, _to) when isin in ["EFECTIVO", "URBANITAE"], do: events
+  defp balance(events, _flows, isin, _name, _ctx) when isin in ["EFECTIVO", "URBANITAE"], do: events
 
-  defp balance(events, flows, _isin, name, to) do
+  defp balance(events, flows, isin, name, ctx) do
     gap = Float.round(flows - Enum.reduce(events, 0.0, &(&1.amount + &2)), 2)
 
     # Ignore sub-euro gaps: they're the cent-level rounding of summed buys, not a
     # real movement (sells and closures run to tens of euros or more).
     if abs(gap) < 0.5,
       do: events,
-      else: events ++ [%{date: to, asset: name, amount: gap, kind: if(gap < 0, do: "Withdrawal", else: "Other")}]
+      else: events ++ gap_events(gap, isin, name, ctx)
   end
+
+  # The gap is cost basis leaving (or, for a traspaso's incoming leg, arriving),
+  # and no single operation carries that number: a sale releases the average
+  # cost of the units sold, which only the replayed position knows. What the
+  # operations do carry is *when* it happened, which is what the return
+  # weighting needs, so the gap is spread over the window's movements in
+  # proportion to their size rather than guessed one by one. The total still
+  # matches the money in/out column exactly. With no operation to pin it on —
+  # a holding closed before the history starts, or operations not loaded yet —
+  # it falls back to a single line at the end of the window.
+  defp gap_events(gap, isin, name, ctx) do
+    case gap_ops(gap, isin, ctx) do
+      [] -> [gap_event(ctx.to, name, gap)]
+      ops -> apportion(gap, ops, name, ctx)
+    end
+  end
+
+  defp gap_ops(gap, isin, ctx) do
+    Enum.filter(ctx.operations, fn op ->
+      op.isin == isin and in_window?(iso_of(op.fecha), ctx) and moves_with?(op, gap)
+    end)
+  end
+
+  # Money out is released by sells; an unexplained inflow is a traspaso landing,
+  # since an ordinary buy already has its own dated event.
+  defp moves_with?(op, gap) when gap < 0, do: sell?(op)
+  defp moves_with?(op, _gap), do: traspaso_buy?(op)
+
+  defp sell?(%{tipo: tipo}), do: tipo in ["Venta", "Reembolso"]
+  defp sell?(_op), do: false
+
+  defp traspaso_buy?(%{traspaso: true, tipo: tipo}), do: tipo in ["Compra", "Suscripcion"]
+  defp traspaso_buy?(_op), do: false
+
+  # Sizes are the operations' own euro amounts; the last share takes whatever
+  # the rounding left so the lines still add up to the gap.
+  defp apportion(gap, ops, name, ctx) do
+    sizes = Enum.map(ops, &abs(buy_amount(&1, ctx.fx)))
+    total = Enum.sum(sizes)
+
+    ops
+    |> Enum.zip(shares(gap, sizes, total))
+    |> Enum.map(fn {op, amount} ->
+      gap_event(iso_of(op.fecha), Map.get(op, :asset, "") |> presence() || name, amount)
+    end)
+  end
+
+  defp shares(gap, sizes, total) when total > 0 do
+    head = sizes |> Enum.drop(-1) |> Enum.map(&Float.round(gap * &1 / total, 2))
+    head ++ [Float.round(gap - Enum.sum(head), 2)]
+  end
+
+  defp shares(gap, sizes, _total) do
+    even = Float.round(gap / length(sizes), 2)
+    head = List.duplicate(even, length(sizes) - 1)
+    head ++ [Float.round(gap - Enum.sum(head), 2)]
+  end
+
+  defp gap_event(date, name, amount) do
+    %{date: date, asset: name, amount: amount, kind: if(amount < 0, do: "Withdrawal", else: "Other")}
+  end
+
+  defp presence(""), do: nil
+  defp presence(value), do: value
 
   defp dividend_events(isin, ctx) do
     ctx.dividends_by_isin
