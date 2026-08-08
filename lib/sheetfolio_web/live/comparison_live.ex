@@ -7,7 +7,7 @@ defmodule SheetfolioWeb.ComparisonLive do
 
   @presets ~w(1d 1w 1m 3m 1y ytd)
   @views ~w(category asset)
-  @sort_keys ~w(to flows earnings return)
+  @sort_keys ~w(from to flows earnings return)
 
   # Same hues the Portfolio doughnut uses, so a category keeps its colour here.
   @category_colors %{
@@ -245,6 +245,7 @@ defmodule SheetfolioWeb.ComparisonLive do
                 <%= if @view == "asset" do %>
                   <th class="text">Category</th>
                 <% end %>
+                <th class="sortable" phx-click="set_sort" phx-value-key="from"><%= es_date(cmp.from_resolved) %> (€)<%= caret(@sort_key, @sort_dir, "from") %></th>
                 <th class="sortable" phx-click="set_sort" phx-value-key="to"><%= es_date(cmp.to_resolved) %> (€)<%= caret(@sort_key, @sort_dir, "to") %></th>
                 <th class="sortable" phx-click="set_sort" phx-value-key="flows">Money in/out (€)<%= caret(@sort_key, @sort_dir, "flows") %></th>
                 <th class="sortable" phx-click="set_sort" phx-value-key="earnings">Earnings (€)<%= caret(@sort_key, @sort_dir, "earnings") %></th>
@@ -265,6 +266,7 @@ defmodule SheetfolioWeb.ComparisonLive do
                       <span class="cmp-dot" style={"background:#{category_color(asset_category(row.key, @categories))}"}></span><%= asset_category(row.key, @categories) %>
                     </td>
                   <% end %>
+                  <td><%= format_eur(row.from) %></td>
                   <td><%= format_eur(row.to) %></td>
                   <td class="flow">
                     <%= if row.events == [] do %>
@@ -298,6 +300,7 @@ defmodule SheetfolioWeb.ComparisonLive do
                 <%= if @view == "asset" do %>
                   <td></td>
                 <% end %>
+                <td><%= format_eur(cmp.from_total) %></td>
                 <td><%= format_eur(cmp.to_total) %></td>
                 <td class="flow"><%= signed_or_dash(cmp.flows_total) %></td>
                 <td class={num_class(cmp.earnings_total)}><%= signed_or_dash(cmp.earnings_total) %></td>
@@ -540,6 +543,7 @@ defmodule SheetfolioWeb.ComparisonLive do
     Enum.sort_by(sortable, &sort_value(&1, key), sort_order(dir)) ++ rest
   end
 
+  defp sort_value(row, "from"), do: row.from
   defp sort_value(row, "to"), do: row.to
   defp sort_value(row, "flows"), do: row.flows
   defp sort_value(row, "earnings"), do: row.earnings
