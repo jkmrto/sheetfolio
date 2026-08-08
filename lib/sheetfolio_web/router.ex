@@ -30,6 +30,7 @@ defmodule SheetfolioWeb.Router do
     live "/cash", CashLive
     live "/expenses", ExpensesLive
     live "/urbanitae", UrbanitaeLive
+    live "/equito", EquitoLive
 
     live_session :authenticated, on_mount: [{SheetfolioWeb.LoadingHook, :default}] do
       live "/earnings", EarningsLive
