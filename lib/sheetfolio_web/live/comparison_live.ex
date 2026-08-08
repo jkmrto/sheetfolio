@@ -181,6 +181,13 @@ defmodule SheetfolioWeb.ComparisonLive do
       .cmp-table tr:hover td { background: #f8fafc; }
       .cmp-table tfoot td { background: #f8fafc; font-weight: 600; border-top: 2px solid #e2e8f0; }
       .cmp-dot { display: inline-block; width: 0.65rem; height: 0.65rem; border-radius: 50%; margin-right: 0.5rem; vertical-align: middle; }
+      /* On a phone the column is narrow enough that "Renta fija corto plazo"
+         breaks over three lines; the table already scrolls sideways, so let
+         the name claim the width it needs and keep every row one line tall. */
+      @media (max-width: 768px) {
+        .cmp-table td.cat { white-space: nowrap; padding-left: 0.6rem; padding-right: 0.6rem; }
+        .cmp-table th:first-child { padding-left: 0.6rem; padding-right: 0.6rem; }
+      }
       .cmp-tag { font-size: 0.75rem; color: #94a3b8; }
       .cmp-table td.flow { color: #475569; font-weight: 600; }
       .positive { color: #16a34a; font-weight: 600; }
@@ -247,14 +254,14 @@ defmodule SheetfolioWeb.ComparisonLive do
             <tbody>
               <%= for row <- cmp.rows do %>
                 <tr>
-                  <td>
+                  <td class={if @view == "category", do: "cat"}>
                     <%= if @view == "category" do %>
                       <span class="cmp-dot" style={"background:#{category_color(row.label)}"}></span>
                     <% end %>
                     <%= row.label %>
                   </td>
                   <%= if @view == "asset" do %>
-                    <td class="text">
+                    <td class="text cat">
                       <span class="cmp-dot" style={"background:#{category_color(asset_category(row.key, @categories))}"}></span><%= asset_category(row.key, @categories) %>
                     </td>
                   <% end %>
