@@ -98,6 +98,24 @@ defmodule Sheetfolio.EquitoTransactions do
   end
 
   @doc """
+  Running `{outstanding, earnings}` as of the given ISO date, for overlaying
+  Equito onto the portfolio-wide figures.
+
+  Outstanding is the capital still in tokens: nothing has been sold or
+  redeemed, so it's simply what has been bought by that date. Earnings are the
+  distributions actually received — rent net of the retention — plus any
+  platform rewards.
+  """
+  def state_at(transactions, date_string) do
+    transactions
+    |> Enum.filter(&(&1["date"] <= date_string))
+    |> Enum.reduce({0.0, 0.0}, fn tx, {outstanding, earnings} ->
+      {outstanding + purchase_amount(tx), earnings + income_amount(tx) + reward_amount(tx)}
+    end)
+    |> then(fn {outstanding, earnings} -> {round2(outstanding), round2(earnings)} end)
+  end
+
+  @doc """
   Time series over the movement history: one point per date, plus a final
   `today` point so the line runs to the present.
 
@@ -134,6 +152,9 @@ defmodule Sheetfolio.EquitoTransactions do
 
   defp income_amount(%{"kind" => kind, "amount" => amount}) when kind in ["rent", "tax"], do: amount
   defp income_amount(_tx), do: 0.0
+
+  defp reward_amount(%{"kind" => "reward", "amount" => amount}), do: amount
+  defp reward_amount(_tx), do: 0.0
 
   # Purchases carry the token count; a later top-up on the same property adds
   # to it, which is why this sums rather than takes the last row.

@@ -31,7 +31,8 @@ defmodule Sheetfolio.AssetCategories do
   #   US8629451027              — Strive's ISIN changed; the sheet still has
   #                                the old US8629453007
   #   IE000RHYOR04              — bought after the header row was last extended
-  #   URBANITAE, EFECTIVO       — tracked in columns that carry no ISIN; cash
+  #   URBANITAE, EQUITO,        — property held through crowdfunding platforms,
+  #   EFECTIVO                     tracked in columns that carry no ISIN; cash
   #                                comes from cash_snapshots rather than from
   #                                a market position
   #   COINBASE-BTC              — coins held on an exchange, synthesised by
@@ -52,6 +53,7 @@ defmodule Sheetfolio.AssetCategories do
     "US8629451027" => "Custom Stocks",
     "IE000RHYOR04" => "Renta fija corto plazo",
     "URBANITAE" => "Inmobiliario",
+    "EQUITO" => "Inmobiliario",
     "COINBASE-BTC" => "Bitcoin",
     "EFECTIVO" => "Efectivo",
     "ES0170156048" => "Renta fija corto plazo",

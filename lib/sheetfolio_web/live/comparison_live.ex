@@ -2,6 +2,7 @@ defmodule SheetfolioWeb.ComparisonLive do
   use SheetfolioWeb, :live_view
 
   alias Sheetfolio.AssetCategories
+  alias Sheetfolio.EquitoTransactions
   alias Sheetfolio.Positions
   alias Sheetfolio.UrbanitaeTransactions
 
@@ -69,6 +70,7 @@ defmodule SheetfolioWeb.ComparisonLive do
            snapshots: snapshots,
            cash: cash,
            transactions: UrbanitaeTransactions.all(),
+           equito: EquitoTransactions.all(),
            dividends_by_isin: Enum.group_by(Sheetfolio.Dividends.all(), & &1["isin"]),
            fx: Sheetfolio.EarningsServer.get_fx_rates(),
            categories: AssetCategories.get(),
@@ -227,7 +229,7 @@ defmodule SheetfolioWeb.ComparisonLive do
           </div>
         <% cmp -> %>
           <div class="headline">
-            <div class="headline-label">Net worth — portfolio + cash + Urbanitae</div>
+            <div class="headline-label">Net worth — portfolio + cash + property</div>
             <div class="headline-values">
               <%= eur(cmp.from_total) %><span class="headline-arrow">→</span><%= eur(cmp.to_total) %>
             </div>
@@ -494,7 +496,8 @@ defmodule SheetfolioWeb.ComparisonLive do
   # Cash and Urbanitae already reconcile from their own ledgers; every other
   # holding gets the gap between its listed events and its actual money in/out
   # dropped in as a withdrawal (money out) or, rarely, an unexplained inflow.
-  defp balance(events, _flows, isin, _name, _ctx) when isin in ["EFECTIVO", "URBANITAE"], do: events
+  defp balance(events, _flows, isin, _name, _ctx) when isin in ["EFECTIVO", "URBANITAE", "EQUITO"],
+    do: events
 
   defp balance(events, flows, isin, name, ctx) do
     gap = Float.round(flows - Enum.reduce(events, 0.0, &(&1.amount + &2)), 2)
@@ -672,6 +675,7 @@ defmodule SheetfolioWeb.ComparisonLive do
     |> Enum.filter(&(&1["isin"] != "URBANITAE" and is_number(&1["value"]) and &1["value"] > 0))
     |> Enum.map(&market_entry(&1, assigns.dividends_by_isin, resolved))
     |> Enum.concat(urbanitae_entry(assigns.transactions, resolved))
+    |> Enum.concat(equito_entry(assigns.equito, resolved))
     |> Enum.concat(cash_entry(assigns.cash, resolved))
   end
 
@@ -714,6 +718,28 @@ defmodule SheetfolioWeb.ComparisonLive do
         ]
 
       _ ->
+        []
+    end
+  end
+
+  # Same shape as Urbanitae: rent received has already left the platform, so
+  # the basis is what is still in tokens less the distributions collected, and
+  # the difference reads as earnings rather than as money in.
+  defp equito_entry(equito, date) do
+    case EquitoTransactions.state_at(equito, date) do
+      {outstanding, earnings} when outstanding > 0 ->
+        [
+          %{
+            isin: "EQUITO",
+            label: "Equito",
+            value: outstanding,
+            invested: Float.round(outstanding - earnings, 2),
+            units: nil,
+            dividends: 0.0
+          }
+        ]
+
+      _no_position ->
         []
     end
   end

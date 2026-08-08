@@ -2,6 +2,7 @@ defmodule SheetfolioWeb.PortfolioLive do
   use SheetfolioWeb, :live_view
 
   alias Sheetfolio.AssetCategories
+  alias Sheetfolio.EquitoTransactions
   alias Sheetfolio.UrbanitaeTransactions
 
   @ranges ~w(1w 1m 3m 1y ytd all)
@@ -32,6 +33,7 @@ defmodule SheetfolioWeb.PortfolioLive do
           snapshots: [],
           cash: [],
           urbanitae_by_date: %{},
+          equito_by_date: %{},
           dividends: 0.0,
           range: "1m",
           allocation: [],
@@ -56,6 +58,7 @@ defmodule SheetfolioWeb.PortfolioLive do
           |> Enum.to_list()
 
         transactions = UrbanitaeTransactions.all()
+        equito = EquitoTransactions.all()
 
         # Re-reading every snapshot with its positions costs ~1.5s, so the page
         # renders first and the category history arrives after.
@@ -66,7 +69,8 @@ defmodule SheetfolioWeb.PortfolioLive do
            snapshots: snapshots,
            cash: cash,
            urbanitae_by_date: urbanitae_by_date(snapshots, transactions),
-           allocation: allocation(transactions),
+           equito_by_date: equito_by_date(snapshots, equito),
+           allocation: allocation(transactions, equito),
            dividends: Sheetfolio.Dividends.total(Sheetfolio.Dividends.all())
          )}
       else
@@ -76,9 +80,9 @@ defmodule SheetfolioWeb.PortfolioLive do
   end
 
   # The latest snapshot already carries each position's value, so the
-  # allocation needs no price fetching. Cash and Urbanitae aren't market
-  # positions, so both are folded in from their own sources.
-  defp allocation(transactions) do
+  # allocation needs no price fetching. Cash, Urbanitae and Equito aren't
+  # market positions, so each is folded in from its own source.
+  defp allocation(transactions, equito) do
     case Mongo.find_one(:mongo, "portfolio_snapshots", %{}, sort: %{date: -1}) do
       nil ->
         []
@@ -88,6 +92,7 @@ defmodule SheetfolioWeb.PortfolioLive do
           (doc["positions"] || [])
           |> Enum.reject(&(&1["isin"] == "URBANITAE"))
           |> Enum.concat(urbanitae_entries(transactions))
+          |> Enum.concat(equito_entries(equito))
           |> Enum.concat(cash_entries())
 
         AssetCategories.breakdown(positions, AssetCategories.get())
@@ -104,6 +109,15 @@ defmodule SheetfolioWeb.PortfolioLive do
       UrbanitaeTransactions.state_at(transactions, Date.to_iso8601(Date.utc_today()))
 
     [%{"isin" => "URBANITAE", "asset" => "Urbanitae", "value" => Float.round(outstanding, 2)}]
+  end
+
+  # Equito tokens are never sold back, so what's tied up in property is simply
+  # what has been bought; the rent already paid out sits in cash.
+  defp equito_entries(equito) do
+    {outstanding, _earnings} =
+      EquitoTransactions.state_at(equito, Date.to_iso8601(Date.utc_today()))
+
+    [%{"isin" => "EQUITO", "asset" => "Equito", "value" => outstanding}]
   end
 
   defp cash_entries do
@@ -125,27 +139,42 @@ defmodule SheetfolioWeb.PortfolioLive do
 
   # One point per recorded snapshot, with Urbanitae and cash folded in the same
   # way the doughnut does so the two agree at the right-hand edge.
-  defp category_history(%{cash: cash, urbanitae_by_date: urbanitae_by_date}) do
+  defp category_history(%{
+         cash: cash,
+         urbanitae_by_date: urbanitae_by_date,
+         equito_by_date: equito_by_date
+       }) do
     categories = AssetCategories.get()
 
     Mongo.find(:mongo, "portfolio_snapshots", %{},
       sort: %{date: 1},
       projection: %{date: 1, "positions.isin": 1, "positions.value": 1}
     )
-    |> Enum.map(&dated_positions(&1, cash, urbanitae_by_date))
+    |> Enum.map(&dated_positions(&1, cash, urbanitae_by_date, equito_by_date))
     |> AssetCategories.history(categories)
   end
 
-  defp dated_positions(doc, cash, urbanitae_by_date) do
+  defp dated_positions(doc, cash, urbanitae_by_date, equito_by_date) do
     date = doc["date"]
 
     positions =
       (doc["positions"] || [])
       |> Enum.reject(&(&1["isin"] == "URBANITAE"))
       |> Enum.concat(urbanitae_at(urbanitae_by_date, date))
+      |> Enum.concat(outstanding_at(equito_by_date, date, "EQUITO"))
       |> Enum.concat(cash_at_entry(cash, date))
 
     {date, positions}
+  end
+
+  defp outstanding_at(by_date, date, isin) do
+    case Map.get(by_date, date) do
+      {outstanding, _earnings} when outstanding > 0 ->
+        [%{"isin" => isin, "value" => Float.round(outstanding, 2)}]
+
+      _absent_or_empty ->
+        []
+    end
   end
 
   defp urbanitae_at(urbanitae_by_date, date) do
@@ -239,7 +268,7 @@ defmodule SheetfolioWeb.PortfolioLive do
             <div class="kpi-label">Net worth</div>
             <div class="kpi-value"><%= eur(k.net_worth) %></div>
             <%= if k.day_change == nil and k.week_change == nil and k.peak == nil do %>
-              <div class="kpi-sub">portfolio + cash + Urbanitae</div>
+              <div class="kpi-sub">portfolio + cash + Urbanitae + Equito</div>
             <% end %>
             <%= for {change, label, period} <- [{k.day_change, "vs yesterday", "1d"}, {k.week_change, "vs last week", "1w"}] do %>
               <%= if change do %>
@@ -280,7 +309,7 @@ defmodule SheetfolioWeb.PortfolioLive do
             <div class="kpi-label">Total earnings</div>
             <div class={"kpi-value #{delta_class(k.earnings)}"}><%= signed(k.earnings) %></div>
             <div class="kpi-sub"><%= eur(k.realized) %> realized · <%= eur(k.unrealized) %> unrealized</div>
-            <div class="kpi-sub"><%= eur(k.dividends) %> dividends · <%= eur(k.urbanitae) %> Urbanitae</div>
+            <div class="kpi-sub"><%= eur(k.dividends) %> dividends · <%= eur(k.urbanitae) %> Urbanitae · <%= eur(k.equito) %> Equito</div>
           </div>
         </div>
 
@@ -300,7 +329,7 @@ defmodule SheetfolioWeb.PortfolioLive do
         </div>
       </div>
 
-      <div class="chart-container" id="portfolio-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(filter_range(@snapshots, @range), filter_cash_range(@cash, @range), @urbanitae_by_date))}>
+      <div class="chart-container" id="portfolio-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(filter_range(@snapshots, @range), filter_cash_range(@cash, @range), @urbanitae_by_date, @equito_by_date))}>
         <div id="portfolio-chart-canvas" phx-update="ignore">
           <canvas></canvas>
         </div>
@@ -441,17 +470,17 @@ defmodule SheetfolioWeb.PortfolioLive do
   defp cutoff_date("1y", today), do: Date.shift(today, year: -1)
   defp cutoff_date("ytd", today), do: Date.new!(today.year, 1, 1)
 
-  defp chart_payload(snapshots, cash, urbanitae) do
+  defp chart_payload(snapshots, cash, urbanitae, equito) do
     %{
       metric: "value",
       title: "Portfolio Evolution",
       datasets: [
-        %{label: "Portfolio + Cash + Urbanitae (€)", color: "#4a3aa7", data: total_with_cash_points(snapshots, cash, urbanitae)},
+        %{label: "Net worth (€)", color: "#4a3aa7", data: total_with_cash_points(snapshots, cash, urbanitae, equito)},
         %{label: "Portfolio (€)", color: "#2a78d6", fill: true, data: total_points(snapshots)},
         %{label: "Invested (€)", color: "#94a3b8", data: invested_points(snapshots)},
-        %{label: "Urbanitae outstanding (€)", color: "#e34948", data: urbanitae_points(snapshots, urbanitae)},
+        %{label: "Property outstanding (€)", color: "#e34948", data: property_points(snapshots, urbanitae, equito)},
         %{label: "Cash (€)", color: "#eda100", data: cash_points(snapshots, cash)},
-        %{label: "Earnings, realized + unrealized (€)", color: "#008300", fill: true, data: earnings_points(snapshots, urbanitae)}
+        %{label: "Earnings, realized + unrealized (€)", color: "#008300", fill: true, data: earnings_points(snapshots, urbanitae, equito)}
       ]
     }
   end
@@ -462,10 +491,11 @@ defmodule SheetfolioWeb.PortfolioLive do
     end
   end
 
-  defp total_with_cash_points(snapshots, cash, urbanitae) do
+  defp total_with_cash_points(snapshots, cash, urbanitae, equito) do
     for s <- snapshots, is_number(s["total_value"]), amount = cash_at(cash, s["date"]) do
       {out, _earn} = Map.get(urbanitae, s["date"], {0.0, 0.0})
-      %{x: s["date"], y: Float.round(s["total_value"] + amount + out, 2)}
+      {equito_out, _equito_earn} = Map.get(equito, s["date"], {0.0, 0.0})
+      %{x: s["date"], y: Float.round(s["total_value"] + amount + out + equito_out, 2)}
     end
   end
 
@@ -478,13 +508,20 @@ defmodule SheetfolioWeb.PortfolioLive do
 
   defp kpis(assigns) do
     latest = List.last(assigns.snapshots)
-    net = total_with_cash_points(assigns.snapshots, assigns.cash, assigns.urbanitae_by_date)
+    net =
+      total_with_cash_points(
+        assigns.snapshots,
+        assigns.cash,
+        assigns.urbanitae_by_date,
+        assigns.equito_by_date
+      )
     invested = number(latest["total_invested"])
     value = number(latest["total_value"])
     realized = number(latest["total_realized"])
     unrealized = Float.round(value - invested, 2)
     {_outstanding, urbanitae} = Map.get(assigns.urbanitae_by_date, latest["date"], {0.0, 0.0})
     urbanitae = Float.round(urbanitae, 2)
+    {_equito_outstanding, equito} = Map.get(assigns.equito_by_date, latest["date"], {0.0, 0.0})
 
     %{
       date: latest["date"],
@@ -499,7 +536,8 @@ defmodule SheetfolioWeb.PortfolioLive do
       realized: realized,
       dividends: assigns.dividends,
       urbanitae: urbanitae,
-      earnings: Float.round(realized + assigns.dividends + urbanitae + unrealized, 2),
+      equito: equito,
+      earnings: Float.round(realized + assigns.dividends + urbanitae + equito + unrealized, 2),
       partial: latest["partial"] == true
     }
   end
@@ -546,9 +584,12 @@ defmodule SheetfolioWeb.PortfolioLive do
   defp number(value) when is_number(value), do: value * 1.0
   defp number(_value), do: 0.0
 
-  defp urbanitae_points(snapshots, urbanitae) do
+  # Both crowdfunding platforms hold the same kind of thing — capital tied up
+  # in property — so they share one line rather than two flat ones.
+  defp property_points(snapshots, urbanitae, equito) do
     for s <- snapshots, {out, _earn} = Map.get(urbanitae, s["date"], {nil, nil}), is_number(out) do
-      %{x: s["date"], y: Float.round(out, 2)}
+      {equito_out, _equito_earn} = Map.get(equito, s["date"], {0.0, 0.0})
+      %{x: s["date"], y: Float.round(out + equito_out, 2)}
     end
   end
 
@@ -564,12 +605,13 @@ defmodule SheetfolioWeb.PortfolioLive do
     end
   end
 
-  defp earnings_points(snapshots, urbanitae) do
+  defp earnings_points(snapshots, urbanitae, equito) do
     for s <- snapshots, is_number(s["total_value"]) and is_number(s["total_invested"]) do
       unrealized = s["total_value"] - s["total_invested"]
       market_realized = s["total_realized"] || 0.0
       {_out, urb_earnings} = Map.get(urbanitae, s["date"], {0.0, 0.0})
-      %{x: s["date"], y: Float.round(unrealized + market_realized + urb_earnings, 2)}
+      {_equito_out, equito_earnings} = Map.get(equito, s["date"], {0.0, 0.0})
+      %{x: s["date"], y: Float.round(unrealized + market_realized + urb_earnings + equito_earnings, 2)}
     end
   end
 
@@ -585,10 +627,18 @@ defmodule SheetfolioWeb.PortfolioLive do
   end
 
   defp urbanitae_by_date(snapshots, transactions) do
+    state_by_date(snapshots, &UrbanitaeTransactions.state_at(transactions, &1))
+  end
+
+  defp equito_by_date(snapshots, equito) do
+    state_by_date(snapshots, &EquitoTransactions.state_at(equito, &1))
+  end
+
+  defp state_by_date(snapshots, state_at) do
     snapshots
     |> Enum.map(& &1["date"])
     |> Enum.uniq()
-    |> Enum.map(&{&1, UrbanitaeTransactions.state_at(transactions, &1)})
+    |> Enum.map(&{&1, state_at.(&1)})
     |> Map.new()
   end
 end
