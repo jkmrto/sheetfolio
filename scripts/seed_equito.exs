@@ -7,20 +7,13 @@
 # against its natural key (date + code + kind + amount) before insert, so
 # overlapping screenshots top the ledger up instead of duplicating it.
 #
-# All six purchases are confirmed from the per-property detail screens.
-# Two gaps remain in the rent stream, so the distributions still understate
-# what has actually been paid out:
-#
-#   * August 2025 — EQT-0070 and EQT-0072 were both letting by then, but the
-#     Historial screenshots jump from July to September
-#   * August 2026 — the detail screens show the net (EQT-0010 1.08 €,
-#     0070 1.12, 0072 1.16, 0074 1.15, 0103 1.15, 0104 1.14) but not the
-#     RENTA / RET. FISCAL split those nets come from
-#
-# April–May 2025 look genuinely empty rather than missing: each property's
-# first rent trails its purchase by a couple of months, and the part-month
-# amounts line up with a tenancy starting then (EQT-0070's 0.69 € in June,
-# EQT-0010's 0.21 € after a 26/08 purchase).
+# The history runs complete from the first purchase to 01/08/2026. A property
+# only starts paying once it is let, which is why the early months carry
+# fewer rows than there are holdings, and why a first payout is usually a part
+# month: EQT-0070's 0.69 € in June 2025, EQT-0074's 0.70 € that August,
+# EQT-0010's 0.21 € days after buying, EQT-0103 and EQT-0104's 0.70 € in
+# January 2026. Every net on the per-property screens reconciles with the
+# RENTA and RET. FISCAL pair recorded here.
 
 alias Sheetfolio.{EquitoProperties, EquitoTransactions}
 
@@ -50,6 +43,7 @@ rewards = [{"2025-03-13", 10.00}]
 distributions = [
   {"2025-06-01", [{"EQT-0070", 0.69, -0.13}]},
   {"2025-07-01", [{"EQT-0072", 1.42, -0.27}, {"EQT-0070", 1.38, -0.26}]},
+  {"2025-08-01", [{"EQT-0074", 0.70, -0.13}, {"EQT-0072", 1.42, -0.27}, {"EQT-0070", 1.38, -0.26}]},
   {"2025-09-01", [{"EQT-0074", 1.41, -0.27}, {"EQT-0072", 1.42, -0.27}, {"EQT-0070", 1.38, -0.26}, {"EQT-0010", 0.21, -0.04}]},
   {"2025-10-01", [{"EQT-0074", 1.41, -0.27}, {"EQT-0072", 1.42, -0.27}, {"EQT-0070", 1.38, -0.26}, {"EQT-0010", 1.33, -0.25}]},
   {"2025-11-01", [{"EQT-0074", 1.41, -0.27}, {"EQT-0072", 1.42, -0.27}, {"EQT-0070", 1.38, -0.26}, {"EQT-0010", 1.33, -0.25}]},
@@ -60,7 +54,8 @@ distributions = [
   {"2026-04-01", [{"EQT-0104", 1.40, -0.26}, {"EQT-0103", 1.41, -0.26}, {"EQT-0074", 1.41, -0.26}, {"EQT-0072", 1.42, -0.26}, {"EQT-0070", 1.38, -0.26}, {"EQT-0010", 1.33, -0.25}]},
   {"2026-05-01", [{"EQT-0104", 1.40, -0.26}, {"EQT-0103", 1.41, -0.26}, {"EQT-0074", 1.41, -0.26}, {"EQT-0072", 1.42, -0.26}, {"EQT-0070", 1.38, -0.26}, {"EQT-0010", 1.33, -0.25}]},
   {"2026-06-01", [{"EQT-0104", 1.40, -0.26}, {"EQT-0103", 1.41, -0.26}, {"EQT-0074", 1.41, -0.26}, {"EQT-0072", 1.42, -0.26}, {"EQT-0070", 1.38, -0.26}, {"EQT-0010", 1.33, -0.25}]},
-  {"2026-07-01", [{"EQT-0104", 1.40, -0.26}, {"EQT-0103", 1.41, -0.26}, {"EQT-0074", 1.41, -0.26}, {"EQT-0072", 1.42, -0.26}, {"EQT-0070", 1.38, -0.26}, {"EQT-0010", 1.33, -0.25}]}
+  {"2026-07-01", [{"EQT-0104", 1.40, -0.26}, {"EQT-0103", 1.41, -0.26}, {"EQT-0074", 1.41, -0.26}, {"EQT-0072", 1.42, -0.26}, {"EQT-0070", 1.38, -0.26}, {"EQT-0010", 1.33, -0.25}]},
+  {"2026-08-01", [{"EQT-0104", 1.40, -0.26}, {"EQT-0103", 1.41, -0.26}, {"EQT-0074", 1.41, -0.26}, {"EQT-0072", 1.42, -0.26}, {"EQT-0070", 1.38, -0.26}, {"EQT-0010", 1.33, -0.25}]}
 ]
 
 now = DateTime.utc_now()
