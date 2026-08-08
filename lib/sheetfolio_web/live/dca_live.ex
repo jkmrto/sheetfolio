@@ -3,7 +3,7 @@ defmodule SheetfolioWeb.DcaLive do
 
   @base_amount 250.0
   @sp500_isins ~w[IE0032126645 IE00BYX5MX67]
-  @ranges ~w(1m 3m 1y ytd all)
+  @ranges ~w(1w 1m 3m 1y ytd all)
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
@@ -21,7 +21,7 @@ defmodule SheetfolioWeb.DcaLive do
         eur_usd: eur_usd,
         eur_cad: eur_cad,
         chart_data: [],
-        range: "all"
+        range: "1m"
       )
 
       if connected?(socket) do
@@ -97,7 +97,7 @@ defmodule SheetfolioWeb.DcaLive do
     })
   end
 
-  defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+  defp range_options, do: [{"1w", "1W"}, {"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
 
   defp filter_range(chart_data, "all"), do: chart_data
 
@@ -106,6 +106,7 @@ defmodule SheetfolioWeb.DcaLive do
     Enum.filter(chart_data, &(&1.date >= cutoff))
   end
 
+  defp cutoff_date("1w", today), do: Date.shift(today, day: -7)
   defp cutoff_date("1m", today), do: Date.shift(today, month: -1)
   defp cutoff_date("3m", today), do: Date.shift(today, month: -3)
   defp cutoff_date("1y", today), do: Date.shift(today, year: -1)

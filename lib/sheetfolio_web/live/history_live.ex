@@ -3,7 +3,7 @@ defmodule SheetfolioWeb.HistoryLive do
 
   @palette ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"]
   @max_selected length(@palette)
-  @ranges ~w(1m 3m 1y ytd all)
+  @ranges ~w(1w 1m 3m 1y ytd all)
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
@@ -16,7 +16,7 @@ defmodule SheetfolioWeb.HistoryLive do
           asset_list: [],
           color_map: %{},
           metric: "value",
-          range: "all",
+          range: "1m",
           selected_date: nil
         )
 
@@ -337,7 +337,7 @@ defmodule SheetfolioWeb.HistoryLive do
     %{metric: assigns.metric, datasets: datasets, clickEvent: "select_point"}
   end
 
-  defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+  defp range_options, do: [{"1w", "1W"}, {"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
 
   defp filter_range(snapshots, "all"), do: snapshots
 
@@ -346,6 +346,7 @@ defmodule SheetfolioWeb.HistoryLive do
     Enum.filter(snapshots, &(&1["date"] >= cutoff))
   end
 
+  defp cutoff_date("1w", today), do: Date.shift(today, day: -7)
   defp cutoff_date("1m", today), do: Date.shift(today, month: -1)
   defp cutoff_date("3m", today), do: Date.shift(today, month: -3)
   defp cutoff_date("1y", today), do: Date.shift(today, year: -1)

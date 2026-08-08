@@ -9,7 +9,7 @@ defmodule SheetfolioWeb.CashLive do
     "Ibercaja" => "#4a3aa7"
   }
   @collection "cash_snapshots"
-  @ranges ~w(1m 3m 1y ytd all)
+  @ranges ~w(1w 1m 3m 1y ytd all)
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
@@ -21,7 +21,7 @@ defmodule SheetfolioWeb.CashLive do
        assign(socket,
          authenticated: true,
          saved: false,
-         range: "all",
+         range: "1m",
          snapshots: load_snapshots(socket),
          wise_balance: nil
        )}
@@ -146,7 +146,7 @@ defmodule SheetfolioWeb.CashLive do
   defp source_placeholder("Wise", latest, wise_balance), do: wise_balance || latest["Wise"]
   defp source_placeholder(name, latest, _wise_balance), do: latest[name]
 
-  defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+  defp range_options, do: [{"1w", "1W"}, {"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
 
   defp filter_range(snapshots, "all"), do: snapshots
 
@@ -155,6 +155,7 @@ defmodule SheetfolioWeb.CashLive do
     Enum.filter(snapshots, &(&1["date"] >= cutoff))
   end
 
+  defp cutoff_date("1w", today), do: Date.shift(today, day: -7)
   defp cutoff_date("1m", today), do: Date.shift(today, month: -1)
   defp cutoff_date("3m", today), do: Date.shift(today, month: -3)
   defp cutoff_date("1y", today), do: Date.shift(today, year: -1)

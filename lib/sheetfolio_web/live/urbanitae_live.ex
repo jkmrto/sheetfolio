@@ -3,7 +3,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
 
   alias Sheetfolio.{UrbanitaeProjects, UrbanitaeTransactions}
 
-  @ranges ~w(1m 3m 1y ytd all)
+  @ranges ~w(1w 1m 3m 1y ytd all)
   @views ~w(overview projects transactions)
   @type_labels %{"plusvalia" => "Plusvalía", "alquiler" => "Alquiler", "prestamo" => "Préstamo"}
 
@@ -25,7 +25,10 @@ defmodule SheetfolioWeb.UrbanitaeLive do
          authenticated: true,
          transactions: transactions,
          types_by_key: types,
-         range: "all",
+         range: "1m",
+         # The movements list is a record rather than a chart, so it opens on
+         # the full history instead of the chart's last-month window.
+         tx_range: "all",
          view: "overview"
        )}
     end
@@ -33,6 +36,10 @@ defmodule SheetfolioWeb.UrbanitaeLive do
 
   def handle_event("set_range", %{"range" => range}, socket) when range in @ranges do
     {:noreply, assign(socket, range: range)}
+  end
+
+  def handle_event("set_tx_range", %{"range" => range}, socket) when range in @ranges do
+    {:noreply, assign(socket, tx_range: range)}
   end
 
   def handle_event("set_view", %{"view" => view}, socket) when view in @views do
@@ -291,14 +298,14 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   end
 
   defp render_transactions(assigns) do
-    assigns = assign(assigns, rows: filter_range(assigns.transactions, assigns.range))
+    assigns = assign(assigns, rows: filter_range(assigns.transactions, assigns.tx_range))
 
     ~H"""
     <div class="u-card">
       <div class="range-row">
         <div class="range-toggle">
           <%= for {value, label} <- range_options() do %>
-            <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}>{label}</button>
+            <button class={if @tx_range == value, do: "selected"} phx-click="set_tx_range" phx-value-range={value}>{label}</button>
           <% end %>
         </div>
       </div>
@@ -371,7 +378,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   defp type_label(nil), do: "?"
   defp type_label(type), do: Map.get(@type_labels, type, type)
 
-  defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+  defp range_options, do: [{"1w", "1W"}, {"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
 
   defp filter_series(series, "all"), do: series
 
@@ -387,6 +394,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     Enum.filter(transactions, &(&1["date"] >= cutoff))
   end
 
+  defp cutoff_date("1w", today), do: Date.shift(today, day: -7)
   defp cutoff_date("1m", today), do: Date.shift(today, month: -1)
   defp cutoff_date("3m", today), do: Date.shift(today, month: -3)
   defp cutoff_date("1y", today), do: Date.shift(today, year: -1)

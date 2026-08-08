@@ -4,7 +4,7 @@ defmodule SheetfolioWeb.PortfolioLive do
   alias Sheetfolio.AssetCategories
   alias Sheetfolio.UrbanitaeTransactions
 
-  @ranges ~w(1m 3m 1y ytd all)
+  @ranges ~w(1w 1m 3m 1y ytd all)
   @history_views ~w(stacked lines)
 
   # Assigned per category, never by rank, so a slice keeps its colour as the
@@ -33,11 +33,11 @@ defmodule SheetfolioWeb.PortfolioLive do
           cash: [],
           urbanitae_by_date: %{},
           dividends: 0.0,
-          range: "all",
+          range: "1m",
           allocation: [],
           category_history: nil,
           history_view: "stacked",
-          history_range: "all"
+          history_range: "1m"
         )
 
       if connected?(socket) do
@@ -419,7 +419,7 @@ defmodule SheetfolioWeb.PortfolioLive do
   defp arrow(value) when value >= 0, do: "▲"
   defp arrow(_value), do: "▼"
 
-  defp range_options, do: [{"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+  defp range_options, do: [{"1w", "1W"}, {"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
 
   defp history_view_options, do: [{"stacked", "Cumulative"}, {"lines", "By category"}]
 
@@ -435,6 +435,7 @@ defmodule SheetfolioWeb.PortfolioLive do
   # snapshot in the window would have no cash value.
   defp filter_cash_range(cash, _range), do: cash
 
+  defp cutoff_date("1w", today), do: Date.shift(today, day: -7)
   defp cutoff_date("1m", today), do: Date.shift(today, month: -1)
   defp cutoff_date("3m", today), do: Date.shift(today, month: -3)
   defp cutoff_date("1y", today), do: Date.shift(today, year: -1)
