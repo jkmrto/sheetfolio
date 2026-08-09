@@ -6,7 +6,7 @@ defmodule SheetfolioWeb.ComparisonLive do
   alias Sheetfolio.Positions
   alias Sheetfolio.UrbanitaeTransactions
 
-  @presets ~w(1d 1w 1m 3m 1y ytd)
+  @presets ~w(1d 1w 1m 3m 1y ytd all)
   @views ~w(category asset)
   @sort_keys ~w(from to flows earnings return)
 
@@ -774,6 +774,10 @@ defmodule SheetfolioWeb.ComparisonLive do
 
   defp default_dates([], _period), do: {nil, nil}
 
+  # "All" reaches back to the first snapshot rather than a fixed offset, so it
+  # only ever spans history that exists.
+  defp default_dates(snapshots, "all"), do: {first_date(snapshots), latest_date(snapshots)}
+
   defp default_dates(snapshots, period) do
     latest = latest_date(snapshots)
     {shift_date(latest, period), latest}
@@ -805,7 +809,15 @@ defmodule SheetfolioWeb.ComparisonLive do
   # --- formatting -----------------------------------------------------------
 
   defp preset_options,
-    do: [{"1d", "1D"}, {"1w", "1W"}, {"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}]
+    do: [
+      {"1d", "1D"},
+      {"1w", "1W"},
+      {"1m", "1M"},
+      {"3m", "3M"},
+      {"1y", "1Y"},
+      {"ytd", "YTD"},
+      {"all", "All"}
+    ]
 
   defp view_options, do: [{"category", "By category"}, {"asset", "By asset"}]
 
