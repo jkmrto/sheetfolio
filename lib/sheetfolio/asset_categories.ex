@@ -54,6 +54,8 @@ defmodule Sheetfolio.AssetCategories do
     "IE000RHYOR04" => "Renta fija corto plazo",
     "URBANITAE" => "Inmobiliario",
     "EQUITO" => "Inmobiliario",
+    # Held at Trading212 and sold in January 2026, so the sheet never listed it.
+    "IE0009JOT9U1" => "Oro/Plata",
     "COINBASE-BTC" => "Bitcoin",
     "EFECTIVO" => "Efectivo",
     "ES0170156048" => "Renta fija corto plazo",
