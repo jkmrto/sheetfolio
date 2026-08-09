@@ -36,6 +36,7 @@ defmodule SheetfolioWeb.ComparisonLive do
           transactions: [],
           dividends_by_isin: %{},
           operations: [],
+          realized_by_isin: %{},
           fx: {nil, nil},
           categories: %{},
           view: "category",
@@ -118,7 +119,14 @@ defmodule SheetfolioWeb.ComparisonLive do
   end
 
   def handle_info({:operations, operations}, socket) do
-    {:noreply, assign(socket, operations: operations)}
+    {eur_usd, eur_cad} = socket.assigns.fx
+
+    realized_by_isin =
+      operations
+      |> Positions.realized_events(eur_usd, eur_cad)
+      |> Enum.group_by(& &1.isin)
+
+    {:noreply, assign(socket, operations: operations, realized_by_isin: realized_by_isin)}
   end
 
   # dd/mm/yyyy text field over a hidden native date input (see the SpanishDate
@@ -339,6 +347,7 @@ defmodule SheetfolioWeb.ComparisonLive do
       dividends_by_isin: assigns.dividends_by_isin,
       transactions: assigns.transactions,
       equito: assigns.equito,
+      realized_by_isin: assigns.realized_by_isin,
       fx: assigns.fx,
       from: from.date,
       to: to.date
@@ -377,6 +386,12 @@ defmodule SheetfolioWeb.ComparisonLive do
   # stays in earnings. Cash and Urbanitae carry no units, so their whole basis
   # move counts (cash is all money in/out, Urbanitae's basis already isolates its
   # yield). Distributions are credited to earnings on top, everywhere the same.
+  #
+  # A sale needs the realized gain added back: the basis leaves at what the
+  # units cost, but the cash arrives at what they sold for, and the difference
+  # between the two is precisely the P&L the replay already computed. Without
+  # it a position closed at a profit reads as a loss the size of that profit —
+  # money in/out understates the cash collected by exactly the gain.
   defp metric(isin, from_by_isin, to_by_isin, ctx) do
     from = Map.get(from_by_isin, isin)
     to = Map.get(to_by_isin, isin)
@@ -390,7 +405,7 @@ defmodule SheetfolioWeb.ComparisonLive do
         do: amount(to, :invested) - amount(from, :invested),
         else: 0.0
 
-    flows = Float.round(traded - dividends, 2)
+    flows = Float.round(traded - dividends - realized_in_window(isin, ctx), 2)
     earnings = Float.round(value_to - value_from - flows, 2)
     name = label(to) || label(from)
     events =
@@ -439,6 +454,15 @@ defmodule SheetfolioWeb.ComparisonLive do
       {{:ok, parsed_date}, {:ok, parsed_from}} -> Date.diff(parsed_date, parsed_from)
       _unparseable -> nil
     end
+  end
+
+  # Realized inside the window only: a gain booked before it belongs to an
+  # earlier comparison, and the opening value already reflects it.
+  defp realized_in_window(isin, ctx) do
+    ctx.realized_by_isin
+    |> Map.get(isin, [])
+    |> Enum.filter(&in_window?(iso_of(&1.fecha), ctx))
+    |> Enum.reduce(0.0, &(&1.realized + &2))
   end
 
   defp amount(nil, _key), do: 0.0
