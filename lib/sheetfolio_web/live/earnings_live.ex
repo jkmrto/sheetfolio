@@ -14,6 +14,7 @@ defmodule SheetfolioWeb.EarningsLive do
           unrealized: [],
           dividends: [],
           urbanitae: [],
+          equito: [],
           view: "by_asset",
           expanded_assets: MapSet.new(),
           expanded_dividends: MapSet.new()
@@ -32,7 +33,8 @@ defmodule SheetfolioWeb.EarningsLive do
            realized_events: realized_events,
            unrealized: unrealized_positions(),
            dividends: Sheetfolio.Dividends.all(),
-           urbanitae: urbanitae_earnings()
+           urbanitae: urbanitae_earnings(),
+           equito: equito_earnings()
          )}
       else
         {:ok, socket}
@@ -71,6 +73,7 @@ defmodule SheetfolioWeb.EarningsLive do
         dividends_sum: Sheetfolio.Dividends.total(assigns.dividends),
         dividends_by_asset: Sheetfolio.Dividends.by_asset(assigns.dividends),
         urbanitae_sum: Enum.reduce(assigns.urbanitae, 0.0, &(&1.earnings + &2)),
+        equito_sum: Enum.reduce(assigns.equito, 0.0, &(&1.earnings + &2)),
         by_asset: group_by_asset(assigns.realized_events),
         trading212: Sheetfolio.SyntheticOperations.trading212_isins()
       )
@@ -109,11 +112,12 @@ defmodule SheetfolioWeb.EarningsLive do
       .details-table tr:last-child td { border-bottom: none; }
     </style>
 
-    <% total_sum = @realized_sum + @dividends_sum + @urbanitae_sum + @unrealized_sum %>
+    <% total_sum = @realized_sum + @dividends_sum + @urbanitae_sum + @equito_sum + @unrealized_sum %>
     <div class="earnings-total">
       Realized <strong class={sign_class(@realized_sum)}><%= eur(@realized_sum) %></strong>
       + Dividends <strong class={sign_class(@dividends_sum)}><%= eur(@dividends_sum) %></strong>
       + Urbanitae <strong class={sign_class(@urbanitae_sum)}><%= eur(@urbanitae_sum) %></strong>
+      + Equito <strong class={sign_class(@equito_sum)}><%= eur(@equito_sum) %></strong>
       + Unrealized <strong class={sign_class(@unrealized_sum)}><%= eur(@unrealized_sum) %></strong>
       = <strong class={sign_class(total_sum)}><%= eur(total_sum) %></strong>
     </div>
@@ -292,6 +296,31 @@ defmodule SheetfolioWeb.EarningsLive do
       </table>
     <% end %>
 
+    <div class="earnings-section">Equito — rent distributed, net of retention</div>
+    <%= if @equito == [] do %>
+      <div class="earnings-total muted">No Equito earnings recorded yet.</div>
+    <% else %>
+      <table class="earnings-table">
+        <tr>
+          <th class="left">Property</th><th>Payouts</th>
+          <th>Rent</th><th>Withheld</th><th>Earnings</th>
+        </tr>
+        <%= for row <- @equito do %>
+          <tr>
+            <td class="left"><%= row.label %></td>
+            <td><%= row.payouts %></td>
+            <td><%= eur(row.rent) %></td>
+            <td><%= eur(row.withheld) %></td>
+            <td class="pos"><%= eur(row.earnings) %></td>
+          </tr>
+        <% end %>
+        <tr class="sum">
+          <td class="left" colspan="4">Total Equito</td>
+          <td class="pos"><%= eur(@equito_sum) %></td>
+        </tr>
+      </table>
+    <% end %>
+
     <div class="earnings-section">Unrealized — open positions at the latest snapshot</div>
     <table class="earnings-table">
       <tr>
@@ -355,6 +384,38 @@ defmodule SheetfolioWeb.EarningsLive do
       earnings: Float.round(project.yield_returned + closure_gain, 2)
     }
   end
+
+  # Rent net of the retention, per property, plus the platform rewards as a row
+  # of their own: they are money received but not a property's yield, and the
+  # Portfolio card counts them in the same total.
+  defp equito_earnings do
+    transactions = Sheetfolio.EquitoTransactions.all()
+
+    properties =
+      transactions
+      |> Sheetfolio.EquitoTransactions.rollup_by_property()
+      |> Enum.map(&equito_row/1)
+      |> Enum.filter(&(&1.earnings > 0.005))
+      |> Enum.sort_by(& &1.earnings, :desc)
+
+    properties ++ rewards_row(Sheetfolio.EquitoTransactions.totals(transactions))
+  end
+
+  defp equito_row(property) do
+    %{
+      label: property.code,
+      payouts: property.payouts,
+      rent: property.rent_gross,
+      withheld: property.tax_withheld,
+      earnings: property.net_income
+    }
+  end
+
+  defp rewards_row(%{rewards: rewards}) when rewards > 0.005 do
+    [%{label: "Rewards", payouts: "—", rent: 0.0, withheld: 0.0, earnings: rewards}]
+  end
+
+  defp rewards_row(_totals), do: []
 
   defp unrealized_positions do
     case Mongo.find_one(:mongo, "portfolio_snapshots", %{}, sort: %{date: -1}) do

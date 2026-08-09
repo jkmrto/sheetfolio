@@ -338,6 +338,7 @@ defmodule SheetfolioWeb.ComparisonLive do
       operations: assigns.operations,
       dividends_by_isin: assigns.dividends_by_isin,
       transactions: assigns.transactions,
+      equito: assigns.equito,
       fx: assigns.fx,
       from: from.date,
       to: to.date
@@ -463,7 +464,9 @@ defmodule SheetfolioWeb.ComparisonLive do
   # window's sells. Operations arrive after the first render, so until then a
   # market holding shows just that balancing line.
   defp events_for(isin, ctx) do
-    (buy_events(isin, ctx) ++ dividend_events(isin, ctx) ++ urbanitae_events(isin, ctx))
+    (buy_events(isin, ctx) ++
+       dividend_events(isin, ctx) ++
+       urbanitae_events(isin, ctx) ++ equito_events(isin, ctx))
     |> Enum.sort_by(& &1.date)
   end
 
@@ -588,6 +591,7 @@ defmodule SheetfolioWeb.ComparisonLive do
 
   defp urbanitae_events(_isin, _ctx), do: []
 
+
   defp urbanitae_event(%{"kind" => "investment"} = tx),
     do: %{date: tx["date"], asset: urbanitae_name(tx), amount: Float.round(tx["amount"], 2), kind: "Property"}
 
@@ -598,6 +602,32 @@ defmodule SheetfolioWeb.ComparisonLive do
     do: %{date: tx["date"], asset: urbanitae_name(tx), amount: -Float.round(tx["amount"], 2), kind: "Property yield"}
 
   defp urbanitae_name(tx), do: tx["project"] || "Urbanitae"
+
+  # Equito's ledger already signs its movements the way the app reads a wallet
+  # — money out of pocket negative — and a flow into the position is the
+  # mirror of that, so every kind flips the same way: a 200 € purchase is
+  # 200 € in, rent and its retention net out.
+  defp equito_events("EQUITO", ctx) do
+    ctx.equito
+    |> Enum.filter(&in_window?(&1["date"], ctx))
+    |> Enum.map(&equito_event/1)
+  end
+
+  defp equito_events(_isin, _ctx), do: []
+
+  defp equito_event(tx) do
+    %{
+      date: tx["date"],
+      asset: tx["code"] || "Equito",
+      amount: -Float.round(tx["amount"], 2),
+      kind: equito_kind(tx["kind"])
+    }
+  end
+
+  defp equito_kind("purchase"), do: "Property"
+  defp equito_kind("rent"), do: "Rent"
+  defp equito_kind("tax"), do: "Retention"
+  defp equito_kind(_reward), do: "Reward"
 
   defp in_window?(date, %{from: from, to: to}), do: date > from and date <= to
 
