@@ -33,17 +33,22 @@ defmodule BackfillTrading212Snapshots do
   @run_up_days 14
 
   @doc """
-  Takes the Trading212 positions back out, so a corrected run can put them
-  back. The recorder never wrote these ISINs itself — they only ever reached a
-  snapshot through this script — so removing every occurrence is safe.
+  Takes back out only what this script put in, so a corrected run can replace
+  it: the positions the Trading212 replay says were held on that date.
+
+  Matching on the ISIN alone is not enough. DE000A1E0HS6 is a Trading212 lot
+  sold in January 2024 *and* a MyInvestor holding bought in December 2025, so
+  stripping every occurrence would take a live 15.000 € position out of eight
+  months of history — which is exactly what it did once.
   """
   def reset do
     isins = SyntheticOperations.trading212_isins()
+    operations = Enum.filter(SyntheticOperations.all(), &(&1.isin in isins))
 
     removed =
       Mongo.find(:mongo, @collection, %{}, sort: %{date: 1})
       |> Enum.to_list()
-      |> Enum.map(&strip(&1, isins))
+      |> Enum.map(fn doc -> strip(doc, doc |> positions_at(operations) |> MapSet.new(& &1.isin)) end)
       |> Enum.count(& &1)
 
     IO.puts("Removed the Trading212 positions from #{removed} snapshots.\n")
