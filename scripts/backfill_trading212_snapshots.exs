@@ -26,6 +26,51 @@ defmodule BackfillTrading212Snapshots do
   @collection "portfolio_snapshots"
   @fx_ticker "EURUSD=X"
 
+  # Start the price series before the first snapshot so that day has a close to
+  # carry forward. Without the run-up the earliest point available is the *next*
+  # trading day, and the first snapshot silently gets a price from the future —
+  # a fortnight covers New Year and any other market holiday.
+  @run_up_days 14
+
+  @doc """
+  Takes the Trading212 positions back out, so a corrected run can put them
+  back. The recorder never wrote these ISINs itself — they only ever reached a
+  snapshot through this script — so removing every occurrence is safe.
+  """
+  def reset do
+    isins = SyntheticOperations.trading212_isins()
+
+    removed =
+      Mongo.find(:mongo, @collection, %{}, sort: %{date: 1})
+      |> Enum.to_list()
+      |> Enum.map(&strip(&1, isins))
+      |> Enum.count(& &1)
+
+    IO.puts("Removed the Trading212 positions from #{removed} snapshots.\n")
+  end
+
+  defp strip(doc, isins) do
+    {mine, theirs} = Enum.split_with(doc["positions"] || [], &(&1["isin"] in isins))
+
+    if mine == [] do
+      false
+    else
+      value = Enum.reduce(mine, 0.0, &((&1["value"] || 0.0) + &2))
+      invested = Enum.reduce(mine, 0.0, &((&1["invested"] || 0.0) + &2))
+
+      {:ok, _} =
+        Mongo.update_one(:mongo, @collection, %{"date" => doc["date"]}, %{
+          "$set" => %{
+            "positions" => theirs,
+            "total_value" => Float.round(doc["total_value"] - value, 2),
+            "total_invested" => Float.round(doc["total_invested"] - invested, 2)
+          }
+        })
+
+      true
+    end
+  end
+
   def run(dry_run?) do
     isins = SyntheticOperations.trading212_isins()
     operations = Enum.filter(SyntheticOperations.all(), &(&1.isin in isins))
@@ -33,7 +78,7 @@ defmodule BackfillTrading212Snapshots do
     docs = Mongo.find(:mongo, @collection, %{}, sort: %{date: 1}) |> Enum.to_list()
     [first | _] = docs
     last = List.last(docs)
-    from = Date.from_iso8601!(first["date"])
+    from = first["date"] |> Date.from_iso8601!() |> Date.add(-@run_up_days)
     to = Date.from_iso8601!(last["date"])
 
     IO.puts("#{length(docs)} snapshots (#{first["date"]} → #{last["date"]})")
@@ -181,4 +226,5 @@ defmodule BackfillTrading212Snapshots do
   end
 end
 
+if "--reset" in System.argv(), do: BackfillTrading212Snapshots.reset()
 BackfillTrading212Snapshots.run("--dry-run" in System.argv())
