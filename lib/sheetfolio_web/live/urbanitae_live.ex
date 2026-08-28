@@ -1,7 +1,7 @@
 defmodule SheetfolioWeb.UrbanitaeLive do
   use SheetfolioWeb, :live_view
 
-  alias Sheetfolio.{UrbanitaeProjects, UrbanitaeTransactions}
+  alias Sheetfolio.{UrbanitaePending, UrbanitaeProjects, UrbanitaeTransactions}
 
   @ranges ~w(1w 1m 3m 1y ytd all)
   @views ~w(overview projects transactions)
@@ -13,11 +13,11 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      {transactions, types} =
+      {transactions, types, pending} =
         if connected?(socket) do
-          {UrbanitaeTransactions.all(), UrbanitaeProjects.types_by_key()}
+          {UrbanitaeTransactions.all(), UrbanitaeProjects.types_by_key(), UrbanitaePending.list()}
         else
-          {[], %{}}
+          {[], %{}, []}
         end
 
       {:ok,
@@ -25,6 +25,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
          authenticated: true,
          transactions: transactions,
          types_by_key: types,
+         pending: pending,
          range: "1m",
          # The movements list is a record rather than a chart, so it opens on
          # the full history instead of the chart's last-month window.
@@ -59,6 +60,13 @@ defmodule SheetfolioWeb.UrbanitaeLive do
 
     ~H"""
     <style>
+      .u-pending { background: #fffbeb; border: 1px solid #fde68a; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; }
+      .u-pending .head { font-size: 0.9rem; font-weight: 600; color: #92400e; margin-bottom: 0.6rem; }
+      .u-pending ul { margin: 0; padding: 0; list-style: none; }
+      .u-pending li { font-size: 0.85rem; color: #78350f; padding: 0.18rem 0; }
+      .u-pending .when { font-variant-numeric: tabular-nums; color: #b45309; margin-right: 0.5rem; }
+      .u-pending .foot { font-size: 0.78rem; color: #b45309; margin-top: 0.6rem; }
+      .u-pending .foot code { background: #fef3c7; padding: 0.05rem 0.3rem; border-radius: 4px; }
       .u-empty { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); color: #64748b; font-size: 0.9rem; }
       .u-card { background: white; border-radius: 12px; padding: 1.5rem 1.75rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 1.5rem; }
       .u-card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #0f172a; }
@@ -117,6 +125,20 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       .u-project-stats .v.neg { color: #e34948; }
     </style>
 
+    <%= if @pending != [] do %>
+      <div class="u-pending">
+        <div class="head">Urbanitae emailed about {length(@pending)} thing(s) not recorded here</div>
+        <ul>
+          <%= for item <- @pending do %>
+            <li><span class="when">{item.date}</span>{pending_text(item)}</li>
+          <% end %>
+        </ul>
+        <div class="foot">
+          Share a Movimientos screenshot and the <code>urbanitae-ingest</code> skill will fill these in.
+        </div>
+      </div>
+    <% end %>
+
     <%= if @transactions == [] do %>
       <div class="u-empty">
         No Urbanitae transactions recorded yet. Share Movimientos screenshots and I'll ingest them via the <code>urbanitae-ingest</code> skill.
@@ -167,6 +189,26 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     <% end %>
     """
   end
+
+  # The distribution email says a payment landed and what kind it was, never how
+  # much, so the banner can only ask for the screenshot that carries the amount.
+  defp pending_text(%{type: :repayment} = item) do
+    "#{distribution_label(item.repayment_kind)} for #{project_label(item)} — no repayment recorded"
+  end
+
+  defp pending_text(%{type: :investment} = item) do
+    "Investment of #{format_eur(item.amount)} in #{project_label(item)} — not recorded"
+  end
+
+  defp pending_text(%{type: :unknown_project} = item) do
+    "#{project_label(item)} is missing from urbanitae_projects — its type is unknown"
+  end
+
+  defp distribution_label("principal"), do: "Project liquidation"
+  defp distribution_label(_yield), do: "Rent/interest distribution"
+
+  defp project_label(%{city: nil, project: project}), do: project
+  defp project_label(%{city: city, project: project}), do: "#{city} | #{project}"
 
   defp render_overview(assigns) do
     assigns = assign(assigns, chart_payload: chart_payload(assigns.transactions, assigns.range))
@@ -358,9 +400,14 @@ defmodule SheetfolioWeb.UrbanitaeLive do
 
   defp totals(rollup) do
     invested_all_time = Enum.reduce(rollup, 0.0, &(&1.invested + &2))
-    outstanding = rollup |> Enum.filter(&(&1.status == "active")) |> Enum.reduce(0.0, &(&1.outstanding + &2))
+
+    outstanding =
+      rollup |> Enum.filter(&(&1.status == "active")) |> Enum.reduce(0.0, &(&1.outstanding + &2))
+
     yield_received = Enum.reduce(rollup, 0.0, &(&1.yield_returned + &2))
-    closed_pnl = rollup |> Enum.filter(&(&1.status == "closed")) |> Enum.reduce(0.0, &(&1.net_pnl + &2))
+
+    closed_pnl =
+      rollup |> Enum.filter(&(&1.status == "closed")) |> Enum.reduce(0.0, &(&1.net_pnl + &2))
 
     %{
       invested_all_time: Float.round(invested_all_time, 2),
@@ -378,7 +425,8 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   defp type_label(nil), do: "?"
   defp type_label(type), do: Map.get(@type_labels, type, type)
 
-  defp range_options, do: [{"1w", "1W"}, {"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
+  defp range_options,
+    do: [{"1w", "1W"}, {"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
 
   defp filter_series(series, "all"), do: series
 
@@ -420,5 +468,4 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     cents_str = cents |> Integer.to_string() |> String.pad_leading(2, "0")
     "#{sign}#{whole_str},#{cents_str} €"
   end
-
 end

@@ -2,6 +2,7 @@ defmodule Mix.Tasks.ParseUrbanitaeEmails do
   use Mix.Task
 
   alias Sheetfolio.UrbanitaeEmails
+  alias Sheetfolio.UrbanitaePending
   alias Sheetfolio.UrbanitaeProjects
   alias Sheetfolio.UrbanitaeTransactions
 
@@ -38,19 +39,8 @@ defmodule Mix.Tasks.ParseUrbanitaeEmails do
   end
 
   defp annotate(event, projects, transactions) do
-    project = find_project(event, projects)
+    project = UrbanitaePending.find_project(event, projects)
     Map.put(event, :status, status(event, project, transactions))
-  end
-
-  # Distribution emails name the project without its city, so those resolve by
-  # name alone; investment and funded mails carry both.
-  defp find_project(%{city: nil, project: name}, projects) do
-    Enum.find(projects, &(&1["project"] == name))
-  end
-
-  defp find_project(%{city: city, project: name}, projects) do
-    key = UrbanitaeTransactions.project_key(city, name)
-    Enum.find(projects, &(&1["project_key"] == key))
   end
 
   defp status(_event, nil, _transactions), do: "✗ project not in urbanitae_projects"

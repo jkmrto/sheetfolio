@@ -41,6 +41,7 @@ A Stop hook in `.claude/settings.json` blocks ending the turn while the working 
 - **`EarningsServer`** — caches current/historical prices and FX rates; LiveViews request computations via `cast` with a `caller_pid` and receive results as messages (async, non-blocking UI).
 - **`OperationsServer`** — at boot, loads the full operation history by fetching and parsing MyInvestor Gmail emails (slow: minutes); serves it from memory afterwards. `get_operations/1` blocks until loaded; `reload/0` refetches.
 - **`SnapshotRecorder`** — writes a per-position portfolio snapshot to Mongo at boot and daily at 22:00 UTC; upserts by date.
+- **`UrbanitaeEmailSync`** — refreshes the Urbanitae email cache (`urbanitae_emails`) at boot and daily at 23:00 UTC; only unseen Gmail ids are downloaded. `UrbanitaePending` derives what those emails mention but `urbanitae_transactions` lacks, and `/urbanitae` shows it as a banner.
 
 ### Data flow
 1. `GmailClient` searches MyInvestor confirmation emails; `MyinvestorParser` extracts operations (buys, sells, traspasos).
@@ -48,7 +49,8 @@ A Stop hook in `.claude/settings.json` blocks ending the turn while the working 
 3. `Positions` replays operations into per-ISIN positions using average-cost basis and computes realized P&L events (sells beyond recorded buy history are "uncovered" and realize nothing).
 4. `PriceFetcher` resolves ISIN → ticker (Yahoo Finance search, OpenFIGI fallback) and fetches EUR prices; `lib/sheetfolio/prices_api/` holds the Yahoo/Stooq/OpenFIGI clients. Problem ISINs are handled via `@ticker_overrides` / `@stooq_overrides` in `PriceFetcher`.
 5. `GoogleSheetsClient` reads the spreadsheet; `Urbanitae` derives a manual position from spreadsheet columns. ISINs come from the parsed emails, not from the sheet.
-6. `WiseClient` + `WiseExpenses` pull spending by category from the Wise activities endpoint (statements/SCA are unavailable for personal accounts), caching activity details in Mongo.
+6. `UrbanitaeParser` reads the three transactional Urbanitae emails (investment, funding close, distribution). Distributions never state the amount received, so they can only flag that a Movimientos screenshot is owed — they are never written as transactions.
+7. `WiseClient` + `WiseExpenses` pull spending by category from the Wise activities endpoint (statements/SCA are unavailable for personal accounts), caching activity details in Mongo.
 
 ### Web layer (`lib/sheetfolio_web/`)
 - Everything is LiveView; routes in `router.ex`. All pages sit behind `AuthPlug` (single password, `APP_PASSWORD`).

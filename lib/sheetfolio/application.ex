@@ -14,7 +14,8 @@ defmodule Sheetfolio.Application do
   defp services do
     credentials = Application.fetch_env!(:sheetfolio, :google_credentials)
 
-    source = {:service_account, credentials, scopes: ["https://www.googleapis.com/auth/spreadsheets"]}
+    source =
+      {:service_account, credentials, scopes: ["https://www.googleapis.com/auth/spreadsheets"]}
 
     [
       # Google service-account auth for the Sheets API
@@ -28,7 +29,9 @@ defmodule Sheetfolio.Application do
          ssl_opts: [
            verify: :verify_peer,
            cacerts: :public_key.cacerts_get(),
-           customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
+           customize_hostname_check: [
+             match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+           ]
          ]
        ]},
       # Runs the price/FX fetches that EarningsServer must not block on
@@ -46,6 +49,9 @@ defmodule Sheetfolio.Application do
       Sheetfolio.CashRecorder,
       # Writes a daily portfolio snapshot to MongoDB (boot + 22:00 UTC)
       Sheetfolio.SnapshotRecorder,
+      # Keeps the Urbanitae email cache current (boot + 23:00 UTC), which is what
+      # feeds the "missing distribution" banner on /urbanitae
+      Sheetfolio.UrbanitaeEmailSync,
       # Phoenix HTTP endpoint
       SheetfolioWeb.Endpoint
     ]
