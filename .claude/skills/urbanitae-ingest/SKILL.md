@@ -120,6 +120,10 @@ signal.
 
 - Collection: `urbanitae_transactions` — `lib/sheetfolio/urbanitae_transactions.ex`.
 - Collection: `urbanitae_projects` — `lib/sheetfolio/urbanitae_projects.ex`.
+- Cross-check: `mix parse_urbanitae_emails` — Urbanitae's own mail confirms
+  investments, funding closes and repayment dates, and flags anything missing
+  from Mongo. It can't replace the screenshots: distribution emails never say
+  how much *you* received.
 - Page: `/urbanitae` — `SheetfolioWeb.UrbanitaeLive`.
 - Legacy `Sheetfolio.Urbanitae` (Vision global / Ganancias sheet columns)
   still feeds the daily portfolio snapshot; the new page is additive.

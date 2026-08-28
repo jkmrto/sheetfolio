@@ -25,7 +25,9 @@ defmodule Sheetfolio.GmailClient do
   end
 
   defp fetch_next_page(nil, _query, _token, acc), do: {:ok, acc}
-  defp fetch_next_page(next_token, query, token, acc), do: fetch_all_pages(query, token, next_token, acc)
+
+  defp fetch_next_page(next_token, query, token, acc),
+    do: fetch_all_pages(query, token, next_token, acc)
 
   def get_message(id) do
     with {:ok, token} <- fetch_token() do
@@ -46,6 +48,14 @@ defmodule Sheetfolio.GmailClient do
       %{"value" => subject} -> {:ok, subject}
       nil -> {:error, "No subject header found"}
     end
+  end
+
+  def extract_date(%{"internalDate" => ms}) do
+    ms
+    |> String.to_integer()
+    |> DateTime.from_unix!(:millisecond)
+    |> DateTime.to_date()
+    |> Date.to_iso8601()
   end
 
   def extract_html_body(message) do

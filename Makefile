@@ -4,6 +4,9 @@ run:
 wise-operations:
 	export $$(sed 's|~/|$(HOME)/|g' .env | xargs) && mix wise_operations
 
+urbanitae-emails:
+	export $$(sed 's|~/|$(HOME)/|g' .env | xargs) && mix parse_urbanitae_emails
+
 docker-build:
 	docker build -t sheetfolio .
 

@@ -13,6 +13,7 @@ Sheetfolio is a single-user Elixir/Phoenix portfolio dashboard. It reads holding
 - `mix assets.build` — esbuild bundle of `assets/js/app.js` (there is no npm build; charts are hand-rolled JS/SVG in LiveView hooks).
 - `mix parse_myinvestor_emails` — dry run: fetch and parse all MyInvestor operation emails.
 - `mix wise_operations [days]` — dry run: fetch Wise balances and activities (needs `.env`, so use `make wise-operations`).
+- `mix parse_urbanitae_emails` — dry run: fetch and parse the Urbanitae inbox, reconciled against `urbanitae_transactions` (needs `.env`, so use `make urbanitae-emails`).
 - `fly deploy` — deploy to production.
 - One-off backfills live in `scripts/*.exs` (run with `mix run`).
 
