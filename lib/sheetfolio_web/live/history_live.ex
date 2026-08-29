@@ -1,9 +1,18 @@
 defmodule SheetfolioWeb.HistoryLive do
   use SheetfolioWeb, :live_view
 
+  alias Sheetfolio.AssetCategories
+
   @palette ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"]
   @max_selected length(@palette)
   @ranges ~w(1w 1m 3m 1y ytd all)
+
+  # The whole portfolio's cost basis and the gain on top of it, side by side
+  # with the per-asset series. They read off the same snapshots as the table
+  # below, Urbanitae included, rather than off the stored totals, which count
+  # market positions only.
+  @invested_id "__invested__"
+  @earnings_id "__earnings__"
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
@@ -14,6 +23,7 @@ defmodule SheetfolioWeb.HistoryLive do
           authenticated: true,
           snapshots: [],
           asset_list: [],
+          asset_groups: [],
           color_map: %{},
           metric: "value",
           range: "1m",
@@ -27,17 +37,12 @@ defmodule SheetfolioWeb.HistoryLive do
 
         asset_list = build_asset_list(snapshots)
 
-        color_map =
-          case asset_list do
-            [{isin, _name} | _] -> %{isin => 0}
-            [] -> %{}
-          end
-
         {:ok,
          assign(socket,
            snapshots: snapshots,
            asset_list: asset_list,
-           color_map: color_map,
+           asset_groups: group_by_category(asset_list),
+           color_map: %{@invested_id => 0, @earnings_id => 1},
            selected_date: latest_date(snapshots)
          )}
       else
@@ -85,6 +90,17 @@ defmodule SheetfolioWeb.HistoryLive do
     {:noreply, assign(socket, selected_date: date)}
   end
 
+  defp series_btn(assigns) do
+    ~H"""
+    <button class={"asset-btn#{if @slot, do: " selected"}"} phx-click="toggle_asset" phx-value-isin={@id}>
+      <%= if @slot do %>
+        <span class="asset-dot" style={"background: #{Enum.at(palette(), @slot)}"}></span>
+      <% end %>
+      <%= @name %>
+    </button>
+    """
+  end
+
   # dd/mm/yyyy text field over a hidden native date input (see the SpanishDate
   # JS hook). The text is what the user reads and edits; the native input holds
   # the ISO value the form submits and supplies the calendar the button opens.
@@ -114,6 +130,11 @@ defmodule SheetfolioWeb.HistoryLive do
     ~H"""
     <style>
       .filter-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; align-items: center; }
+      .filter-groups { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+      .filter-group { display: flex; align-items: baseline; gap: 0.75rem; }
+      .filter-group + .filter-group { border-top: 1px solid #f1f5f9; padding-top: 0.4rem; }
+      .filter-label { flex: 0 0 10rem; text-align: right; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8; }
+      .filter-buttons { display: flex; flex-wrap: wrap; gap: 0.4rem; flex: 1; }
       .asset-btn { border: 1px solid #e2e8f0; background: white; color: #475569; padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; }
       .asset-btn:hover { background: #f1f5f9; }
       .asset-btn.selected { border-color: #1e293b; color: #0b0b0b; font-weight: 600; }
@@ -148,16 +169,28 @@ defmodule SheetfolioWeb.HistoryLive do
         No snapshots recorded yet. History accumulates one point per day once the recorder runs.
       </div>
     <% else %>
-      <div class="filter-row">
-        <%= for {isin, name} <- @asset_list do %>
-          <% slot = Map.get(@color_map, isin) %>
-          <button class={"asset-btn#{if slot, do: " selected"}"} phx-click="toggle_asset" phx-value-isin={isin}>
-            <%= if slot do %>
-              <span class="asset-dot" style={"background: #{Enum.at(palette(), slot)}"}></span>
+      <div class="filter-groups">
+        <div class="filter-group">
+          <span class="filter-label">Portfolio</span>
+          <div class="filter-buttons">
+            <%= for {id, name} <- portfolio_series(@metric) do %>
+              <.series_btn id={id} name={name} slot={Map.get(@color_map, id)} />
             <% end %>
-            <%= name %>
-          </button>
+          </div>
+        </div>
+        <%= for {category, assets} <- @asset_groups do %>
+          <div class="filter-group">
+            <span class="filter-label"><%= category %></span>
+            <div class="filter-buttons">
+              <%= for {isin, name} <- assets do %>
+                <.series_btn id={isin} name={name} slot={Map.get(@color_map, isin)} />
+              <% end %>
+            </div>
+          </div>
         <% end %>
+      </div>
+
+      <div class="filter-row">
         <div class="metric-toggle">
           <button class={if @metric == "value", do: "selected"} phx-click="set_metric" phx-value-metric="value">Value (€)</button>
           <button class={if @metric == "pct", do: "selected"} phx-click="set_metric" phx-value-metric="pct">Gain/Loss (%)</button>
@@ -314,28 +347,50 @@ defmodule SheetfolioWeb.HistoryLive do
     |> Enum.map(fn {isin, {name, _value}} -> {isin, name} end)
   end
 
+  # Categories in the order their biggest holding appears, so the heaviest ones
+  # head the list and the rows read like the rest of the app's category views.
+  defp group_by_category(asset_list) do
+    categories = AssetCategories.get()
+    pairs = Enum.map(asset_list, fn {isin, name} -> {AssetCategories.category_for(isin, categories), {isin, name}} end)
+    grouped = Enum.group_by(pairs, &elem(&1, 0), &elem(&1, 1))
+
+    pairs |> Enum.map(&elem(&1, 0)) |> Enum.uniq() |> Enum.map(&{&1, Map.fetch!(grouped, &1)})
+  end
+
+  # Cost basis has no reading as a percentage, so it sits out the gain view.
+  defp portfolio_series("value"), do: [{@invested_id, "Invested"}, {@earnings_id, "Earnings"}]
+  defp portfolio_series(_pct), do: [{@earnings_id, "Earnings"}]
+
   defp chart_payload(assigns) do
     snapshots = filter_range(assigns.snapshots, assigns.range)
+    named = portfolio_series(assigns.metric) ++ assigns.asset_list
+
+    selected =
+      assigns.color_map
+      |> Enum.filter(fn {id, _slot} -> List.keymember?(named, id, 0) end)
+      |> Enum.sort_by(fn {_id, slot} -> slot end)
 
     datasets =
-      assigns.color_map
-      |> Enum.sort_by(fn {_isin, slot} -> slot end)
-      |> Enum.map(fn {isin, slot} ->
-        name =
-          case List.keyfind(assigns.asset_list, isin, 0) do
-            {_, n} -> n
-            nil -> isin
-          end
+      Enum.map(selected, fn {id, slot} ->
+        {_id, name} = List.keyfind(named, id, 0)
 
         %{
           label: name,
           color: Enum.at(palette(), slot),
-          data: series_points(snapshots, isin, assigns.metric)
+          axis: axis_for(id, assigns.metric, selected),
+          data: series_points(snapshots, id, assigns.metric)
         }
       end)
 
     %{metric: assigns.metric, datasets: datasets, clickEvent: "select_point"}
   end
+
+  # Earnings are an order of magnitude smaller than the capital they sit on, so
+  # sharing a scale with anything else flattens them onto the floor of the
+  # chart. They take the right-hand axis instead, unless they are the only line
+  # on it, which would leave the left one empty.
+  defp axis_for(@earnings_id, "value", selected) when length(selected) > 1, do: "y1"
+  defp axis_for(_id, _metric, _selected), do: "y"
 
   defp range_options, do: [{"1w", "1W"}, {"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
 
@@ -351,6 +406,10 @@ defmodule SheetfolioWeb.HistoryLive do
   defp cutoff_date("3m", today), do: Date.shift(today, month: -3)
   defp cutoff_date("1y", today), do: Date.shift(today, year: -1)
   defp cutoff_date("ytd", today), do: Date.new!(today.year, 1, 1)
+
+  defp series_points(snapshots, @invested_id, _metric), do: totals_points(snapshots, & &1.invested)
+  defp series_points(snapshots, @earnings_id, "value"), do: totals_points(snapshots, & &1.gain)
+  defp series_points(snapshots, @earnings_id, _pct), do: totals_points(snapshots, & &1.gain_pct)
 
   defp series_points(snapshots, isin, metric) do
     snapshots
@@ -372,6 +431,17 @@ defmodule SheetfolioWeb.HistoryLive do
   end
 
   defp point(_date, _position, _metric), do: []
+
+  defp totals_points(snapshots, field) do
+    Enum.flat_map(snapshots, fn snap ->
+      totals = snap["positions"] |> List.wrap() |> Enum.map(&position_row/1) |> totals()
+
+      case field.(totals) do
+        nil -> []
+        y -> [%{x: snap["date"], y: y}]
+      end
+    end)
+  end
 
   defp palette, do: @palette
 end

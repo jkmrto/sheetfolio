@@ -32,10 +32,16 @@ Hooks.HistoryChart = {
       pointRadius: ds.data.length > 60 ? 0 : 3,
       pointHoverRadius: 6,
       fill: !!ds.fill,
-      tension: 0.3
+      tension: 0.3,
+      yAxisID: ds.axis || "y"
     }))
 
     if (this.chart) this.chart.destroy()
+
+    // A series an order of magnitude smaller than the rest (earnings against the
+    // capital they sit on) asks for the right-hand scale, so it isn't flattened
+    // onto the floor of a shared one.
+    const rightAxis = payload.datasets.some((ds) => ds.axis === "y1")
 
     // payload.labels switches the x axis from time scale to categories (e.g. month names)
     const xScale = payload.labels
@@ -79,7 +85,8 @@ Hooks.HistoryChart = {
           x: xScale,
           y: {
             ticks: {callback: (v) => fmt(v)}
-          }
+          },
+          ...(rightAxis ? {y1: {position: "right", grid: {drawOnChartArea: false}, ticks: {callback: (v) => fmt(v)}}} : {})
         }
       }
     })
