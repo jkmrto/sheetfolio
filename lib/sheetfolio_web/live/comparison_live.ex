@@ -442,10 +442,13 @@ defmodule SheetfolioWeb.ComparisonLive do
 
   defp weight(_date, _from, days) when days <= 0, do: 0.0
 
+  # A flow dated before the window is a purchase whose confirmation landed late:
+  # the capital was at risk for the whole window, so it weighs a full 1.0 rather
+  # than the more-than-one its negative offset would give.
   defp weight(date, from, days) do
     case day_offset(date, from) do
       nil -> 0.0
-      elapsed -> (days - elapsed) / days
+      elapsed -> (days - max(elapsed, 0)) / days
     end
   end
 
@@ -485,8 +488,9 @@ defmodule SheetfolioWeb.ComparisonLive do
   # movements. A purchase's recorded cost matches the cost basis the flow is
   # built from, so those reconcile; sells, closures and currency residue don't
   # map to a single operation, so `balance/5` spreads whatever is left over the
-  # window's sells. Operations arrive after the first render, so until then a
-  # market holding shows just that balancing line.
+  # window's sells, or over the purchases that only reached a snapshot inside
+  # it. Operations arrive after the first render, so until then a market holding
+  # shows just that balancing line.
   defp events_for(isin, ctx) do
     (buy_events(isin, ctx) ++
        dividend_events(isin, ctx) ++
@@ -547,10 +551,50 @@ defmodule SheetfolioWeb.ComparisonLive do
   # it falls back to a single line at the end of the window.
   defp gap_events(gap, isin, name, ctx) do
     case gap_ops(gap, isin, ctx) do
-      [] -> [gap_event(ctx.to, name, gap)]
-      ops -> apportion(gap, ops, name, ctx)
+      [] -> late_buy_events(gap, isin, name, ctx)
+      ops -> apportion(gap, ops, name, ctx, kind_of(gap))
     end
   end
+
+  # A fund's confirmation email can arrive days after the order: the cost basis
+  # then moves in a snapshot inside the window while the operation itself is
+  # dated before it. The money in is real — the opening value predates those
+  # units — but no in-window operation carries it, so it goes on the purchases
+  # sitting just before the window rather than on an unnamed line at the end of
+  # it. Money out has no equivalent: a sale is already in the window's ops.
+  defp late_buy_events(gap, isin, name, ctx) when gap > 0 do
+    case late_buys(gap, isin, ctx) do
+      [] -> [gap_event(ctx.to, name, gap)]
+      ops -> apportion(gap, ops, name, ctx, "Buy")
+    end
+  end
+
+  defp late_buy_events(gap, _isin, name, ctx), do: [gap_event(ctx.to, name, gap)]
+
+  defp late_buys(gap, isin, ctx) do
+    ctx.operations
+    |> Enum.filter(fn op -> buy?(op) and op.isin == isin and iso_of(op.fecha) <= ctx.from end)
+    |> Enum.sort_by(&iso_of(&1.fecha), :desc)
+    |> covering(gap, ctx)
+  end
+
+  # Just enough of the newest purchases to cover the gap — a confirmation lags
+  # by days, so the basis that landed late is the tail of the history. If they
+  # don't add up to it, the gap is something else and stays unattributed.
+  defp covering(ops, gap, ctx) do
+    ops
+    |> Enum.reduce_while({[], 0.0}, fn op, {taken, sum} ->
+      total = sum + buy_amount(op, ctx.fx)
+      if covers?(total, gap), do: {:halt, {[op | taken], total}}, else: {:cont, {[op | taken], total}}
+    end)
+    |> covered(gap)
+  end
+
+  defp covered({ops, sum}, gap) do
+    if covers?(sum, gap), do: Enum.reverse(ops), else: []
+  end
+
+  defp covers?(sum, gap), do: sum >= gap - 0.005
 
   defp gap_ops(gap, isin, ctx) do
     Enum.filter(ctx.operations, fn op ->
@@ -571,14 +615,19 @@ defmodule SheetfolioWeb.ComparisonLive do
 
   # Sizes are the operations' own euro amounts; the last share takes whatever
   # the rounding left so the lines still add up to the gap.
-  defp apportion(gap, ops, name, ctx) do
+  defp apportion(gap, ops, name, ctx, kind) do
     sizes = Enum.map(ops, &abs(buy_amount(&1, ctx.fx)))
     total = Enum.sum(sizes)
 
     ops
     |> Enum.zip(shares(gap, sizes, total))
     |> Enum.map(fn {op, amount} ->
-      gap_event(iso_of(op.fecha), Map.get(op, :asset, "") |> presence() || name, amount)
+      %{
+        date: iso_of(op.fecha),
+        asset: Map.get(op, :asset, "") |> presence() || name,
+        amount: amount,
+        kind: kind
+      }
     end)
   end
 
@@ -594,8 +643,11 @@ defmodule SheetfolioWeb.ComparisonLive do
   end
 
   defp gap_event(date, name, amount) do
-    %{date: date, asset: name, amount: amount, kind: if(amount < 0, do: "Withdrawal", else: "Other")}
+    %{date: date, asset: name, amount: amount, kind: kind_of(amount)}
   end
+
+  defp kind_of(amount) when amount < 0, do: "Withdrawal"
+  defp kind_of(_amount), do: "Other"
 
   defp presence(""), do: nil
   defp presence(value), do: value
