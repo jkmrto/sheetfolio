@@ -13,6 +13,7 @@ defmodule Sheetfolio.SnapshotRecorder do
 
   @collection "portfolio_snapshots"
   @daily_hour_utc 22
+  @repair_days 30
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, nil, name: __MODULE__)
@@ -88,11 +89,28 @@ defmodule Sheetfolio.SnapshotRecorder do
     case Mongo.update_one(:mongo, @collection, %{date: date}, %{"$set" => doc}, upsert: true) do
       {:ok, _} ->
         Logger.info("SnapshotRecorder: recorded #{date} (#{length(position_docs)} positions)")
+        repair_recent(operations, {eur_usd, eur_cad})
         {:ok, doc}
 
       {:error, reason} = err ->
         Logger.error("SnapshotRecorder: failed to record #{date}: #{inspect(reason)}")
         err
+    end
+  end
+
+  # A confirmation email that arrives days after the order leaves the snapshots
+  # written in between short of the purchase, which then reads as money in on
+  # the day the email landed. Now that the operation is known, fill them.
+  defp repair_recent(operations, rates) do
+    since = Date.utc_today() |> Date.add(-@repair_days)
+
+    case Sheetfolio.SnapshotRepair.repair(operations, rates, since: since) do
+      [] ->
+        :ok
+
+      changes ->
+        dates = changes |> Enum.map(& &1.date) |> Enum.uniq() |> length()
+        Logger.info("SnapshotRecorder: filled #{length(changes)} late-confirmed positions across #{dates} snapshots")
     end
   end
 
