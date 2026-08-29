@@ -7,12 +7,10 @@ defmodule SheetfolioWeb.HistoryLive do
   @max_selected length(@palette)
   @ranges ~w(1w 1m 3m 1y ytd all)
 
-  # The whole portfolio's cost basis and the gain on top of it, side by side
-  # with the per-asset series. They read off the same snapshots as the table
-  # below, Urbanitae included, rather than off the stored totals, which count
-  # market positions only.
-  @invested_id "__invested__"
-  @earnings_id "__earnings__"
+  # What each selected holding draws in the value view: what it is worth, what
+  # it cost, and the gain between them. Dashes tell them apart at a glance
+  # while the asset keeps one colour across all three.
+  @series [{:value, nil, nil}, {:invested, "Invested", [6, 4]}, {:gain, "Earnings", [2, 3]}]
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
@@ -24,6 +22,7 @@ defmodule SheetfolioWeb.HistoryLive do
           snapshots: [],
           asset_list: [],
           asset_groups: [],
+          collapsed: MapSet.new(),
           color_map: %{},
           metric: "value",
           range: "1m",
@@ -36,13 +35,21 @@ defmodule SheetfolioWeb.HistoryLive do
           |> Enum.to_list()
 
         asset_list = build_asset_list(snapshots)
+        asset_groups = group_by_category(asset_list)
+
+        color_map =
+          case asset_list do
+            [{isin, _name} | _rest] -> %{isin => 0}
+            [] -> %{}
+          end
 
         {:ok,
          assign(socket,
            snapshots: snapshots,
            asset_list: asset_list,
-           asset_groups: group_by_category(asset_list),
-           color_map: %{@invested_id => 0, @earnings_id => 1},
+           asset_groups: asset_groups,
+           collapsed: asset_groups |> Enum.map(&elem(&1, 0)) |> MapSet.new(),
+           color_map: color_map,
            selected_date: latest_date(snapshots)
          )}
       else
@@ -69,6 +76,17 @@ defmodule SheetfolioWeb.HistoryLive do
       end
 
     {:noreply, assign(socket, color_map: color_map)}
+  end
+
+  def handle_event("toggle_category", %{"category" => category}, socket) do
+    collapsed = socket.assigns.collapsed
+
+    collapsed =
+      if MapSet.member?(collapsed, category),
+        do: MapSet.delete(collapsed, category),
+        else: MapSet.put(collapsed, category)
+
+    {:noreply, assign(socket, collapsed: collapsed)}
   end
 
   def handle_event("set_metric", %{"metric" => metric}, socket) when metric in ["value", "pct"] do
@@ -133,7 +151,14 @@ defmodule SheetfolioWeb.HistoryLive do
       .filter-groups { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
       .filter-group { display: flex; align-items: baseline; gap: 0.75rem; }
       .filter-group + .filter-group { border-top: 1px solid #f1f5f9; padding-top: 0.4rem; }
-      .filter-label { flex: 0 0 10rem; text-align: right; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8; }
+      .cat-header { flex: 0 0 16rem; display: flex; align-items: center; gap: 0.45rem; border: none; background: none; cursor: pointer; padding: 0.2rem 0; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8; text-align: left; }
+      .cat-header:hover { color: #475569; }
+      .cat-chevron { display: inline-block; width: 0.7rem; font-size: 0.6rem; color: #cbd5e1; }
+      .cat-state { font-size: 1.05rem; line-height: 1; }
+      .cat-state.none { color: #cbd5e1; }
+      .cat-state.some { color: #2a78d6; }
+      .cat-state.all { color: #1e293b; }
+      .cat-count { margin-left: auto; font-weight: 600; color: #cbd5e1; font-variant-numeric: tabular-nums; }
       .filter-buttons { display: flex; flex-wrap: wrap; gap: 0.4rem; flex: 1; }
       .asset-btn { border: 1px solid #e2e8f0; background: white; color: #475569; padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; }
       .asset-btn:hover { background: #f1f5f9; }
@@ -170,20 +195,20 @@ defmodule SheetfolioWeb.HistoryLive do
       </div>
     <% else %>
       <div class="filter-groups">
-        <div class="filter-group">
-          <span class="filter-label">Portfolio</span>
-          <div class="filter-buttons">
-            <%= for {id, name} <- portfolio_series(@metric) do %>
-              <.series_btn id={id} name={name} slot={Map.get(@color_map, id)} />
-            <% end %>
-          </div>
-        </div>
         <%= for {category, assets} <- @asset_groups do %>
+          <% open? = not MapSet.member?(@collapsed, category) %>
           <div class="filter-group">
-            <span class="filter-label"><%= category %></span>
+            <button class="cat-header" phx-click="toggle_category" phx-value-category={category}>
+              <span class="cat-chevron"><%= if open?, do: "▼", else: "▶" %></span>
+              <span class={"cat-state #{selection_state(assets, @color_map)}"}><%= state_icon(selection_state(assets, @color_map)) %></span>
+              <span><%= category %></span>
+              <span class="cat-count"><%= selected_count(assets, @color_map) %>/<%= length(assets) %></span>
+            </button>
             <div class="filter-buttons">
-              <%= for {isin, name} <- assets do %>
-                <.series_btn id={isin} name={name} slot={Map.get(@color_map, isin)} />
+              <%= if open? do %>
+                <%= for {isin, name} <- assets do %>
+                  <.series_btn id={isin} name={name} slot={Map.get(@color_map, isin)} />
+                <% end %>
               <% end %>
             </div>
           </div>
@@ -357,40 +382,72 @@ defmodule SheetfolioWeb.HistoryLive do
     pairs |> Enum.map(&elem(&1, 0)) |> Enum.uniq() |> Enum.map(&{&1, Map.fetch!(grouped, &1)})
   end
 
-  # Cost basis has no reading as a percentage, so it sits out the gain view.
-  defp portfolio_series("value"), do: [{@invested_id, "Invested"}, {@earnings_id, "Earnings"}]
-  defp portfolio_series(_pct), do: [{@earnings_id, "Earnings"}]
+  # Whether a collapsed category is hiding a selection, and how much of one.
+  defp selection_state(assets, color_map) do
+    case {selected_count(assets, color_map), length(assets)} do
+      {0, _total} -> "none"
+      {same, same} -> "all"
+      _partial -> "some"
+    end
+  end
+
+  defp selected_count(assets, color_map) do
+    Enum.count(assets, fn {isin, _name} -> Map.has_key?(color_map, isin) end)
+  end
+
+  defp state_icon("none"), do: "○"
+  defp state_icon("some"), do: "◐"
+  defp state_icon("all"), do: "●"
 
   defp chart_payload(assigns) do
     snapshots = filter_range(assigns.snapshots, assigns.range)
-    named = portfolio_series(assigns.metric) ++ assigns.asset_list
-
-    selected =
-      assigns.color_map
-      |> Enum.filter(fn {id, _slot} -> List.keymember?(named, id, 0) end)
-      |> Enum.sort_by(fn {_id, slot} -> slot end)
 
     datasets =
-      Enum.map(selected, fn {id, slot} ->
-        {_id, name} = List.keyfind(named, id, 0)
+      assigns.color_map
+      |> Enum.sort_by(fn {_isin, slot} -> slot end)
+      |> Enum.flat_map(fn {isin, slot} ->
+        name =
+          case List.keyfind(assigns.asset_list, isin, 0) do
+            {_isin, found} -> found
+            nil -> isin
+          end
 
-        %{
-          label: name,
-          color: Enum.at(palette(), slot),
-          axis: axis_for(id, assigns.metric, selected),
-          data: series_points(snapshots, id, assigns.metric)
-        }
+        datasets_for(snapshots, isin, name, Enum.at(palette(), slot), assigns.metric)
       end)
 
     %{metric: assigns.metric, datasets: datasets, clickEvent: "select_point"}
   end
 
-  # Earnings are an order of magnitude smaller than the capital they sit on, so
-  # sharing a scale with anything else flattens them onto the floor of the
-  # chart. They take the right-hand axis instead, unless they are the only line
-  # on it, which would leave the left one empty.
-  defp axis_for(@earnings_id, "value", selected) when length(selected) > 1, do: "y1"
-  defp axis_for(_id, _metric, _selected), do: "y"
+  # The gain view is already one number per holding, so it keeps its single
+  # line; the value view splits the holding into what it is worth, what it cost
+  # and the gain on top.
+  defp datasets_for(snapshots, isin, name, color, "pct") do
+    [%{label: name, color: color, axis: "y", data: series_points(snapshots, isin, :pct)}]
+  end
+
+  defp datasets_for(snapshots, isin, name, color, "value") do
+    Enum.map(@series, fn {metric, suffix, dash} ->
+      %{
+        label: label_for(name, suffix),
+        color: color,
+        dash: dash,
+        # Markers on all three would bury the dashes that tell them apart, and
+        # the value line is the one a click drills the table down to.
+        points: is_nil(suffix),
+        axis: axis_for(metric),
+        data: series_points(snapshots, isin, metric)
+      }
+    end)
+  end
+
+  defp label_for(name, nil), do: name
+  defp label_for(name, suffix), do: "#{name} · #{suffix}"
+
+  # A holding's gain is an order of magnitude smaller than the capital it sits
+  # on, so on the shared scale it flattens onto the floor of the chart. It gets
+  # the right-hand axis instead.
+  defp axis_for(:gain), do: "y1"
+  defp axis_for(_metric), do: "y"
 
   defp range_options, do: [{"1w", "1W"}, {"1m", "1M"}, {"3m", "3M"}, {"1y", "1Y"}, {"ytd", "YTD"}, {"all", "All"}]
 
@@ -407,10 +464,6 @@ defmodule SheetfolioWeb.HistoryLive do
   defp cutoff_date("1y", today), do: Date.shift(today, year: -1)
   defp cutoff_date("ytd", today), do: Date.new!(today.year, 1, 1)
 
-  defp series_points(snapshots, @invested_id, _metric), do: totals_points(snapshots, & &1.invested)
-  defp series_points(snapshots, @earnings_id, "value"), do: totals_points(snapshots, & &1.gain)
-  defp series_points(snapshots, @earnings_id, _pct), do: totals_points(snapshots, & &1.gain_pct)
-
   defp series_points(snapshots, isin, metric) do
     snapshots
     |> Enum.flat_map(fn snap ->
@@ -421,27 +474,25 @@ defmodule SheetfolioWeb.HistoryLive do
     end)
   end
 
-  defp point(date, %{"value" => value, "invested" => invested}, "pct")
+  defp point(date, %{"value" => value, "invested" => invested}, :pct)
        when is_number(value) and is_number(invested) and invested > 0 do
     [%{x: date, y: Float.round((value - invested) / invested * 100, 2)}]
   end
 
-  defp point(date, %{"value" => value}, "value") when is_number(value) do
+  defp point(date, %{"value" => value}, :value) when is_number(value) do
     [%{x: date, y: value}]
   end
 
-  defp point(_date, _position, _metric), do: []
-
-  defp totals_points(snapshots, field) do
-    Enum.flat_map(snapshots, fn snap ->
-      totals = snap["positions"] |> List.wrap() |> Enum.map(&position_row/1) |> totals()
-
-      case field.(totals) do
-        nil -> []
-        y -> [%{x: snap["date"], y: y}]
-      end
-    end)
+  defp point(date, %{"invested" => invested}, :invested) when is_number(invested) do
+    [%{x: date, y: invested}]
   end
+
+  defp point(date, %{"value" => value, "invested" => invested}, :gain)
+       when is_number(value) and is_number(invested) do
+    [%{x: date, y: Float.round(value - invested, 2)}]
+  end
+
+  defp point(_date, _position, _metric), do: []
 
   defp palette, do: @palette
 end

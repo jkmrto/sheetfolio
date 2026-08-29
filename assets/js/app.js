@@ -29,10 +29,11 @@ Hooks.HistoryChart = {
       borderColor: ds.color,
       backgroundColor: ds.fill ? ds.color + "26" : ds.color,
       borderWidth: 2,
-      pointRadius: ds.data.length > 60 ? 0 : 3,
+      pointRadius: ds.points === false || ds.data.length > 60 ? 0 : 3,
       pointHoverRadius: 6,
       fill: !!ds.fill,
       tension: 0.3,
+      borderDash: ds.dash || [],
       yAxisID: ds.axis || "y"
     }))
 
