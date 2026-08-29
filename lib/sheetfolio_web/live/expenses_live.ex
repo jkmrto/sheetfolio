@@ -122,60 +122,63 @@ defmodule SheetfolioWeb.ExpensesLive do
         </div>
 
         <div class="expenses-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Month</th>
-                <%= for category <- @categories do %>
-                  <th>
-                    <.link patch={registry_path(@year, category)}>
-                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(category)}"}></span><%= category %>
-                    </.link>
-                  </th>
-                <% end %>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for month <- year_months(@expenses, @year) |> Enum.reverse() do %>
+          <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
+            <button class="table-expand" aria-label="Toggle full screen"></button>
+            <table>
+              <thead>
                 <tr>
-                  <td>
-                    <.link patch={registry_path("All", String.slice(month, 0, 7), "All")}><%= String.slice(month, 0, 7) %></.link>
-                  </td>
+                  <th>Month</th>
                   <%= for category <- @categories do %>
-                    <td>
-                      <%= if elem(@expenses, 1)[{month, category}] do %>
-                        <.link patch={registry_path("All", String.slice(month, 0, 7), category)}>
-                          <%= format(elem(@expenses, 1)[{month, category}]) %>
-                        </.link>
-                      <% else %>
-                        <%= format(nil) %>
-                      <% end %>
-                    </td>
+                    <th>
+                      <.link patch={registry_path(@year, category)}>
+                        <span class="expenses-dot" style={"background: #{WiseExpenses.color(category)}"}></span><%= category %>
+                      </.link>
+                    </th>
                   <% end %>
-                  <td class="total">
-                    <.link patch={registry_path("All", String.slice(month, 0, 7), "All")}><%= format(month_total(@expenses, month)) %></.link>
-                  </td>
+                  <th>Total</th>
                 </tr>
-              <% end %>
-            </tbody>
-            <tfoot>
-              <tr>
-                <td>Total</td>
-                <%= for category <- @categories do %>
-                  <td><%= format(category_total(@expenses, @year, category)) %></td>
+              </thead>
+              <tbody>
+                <%= for month <- year_months(@expenses, @year) |> Enum.reverse() do %>
+                  <tr>
+                    <td>
+                      <.link patch={registry_path("All", String.slice(month, 0, 7), "All")}><%= String.slice(month, 0, 7) %></.link>
+                    </td>
+                    <%= for category <- @categories do %>
+                      <td>
+                        <%= if elem(@expenses, 1)[{month, category}] do %>
+                          <.link patch={registry_path("All", String.slice(month, 0, 7), category)}>
+                            <%= format(elem(@expenses, 1)[{month, category}]) %>
+                          </.link>
+                        <% else %>
+                          <%= format(nil) %>
+                        <% end %>
+                      </td>
+                    <% end %>
+                    <td class="total">
+                      <.link patch={registry_path("All", String.slice(month, 0, 7), "All")}><%= format(month_total(@expenses, month)) %></.link>
+                    </td>
+                  </tr>
                 <% end %>
-                <td><%= format(year_total(@expenses, @year)) %></td>
-              </tr>
-              <tr>
-                <td>Avg / month</td>
-                <%= for category <- @categories do %>
-                  <td><%= format(monthly_average(@expenses, @year, category_total(@expenses, @year, category))) %></td>
-                <% end %>
-                <td><%= format(monthly_average(@expenses, @year, year_total(@expenses, @year))) %></td>
-              </tr>
-            </tfoot>
-          </table>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td>Total</td>
+                  <%= for category <- @categories do %>
+                    <td><%= format(category_total(@expenses, @year, category)) %></td>
+                  <% end %>
+                  <td><%= format(year_total(@expenses, @year)) %></td>
+                </tr>
+                <tr>
+                  <td>Avg / month</td>
+                  <%= for category <- @categories do %>
+                    <td><%= format(monthly_average(@expenses, @year, category_total(@expenses, @year, category))) %></td>
+                  <% end %>
+                  <td><%= format(monthly_average(@expenses, @year, year_total(@expenses, @year))) %></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       <% end %>
 
@@ -202,30 +205,33 @@ defmodule SheetfolioWeb.ExpensesLive do
         </div>
 
         <div class="expenses-table">
-          <table>
-            <thead>
-              <tr>
-                <th>Year</th>
-                <%= for category <- @categories do %>
-                  <th>
-                    <span class="expenses-dot" style={"background: #{WiseExpenses.color(category)}"}></span><%= category %>
-                  </th>
-                <% end %>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for year <- @years do %>
+          <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
+            <button class="table-expand" aria-label="Toggle full screen"></button>
+            <table>
+              <thead>
                 <tr>
-                  <td><%= year %> <%= if @mode == "avg", do: "(#{length(year_months(@expenses, year))}m)" %></td>
+                  <th>Year</th>
                   <%= for category <- @categories do %>
-                    <td><%= format(year_value(@expenses, year, category_total(@expenses, year, category), @mode)) %></td>
+                    <th>
+                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(category)}"}></span><%= category %>
+                    </th>
                   <% end %>
-                  <td class="total"><%= format(year_value(@expenses, year, year_total(@expenses, year), @mode)) %></td>
+                  <th>Total</th>
                 </tr>
-              <% end %>
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                <%= for year <- @years do %>
+                  <tr>
+                    <td><%= year %> <%= if @mode == "avg", do: "(#{length(year_months(@expenses, year))}m)" %></td>
+                    <%= for category <- @categories do %>
+                      <td><%= format(year_value(@expenses, year, category_total(@expenses, year, category), @mode)) %></td>
+                    <% end %>
+                    <td class="total"><%= format(year_value(@expenses, year, year_total(@expenses, year), @mode)) %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
         </div>
       <% end %>
 
@@ -255,34 +261,37 @@ defmodule SheetfolioWeb.ExpensesLive do
         </div>
 
         <div class="expenses-table" style="margin-top: 0;">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th class="left">Category</th>
-                <th class="left">Description</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for row <- @registry_rows do %>
+          <div class="table-panel" id="table-panel-3" phx-hook="TablePanel">
+            <button class="table-expand" aria-label="Toggle full screen"></button>
+            <table>
+              <thead>
                 <tr>
-                  <td><%= row.date %></td>
-                  <td class="left">
-                    <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= row.category %>
-                  </td>
-                  <td class="left"><%= if row.note != "", do: row.note, else: row.title %></td>
-                  <td><%= format(row.amount) %></td>
+                  <th>Date</th>
+                  <th class="left">Category</th>
+                  <th class="left">Description</th>
+                  <th>Amount</th>
                 </tr>
-              <% end %>
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colspan="3"><%= length(@registry_rows) %> expenses</td>
-                <td><%= format(@registry_rows |> Enum.map(& &1.amount) |> Enum.sum() |> Kernel./(1)) %></td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody>
+                <%= for row <- @registry_rows do %>
+                  <tr>
+                    <td><%= row.date %></td>
+                    <td class="left">
+                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= row.category %>
+                    </td>
+                    <td class="left"><%= if row.note != "", do: row.note, else: row.title %></td>
+                    <td><%= format(row.amount) %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="3"><%= length(@registry_rows) %> expenses</td>
+                  <td><%= format(@registry_rows |> Enum.map(& &1.amount) |> Enum.sum() |> Kernel./(1)) %></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       <% end %>
     <% end %>

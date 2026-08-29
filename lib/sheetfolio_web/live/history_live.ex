@@ -245,43 +245,46 @@ defmodule SheetfolioWeb.HistoryLive do
         <% nil -> %>
           <div class="empty-note">No snapshot recorded for <%= es_date(@selected_date) %>.</div>
         <% positions -> %>
-          <table class="snapshot-table">
-            <thead>
-              <tr>
-                <th>Asset</th><th>Units held</th><th>Invested (€)</th>
-                <th>Value (€)</th><th>Gain/Loss (€)</th><th>Gain/Loss (%)</th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for p <- positions do %>
+          <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
+            <button class="table-expand" aria-label="Toggle full screen"></button>
+            <table class="snapshot-table">
+              <thead>
                 <tr>
-                  <td>
-                    <strong><%= p.asset %></strong><br/>
-                    <small style="color:#94a3b8"><%= p.isin %></small>
-                    <%= if p.stale_price do %>
-                      <br/><small style="color:#f59e0b">⚠ price carried forward from an earlier day</small>
-                    <% end %>
-                  </td>
-                  <td><%= format_qty(p.units) %></td>
-                  <td><%= format_eur(p.invested) %></td>
-                  <td><%= format_eur(p.value) %></td>
-                  <td class={earnings_class(p.gain)}><%= format_abs(p.gain) %></td>
-                  <td class={earnings_class(p.gain_pct)}><%= format_pct(p.gain_pct) %></td>
+                  <th>Asset</th><th>Units held</th><th>Invested (€)</th>
+                  <th>Value (€)</th><th>Gain/Loss (€)</th><th>Gain/Loss (%)</th>
                 </tr>
-              <% end %>
-            </tbody>
-            <tfoot>
-              <% totals = totals(positions) %>
-              <tr>
-                <td>Total</td>
-                <td></td>
-                <td><%= format_eur(totals.invested) %></td>
-                <td><%= format_eur(totals.value) %></td>
-                <td class={earnings_class(totals.gain)}><%= format_abs(totals.gain) %></td>
-                <td class={earnings_class(totals.gain_pct)}><%= format_pct(totals.gain_pct) %></td>
-              </tr>
-            </tfoot>
-          </table>
+              </thead>
+              <tbody>
+                <%= for p <- positions do %>
+                  <tr>
+                    <td>
+                      <strong><%= p.asset %></strong><br/>
+                      <small style="color:#94a3b8"><%= p.isin %></small>
+                      <%= if p.stale_price do %>
+                        <br/><small style="color:#f59e0b">⚠ price carried forward from an earlier day</small>
+                      <% end %>
+                    </td>
+                    <td><%= format_qty(p.units) %></td>
+                    <td><%= format_eur(p.invested) %></td>
+                    <td><%= format_eur(p.value) %></td>
+                    <td class={earnings_class(p.gain)}><%= format_abs(p.gain) %></td>
+                    <td class={earnings_class(p.gain_pct)}><%= format_pct(p.gain_pct) %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+              <tfoot>
+                <% totals = totals(positions) %>
+                <tr>
+                  <td>Total</td>
+                  <td></td>
+                  <td><%= format_eur(totals.invested) %></td>
+                  <td><%= format_eur(totals.value) %></td>
+                  <td class={earnings_class(totals.gain)}><%= format_abs(totals.gain) %></td>
+                  <td class={earnings_class(totals.gain_pct)}><%= format_pct(totals.gain_pct) %></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
       <% end %>
     <% end %>
     """

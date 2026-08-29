@@ -312,29 +312,32 @@ defmodule SheetfolioWeb.UrbanitaeLive do
           <span><span class="k">Net P&amp;L</span><span class={"v #{pnl_class(@r.net_pnl)}"}>{format_eur(@r.net_pnl)}</span></span>
         <% end %>
       </div>
-      <table class="u-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Kind</th>
-            <th class="num">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          <%= for tx <- project_transactions(@transactions, @r.project_key) do %>
+      <div class="table-panel" id={"table-panel-#{@r.project_key}"} phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="u-table">
+          <thead>
             <tr>
-              <td>{tx["date"]}</td>
-              <td>
-                <span class={"u-pill #{tx["kind"]}"}>{tx["kind"]}</span>
-                <%= if tx["kind"] == "repayment" and tx["repayment_kind"] do %>
-                  <span class={"u-pill #{tx["repayment_kind"]}"}>{tx["repayment_kind"]}</span>
-                <% end %>
-              </td>
-              <td class="num">{format_eur(tx["amount"])}</td>
+              <th>Date</th>
+              <th>Kind</th>
+              <th class="num">Amount</th>
             </tr>
-          <% end %>
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            <%= for tx <- project_transactions(@transactions, @r.project_key) do %>
+              <tr>
+                <td>{tx["date"]}</td>
+                <td>
+                  <span class={"u-pill #{tx["kind"]}"}>{tx["kind"]}</span>
+                  <%= if tx["kind"] == "repayment" and tx["repayment_kind"] do %>
+                    <span class={"u-pill #{tx["repayment_kind"]}"}>{tx["repayment_kind"]}</span>
+                  <% end %>
+                </td>
+                <td class="num">{format_eur(tx["amount"])}</td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
     </div>
     """
   end
@@ -354,33 +357,36 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       <%= if @rows == [] do %>
         <p style="color:#64748b; font-size:0.85rem;">No transactions in this window.</p>
       <% else %>
-        <table class="u-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Kind</th>
-              <th>City</th>
-              <th>Project</th>
-              <th class="num">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for tx <- @rows do %>
+        <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
+          <button class="table-expand" aria-label="Toggle full screen"></button>
+          <table class="u-table">
+            <thead>
               <tr>
-                <td>{tx["date"]}</td>
-                <td>
-                  <span class={"u-pill #{tx["kind"]}"}>{tx["kind"]}</span>
-                  <%= if tx["kind"] == "repayment" and tx["repayment_kind"] do %>
-                    <span class={"u-pill #{tx["repayment_kind"]}"}>{tx["repayment_kind"]}</span>
-                  <% end %>
-                </td>
-                <td>{tx["city"]}</td>
-                <td>{tx["project"]}</td>
-                <td class="num">{format_eur(tx["amount"])}</td>
+                <th>Date</th>
+                <th>Kind</th>
+                <th>City</th>
+                <th>Project</th>
+                <th class="num">Amount</th>
               </tr>
-            <% end %>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <%= for tx <- @rows do %>
+                <tr>
+                  <td>{tx["date"]}</td>
+                  <td>
+                    <span class={"u-pill #{tx["kind"]}"}>{tx["kind"]}</span>
+                    <%= if tx["kind"] == "repayment" and tx["repayment_kind"] do %>
+                      <span class={"u-pill #{tx["repayment_kind"]}"}>{tx["repayment_kind"]}</span>
+                    <% end %>
+                  </td>
+                  <td>{tx["city"]}</td>
+                  <td>{tx["project"]}</td>
+                  <td class="num">{format_eur(tx["amount"])}</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
       <% end %>
     </div>
     """

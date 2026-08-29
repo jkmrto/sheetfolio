@@ -14,6 +14,21 @@ const legend = (position) => ({
   labels: narrow() ? {boxWidth: 10, boxHeight: 10, padding: 8, font: {size: 10}} : {}
 })
 
+// A table lifted over the whole viewport, which is the only way a wide one is
+// readable on a phone. The class lives on the panel rather than in an assign,
+// so no page has to track it — but a LiveView patch rewrites the class
+// attribute it rendered, so the hook puts it back after every update.
+Hooks.TablePanel = {
+  mounted() {
+    this.el.addEventListener("click", (e) => {
+      if (!e.target.closest(".table-expand")) return
+      this.expanded = !this.expanded
+      this.el.classList.toggle("expanded", this.expanded)
+    })
+  },
+  updated() { this.el.classList.toggle("expanded", !!this.expanded) }
+}
+
 Hooks.HistoryChart = {
   mounted() { this.render() },
   updated() { this.render() },

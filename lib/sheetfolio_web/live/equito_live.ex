@@ -170,43 +170,46 @@ defmodule SheetfolioWeb.EquitoLive do
       <%= if @rollup == [] do %>
         <p style="color:#64748b; font-size:0.85rem;">No movements recorded yet.</p>
       <% else %>
-        <table class="e-table">
-          <thead>
-            <tr>
-              <th>Property</th>
-              <th class="num">Tokens</th>
-              <th class="num">Invested</th>
-              <th class="num">Rent</th>
-              <th class="num">Withheld</th>
-              <th class="num">Net</th>
-              <th class="num">Payouts</th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for row <- @rollup do %>
+        <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
+          <button class="table-expand" aria-label="Toggle full screen"></button>
+          <table class="e-table">
+            <thead>
               <tr>
-                <td class="code">{row.code}<%= if city_of(@properties, row.code), do: " · #{city_of(@properties, row.code)}" %></td>
-                <td class="num">{row.tokens}</td>
-                <td class="num">{format_eur(row.invested)}</td>
-                <td class="num">{format_eur(row.rent_gross)}</td>
-                <td class="num">{format_eur(row.tax_withheld)}</td>
-                <td class="num">{format_eur(row.net_income)}</td>
-                <td class="num">{row.payouts}</td>
+                <th>Property</th>
+                <th class="num">Tokens</th>
+                <th class="num">Invested</th>
+                <th class="num">Rent</th>
+                <th class="num">Withheld</th>
+                <th class="num">Net</th>
+                <th class="num">Payouts</th>
               </tr>
-            <% end %>
-          </tbody>
-          <tfoot>
-            <tr>
-              <td>Total</td>
-              <td class="num"></td>
-              <td class="num">{format_eur(@totals.invested)}</td>
-              <td class="num">{format_eur(@totals.rent_gross)}</td>
-              <td class="num">{format_eur(@totals.tax_withheld)}</td>
-              <td class="num">{format_eur(@totals.net_income)}</td>
-              <td class="num"></td>
-            </tr>
-          </tfoot>
-        </table>
+            </thead>
+            <tbody>
+              <%= for row <- @rollup do %>
+                <tr>
+                  <td class="code">{row.code}<%= if city_of(@properties, row.code), do: " · #{city_of(@properties, row.code)}" %></td>
+                  <td class="num">{row.tokens}</td>
+                  <td class="num">{format_eur(row.invested)}</td>
+                  <td class="num">{format_eur(row.rent_gross)}</td>
+                  <td class="num">{format_eur(row.tax_withheld)}</td>
+                  <td class="num">{format_eur(row.net_income)}</td>
+                  <td class="num">{row.payouts}</td>
+                </tr>
+              <% end %>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Total</td>
+                <td class="num"></td>
+                <td class="num">{format_eur(@totals.invested)}</td>
+                <td class="num">{format_eur(@totals.rent_gross)}</td>
+                <td class="num">{format_eur(@totals.tax_withheld)}</td>
+                <td class="num">{format_eur(@totals.net_income)}</td>
+                <td class="num"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
       <% end %>
     </div>
     """
@@ -218,30 +221,33 @@ defmodule SheetfolioWeb.EquitoLive do
       <%= if @properties == [] do %>
         <p style="color:#64748b; font-size:0.85rem;">No properties recorded yet.</p>
       <% else %>
-        <table class="e-table">
-          <thead>
-            <tr>
-              <th>Property</th>
-              <th>City</th>
-              <th class="num">Surface</th>
-              <th>Status</th>
-              <th class="num">Rentabilidad</th>
-              <th class="num">Distribuido</th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for property <- @properties do %>
+        <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
+          <button class="table-expand" aria-label="Toggle full screen"></button>
+          <table class="e-table">
+            <thead>
               <tr>
-                <td class="code">{property["code"]}</td>
-                <td>{property["city"]}</td>
-                <td class="num">{property["surface_m2"]} m²</td>
-                <td><span class={"e-pill #{status_class(property["status"])}"}>{property["status"]}</span></td>
-                <td class="num">{format_pct(property["yield_pct"])}</td>
-                <td class="num">{format_pct(property["distributed_pct"])}</td>
+                <th>Property</th>
+                <th>City</th>
+                <th class="num">Surface</th>
+                <th>Status</th>
+                <th class="num">Rentabilidad</th>
+                <th class="num">Distribuido</th>
               </tr>
-            <% end %>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <%= for property <- @properties do %>
+                <tr>
+                  <td class="code">{property["code"]}</td>
+                  <td>{property["city"]}</td>
+                  <td class="num">{property["surface_m2"]} m²</td>
+                  <td><span class={"e-pill #{status_class(property["status"])}"}>{property["status"]}</span></td>
+                  <td class="num">{format_pct(property["yield_pct"])}</td>
+                  <td class="num">{format_pct(property["distributed_pct"])}</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
       <% end %>
     </div>
     """
@@ -262,26 +268,29 @@ defmodule SheetfolioWeb.EquitoLive do
       <%= if @rows == [] do %>
         <p style="color:#64748b; font-size:0.85rem;">No movements in this window.</p>
       <% else %>
-        <table class="e-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Property</th>
-              <th>Kind</th>
-              <th class="num">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for tx <- @rows do %>
+        <div class="table-panel" id="table-panel-3" phx-hook="TablePanel">
+          <button class="table-expand" aria-label="Toggle full screen"></button>
+          <table class="e-table">
+            <thead>
               <tr>
-                <td>{tx["date"]}</td>
-                <td class="code">{tx["code"] || "—"}</td>
-                <td><span class={"e-pill #{tx["kind"]}"}>{tx["raw_label"] || tx["kind"]}</span></td>
-                <td class="num">{format_eur(tx["amount"])}</td>
+                <th>Date</th>
+                <th>Property</th>
+                <th>Kind</th>
+                <th class="num">Amount</th>
               </tr>
-            <% end %>
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              <%= for tx <- @rows do %>
+                <tr>
+                  <td>{tx["date"]}</td>
+                  <td class="code">{tx["code"] || "—"}</td>
+                  <td><span class={"e-pill #{tx["kind"]}"}>{tx["raw_label"] || tx["kind"]}</span></td>
+                  <td class="num">{format_eur(tx["amount"])}</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
       <% end %>
     </div>
     """

@@ -223,49 +223,52 @@ defmodule SheetfolioWeb.DcaLive do
     </div>
 
     <%= if ops != [] do %>
-      <table class="dca-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>ETF</th>
-            <th>S&amp;P500 (USD)</th>
-            <th>Total (€)</th>
-            <th>Extra (€)</th>
-            <th>Extra Value (€)</th>
-            <th>Extra Gain/Loss (€)</th>
-            <th>Extra Return (%)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <%= for op <- ops do %>
+      <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="dca-table">
+          <thead>
             <tr>
-              <td style="white-space:nowrap"><%= op.fecha %></td>
-              <td><small style="color:#64748b"><%= short_name(op.asset) %></small></td>
-              <td><%= format_usd(op.sp500_value) %></td>
-              <td><%= format_eur(op.total_invested) %></td>
-              <td>
-                <%= if op.extra_invested > 0 do %>
-                  <%= format_eur(op.extra_invested) %>
-                <% else %>
-                  <span class="no-extra">—</span>
-                <% end %>
-              </td>
-              <td><%= format_eur(op.extra_value) %></td>
-              <td class={earnings_class(op.extra_pnl)}><%= format_abs(op.extra_pnl) %></td>
-              <td class={earnings_class(op.extra_pnl_pct)}><%= format_pct(op.extra_pnl_pct) %></td>
+              <th>Date</th>
+              <th>ETF</th>
+              <th>S&amp;P500 (USD)</th>
+              <th>Total (€)</th>
+              <th>Extra (€)</th>
+              <th>Extra Value (€)</th>
+              <th>Extra Gain/Loss (€)</th>
+              <th>Extra Return (%)</th>
             </tr>
-          <% end %>
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="4">Total</td>
-            <td><%= format_eur(total_extra_invested) %></td>
-            <td><%= format_eur(total_extra_value) %></td>
-            <td class={earnings_class(total_extra_pnl)}><%= format_abs(total_extra_pnl) %></td>
-            <td class={earnings_class(total_extra_pnl_pct)}><%= format_pct(total_extra_pnl_pct) %></td>
-          </tr>
-        </tfoot>
-      </table>
+          </thead>
+          <tbody>
+            <%= for op <- ops do %>
+              <tr>
+                <td style="white-space:nowrap"><%= op.fecha %></td>
+                <td><small style="color:#64748b"><%= short_name(op.asset) %></small></td>
+                <td><%= format_usd(op.sp500_value) %></td>
+                <td><%= format_eur(op.total_invested) %></td>
+                <td>
+                  <%= if op.extra_invested > 0 do %>
+                    <%= format_eur(op.extra_invested) %>
+                  <% else %>
+                    <span class="no-extra">—</span>
+                  <% end %>
+                </td>
+                <td><%= format_eur(op.extra_value) %></td>
+                <td class={earnings_class(op.extra_pnl)}><%= format_abs(op.extra_pnl) %></td>
+                <td class={earnings_class(op.extra_pnl_pct)}><%= format_pct(op.extra_pnl_pct) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4">Total</td>
+              <td><%= format_eur(total_extra_invested) %></td>
+              <td><%= format_eur(total_extra_value) %></td>
+              <td class={earnings_class(total_extra_pnl)}><%= format_abs(total_extra_pnl) %></td>
+              <td class={earnings_class(total_extra_pnl_pct)}><%= format_pct(total_extra_pnl_pct) %></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     <% end %>
     """
   end

@@ -133,212 +133,230 @@ defmodule SheetfolioWeb.EarningsLive do
     </div>
 
     <%= if @view == "by_asset" do %>
-      <table class="earnings-table">
-        <tr>
-          <th class="left">Asset</th>
-          <th>Sells</th>
-          <th>Qty sold</th>
-          <th>Proceeds</th>
-          <th>Cost basis</th>
-          <th>Realized</th>
-        </tr>
-        <%= for row <- @by_asset do %>
-          <% open? = MapSet.member?(@expanded_assets, row.asset) %>
-          <tr class="asset-row" phx-click="toggle_asset" phx-value-asset={row.asset}>
-            <td class="left">
-              <span class={"chevron#{if open?, do: " open"}"}>▶</span><%= row.asset %>
-              <%= if MapSet.member?(@trading212, row.isin) do %>
-                <span class="broker-tag">Trading212</span>
-              <% end %>
-              <%= if row.uncovered > 0.001 do %>
-                <div class="warn">⚠ <%= Float.round(row.uncovered, 2) %> units without buy history — excluded</div>
-              <% end %>
-            </td>
-            <td><%= row.sells %></td>
-            <td><%= Float.round(row.qty, 3) %></td>
-            <td><%= eur(row.proceeds) %></td>
-            <td><%= eur(row.cost) %></td>
-            <td class={sign_class(row.realized)}><%= eur(row.realized) %></td>
+      <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="earnings-table">
+          <tr>
+            <th class="left">Asset</th>
+            <th>Sells</th>
+            <th>Qty sold</th>
+            <th>Proceeds</th>
+            <th>Cost basis</th>
+            <th>Realized</th>
           </tr>
-          <%= if open? do %>
-            <tr class="details-row">
-              <td colspan="6">
-                <div class="details-inner">
-                  <table class="details-table">
-                    <tr>
-                      <th class="left">Fecha</th>
-                      <th class="left">Tipo</th>
-                      <th>Qty</th>
-                      <th>Proceeds</th>
-                      <th>Cost basis</th>
-                      <th>Realized</th>
-                    </tr>
-                    <%= for e <- row.events do %>
-                      <tr>
-                        <td class="left"><%= e.fecha %></td>
-                        <td class="left"><%= e.tipo %></td>
-                        <td><%= Float.round(e.qty, 3) %></td>
-                        <td><%= eur(e.proceeds) %></td>
-                        <td><%= eur(e.cost) %></td>
-                        <td class={sign_class(e.realized)}><%= eur(e.realized) %></td>
-                      </tr>
-                    <% end %>
-                  </table>
-                </div>
+          <%= for row <- @by_asset do %>
+            <% open? = MapSet.member?(@expanded_assets, row.asset) %>
+            <tr class="asset-row" phx-click="toggle_asset" phx-value-asset={row.asset}>
+              <td class="left">
+                <span class={"chevron#{if open?, do: " open"}"}>▶</span><%= row.asset %>
+                <%= if MapSet.member?(@trading212, row.isin) do %>
+                  <span class="broker-tag">Trading212</span>
+                <% end %>
+                <%= if row.uncovered > 0.001 do %>
+                  <div class="warn">⚠ <%= Float.round(row.uncovered, 2) %> units without buy history — excluded</div>
+                <% end %>
               </td>
+              <td><%= row.sells %></td>
+              <td><%= Float.round(row.qty, 3) %></td>
+              <td><%= eur(row.proceeds) %></td>
+              <td><%= eur(row.cost) %></td>
+              <td class={sign_class(row.realized)}><%= eur(row.realized) %></td>
+            </tr>
+            <%= if open? do %>
+              <tr class="details-row">
+                <td colspan="6">
+                  <div class="details-inner">
+                    <table class="details-table">
+                      <tr>
+                        <th class="left">Fecha</th>
+                        <th class="left">Tipo</th>
+                        <th>Qty</th>
+                        <th>Proceeds</th>
+                        <th>Cost basis</th>
+                        <th>Realized</th>
+                      </tr>
+                      <%= for e <- row.events do %>
+                        <tr>
+                          <td class="left"><%= e.fecha %></td>
+                          <td class="left"><%= e.tipo %></td>
+                          <td><%= Float.round(e.qty, 3) %></td>
+                          <td><%= eur(e.proceeds) %></td>
+                          <td><%= eur(e.cost) %></td>
+                          <td class={sign_class(e.realized)}><%= eur(e.realized) %></td>
+                        </tr>
+                      <% end %>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
+          <% end %>
+          <tr class="sum">
+            <td class="left" colspan="5">Total realized</td>
+            <td class={sign_class(@realized_sum)}><%= eur(@realized_sum) %></td>
+          </tr>
+        </table>
+      </div>
+    <% else %>
+      <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="earnings-table">
+          <tr>
+            <th>Fecha</th><th class="left">Asset</th><th class="left">Tipo</th>
+            <th>Qty</th><th>Proceeds</th><th>Cost basis</th><th>Realized</th>
+          </tr>
+          <%= for e <- @realized_events do %>
+            <tr>
+              <td class="left"><%= e.fecha %></td>
+              <td class="left">
+                <%= e.asset %>
+                <%= if MapSet.member?(@trading212, e.isin) do %>
+                  <span class="broker-tag">Trading212</span>
+                <% end %>
+                <%= if e.uncovered > 0.001 do %>
+                  <div class="warn">⚠ <%= Float.round(e.uncovered, 2) %> units without buy history — excluded</div>
+                <% end %>
+              </td>
+              <td class="left"><%= e.tipo %></td>
+              <td><%= Float.round(e.qty, 3) %></td>
+              <td><%= eur(e.proceeds) %></td>
+              <td><%= eur(e.cost) %></td>
+              <td class={sign_class(e.realized)}><%= eur(e.realized) %></td>
             </tr>
           <% end %>
-        <% end %>
-        <tr class="sum">
-          <td class="left" colspan="5">Total realized</td>
-          <td class={sign_class(@realized_sum)}><%= eur(@realized_sum) %></td>
-        </tr>
-      </table>
-    <% else %>
-      <table class="earnings-table">
-        <tr>
-          <th>Fecha</th><th class="left">Asset</th><th class="left">Tipo</th>
-          <th>Qty</th><th>Proceeds</th><th>Cost basis</th><th>Realized</th>
-        </tr>
-        <%= for e <- @realized_events do %>
-          <tr>
-            <td class="left"><%= e.fecha %></td>
-            <td class="left">
-              <%= e.asset %>
-              <%= if MapSet.member?(@trading212, e.isin) do %>
-                <span class="broker-tag">Trading212</span>
-              <% end %>
-              <%= if e.uncovered > 0.001 do %>
-                <div class="warn">⚠ <%= Float.round(e.uncovered, 2) %> units without buy history — excluded</div>
-              <% end %>
-            </td>
-            <td class="left"><%= e.tipo %></td>
-            <td><%= Float.round(e.qty, 3) %></td>
-            <td><%= eur(e.proceeds) %></td>
-            <td><%= eur(e.cost) %></td>
-            <td class={sign_class(e.realized)}><%= eur(e.realized) %></td>
+          <tr class="sum">
+            <td class="left" colspan="6">Total realized</td>
+            <td class={sign_class(@realized_sum)}><%= eur(@realized_sum) %></td>
           </tr>
-        <% end %>
-        <tr class="sum">
-          <td class="left" colspan="6">Total realized</td>
-          <td class={sign_class(@realized_sum)}><%= eur(@realized_sum) %></td>
-        </tr>
-      </table>
+        </table>
+      </div>
     <% end %>
 
     <div class="earnings-section">Dividends — net cash distributions received</div>
     <%= if @dividends_by_asset == [] do %>
       <div class="earnings-total muted">No distributions recorded yet.</div>
     <% else %>
-      <table class="earnings-table">
-        <tr>
-          <th class="left">Asset</th><th>Payments</th><th>First</th><th>Last</th><th>Received</th>
-        </tr>
-        <%= for row <- @dividends_by_asset do %>
-          <% open? = MapSet.member?(@expanded_dividends, row.asset) %>
-          <tr class="asset-row" phx-click="toggle_dividend_asset" phx-value-asset={row.asset}>
-            <td class="left">
-              <span class={"chevron#{if open?, do: " open"}"}>▶</span><%= row.asset %>
-            </td>
-            <td><%= row.count %></td>
-            <td><%= row.first_date %></td>
-            <td><%= row.last_date %></td>
-            <td class="pos"><%= eur(row.total) %></td>
+      <div class="table-panel" id="table-panel-3" phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="earnings-table">
+          <tr>
+            <th class="left">Asset</th><th>Payments</th><th>First</th><th>Last</th><th>Received</th>
           </tr>
-          <%= if open? do %>
-            <tr class="details-row">
-              <td colspan="5">
-                <div class="details-inner">
-                  <table class="details-table">
-                    <tr><th class="left">Fecha</th><th>Amount</th></tr>
-                    <%= for p <- row.payments do %>
-                      <tr>
-                        <td class="left"><%= p["date"] %></td>
-                        <td class="pos"><%= eur(p["amount"]) %></td>
-                      </tr>
-                    <% end %>
-                  </table>
-                </div>
+          <%= for row <- @dividends_by_asset do %>
+            <% open? = MapSet.member?(@expanded_dividends, row.asset) %>
+            <tr class="asset-row" phx-click="toggle_dividend_asset" phx-value-asset={row.asset}>
+              <td class="left">
+                <span class={"chevron#{if open?, do: " open"}"}>▶</span><%= row.asset %>
               </td>
+              <td><%= row.count %></td>
+              <td><%= row.first_date %></td>
+              <td><%= row.last_date %></td>
+              <td class="pos"><%= eur(row.total) %></td>
             </tr>
+            <%= if open? do %>
+              <tr class="details-row">
+                <td colspan="5">
+                  <div class="details-inner">
+                    <table class="details-table">
+                      <tr><th class="left">Fecha</th><th>Amount</th></tr>
+                      <%= for p <- row.payments do %>
+                        <tr>
+                          <td class="left"><%= p["date"] %></td>
+                          <td class="pos"><%= eur(p["amount"]) %></td>
+                        </tr>
+                      <% end %>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+            <% end %>
           <% end %>
-        <% end %>
-        <tr class="sum">
-          <td class="left" colspan="4">Total dividends</td>
-          <td class="pos"><%= eur(@dividends_sum) %></td>
-        </tr>
-      </table>
+          <tr class="sum">
+            <td class="left" colspan="4">Total dividends</td>
+            <td class="pos"><%= eur(@dividends_sum) %></td>
+          </tr>
+        </table>
+      </div>
     <% end %>
 
     <div class="earnings-section">Urbanitae — yield repaid and gains on closed projects</div>
     <%= if @urbanitae == [] do %>
       <div class="earnings-total muted">No Urbanitae earnings recorded yet.</div>
     <% else %>
-      <table class="earnings-table">
-        <tr>
-          <th class="left">Project</th><th class="left">Type</th><th class="left">Status</th>
-          <th>Yield</th><th>Closure gain</th><th>Earnings</th>
-        </tr>
-        <%= for row <- @urbanitae do %>
+      <div class="table-panel" id="table-panel-4" phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="earnings-table">
           <tr>
-            <td class="left"><%= row.project %></td>
-            <td class="left"><%= row.type || "—" %></td>
-            <td class="left"><%= row.status %></td>
-            <td><%= eur(row.yield) %></td>
-            <td><%= eur(row.closure_gain) %></td>
-            <td class="pos"><%= eur(row.earnings) %></td>
+            <th class="left">Project</th><th class="left">Type</th><th class="left">Status</th>
+            <th>Yield</th><th>Closure gain</th><th>Earnings</th>
           </tr>
-        <% end %>
-        <tr class="sum">
-          <td class="left" colspan="5">Total Urbanitae</td>
-          <td class="pos"><%= eur(@urbanitae_sum) %></td>
-        </tr>
-      </table>
+          <%= for row <- @urbanitae do %>
+            <tr>
+              <td class="left"><%= row.project %></td>
+              <td class="left"><%= row.type || "—" %></td>
+              <td class="left"><%= row.status %></td>
+              <td><%= eur(row.yield) %></td>
+              <td><%= eur(row.closure_gain) %></td>
+              <td class="pos"><%= eur(row.earnings) %></td>
+            </tr>
+          <% end %>
+          <tr class="sum">
+            <td class="left" colspan="5">Total Urbanitae</td>
+            <td class="pos"><%= eur(@urbanitae_sum) %></td>
+          </tr>
+        </table>
+      </div>
     <% end %>
 
     <div class="earnings-section">Equito — rent distributed, net of retention</div>
     <%= if @equito == [] do %>
       <div class="earnings-total muted">No Equito earnings recorded yet.</div>
     <% else %>
-      <table class="earnings-table">
-        <tr>
-          <th class="left">Property</th><th>Payouts</th>
-          <th>Rent</th><th>Withheld</th><th>Earnings</th>
-        </tr>
-        <%= for row <- @equito do %>
+      <div class="table-panel" id="table-panel-5" phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="earnings-table">
           <tr>
-            <td class="left"><%= row.label %></td>
-            <td><%= row.payouts %></td>
-            <td><%= eur(row.rent) %></td>
-            <td><%= eur(row.withheld) %></td>
-            <td class="pos"><%= eur(row.earnings) %></td>
+            <th class="left">Property</th><th>Payouts</th>
+            <th>Rent</th><th>Withheld</th><th>Earnings</th>
           </tr>
-        <% end %>
-        <tr class="sum">
-          <td class="left" colspan="4">Total Equito</td>
-          <td class="pos"><%= eur(@equito_sum) %></td>
-        </tr>
-      </table>
+          <%= for row <- @equito do %>
+            <tr>
+              <td class="left"><%= row.label %></td>
+              <td><%= row.payouts %></td>
+              <td><%= eur(row.rent) %></td>
+              <td><%= eur(row.withheld) %></td>
+              <td class="pos"><%= eur(row.earnings) %></td>
+            </tr>
+          <% end %>
+          <tr class="sum">
+            <td class="left" colspan="4">Total Equito</td>
+            <td class="pos"><%= eur(@equito_sum) %></td>
+          </tr>
+        </table>
+      </div>
     <% end %>
 
     <div class="earnings-section">Unrealized — open positions at the latest snapshot</div>
-    <table class="earnings-table">
-      <tr>
-        <th class="left">Asset</th><th>Invested</th><th>Value</th><th>Unrealized</th>
-      </tr>
-      <%= for p <- Enum.sort_by(@unrealized, &(&1.invested - &1.value)) do %>
+    <div class="table-panel" id="table-panel-6" phx-hook="TablePanel">
+      <button class="table-expand" aria-label="Toggle full screen"></button>
+      <table class="earnings-table">
         <tr>
-          <td class="left"><%= p.asset %></td>
-          <td><%= eur(p.invested) %></td>
-          <td><%= eur(p.value) %></td>
-          <td class={sign_class(p.value - p.invested)}><%= eur(p.value - p.invested) %></td>
+          <th class="left">Asset</th><th>Invested</th><th>Value</th><th>Unrealized</th>
         </tr>
-      <% end %>
-      <tr class="sum">
-        <td class="left" colspan="3">Total unrealized</td>
-        <td class={sign_class(@unrealized_sum)}><%= eur(@unrealized_sum) %></td>
-      </tr>
-    </table>
+        <%= for p <- Enum.sort_by(@unrealized, &(&1.invested - &1.value)) do %>
+          <tr>
+            <td class="left"><%= p.asset %></td>
+            <td><%= eur(p.invested) %></td>
+            <td><%= eur(p.value) %></td>
+            <td class={sign_class(p.value - p.invested)}><%= eur(p.value - p.invested) %></td>
+          </tr>
+        <% end %>
+        <tr class="sum">
+          <td class="left" colspan="3">Total unrealized</td>
+          <td class={sign_class(@unrealized_sum)}><%= eur(@unrealized_sum) %></td>
+        </tr>
+      </table>
+    </div>
     """
   end
 

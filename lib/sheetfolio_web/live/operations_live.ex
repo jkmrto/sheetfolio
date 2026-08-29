@@ -103,39 +103,42 @@ defmodule SheetfolioWeb.OperationsLive do
     <% end %>
 
     <%= if map_size(@operations) > 0 do %>
-      <table class="operations-table">
-        <thead>
-          <tr>
-            <%= for h <- @headers do %>
-              <th><%= h %></th>
-            <% end %>
-          </tr>
-        </thead>
-        <tbody>
-          <%= for id <- visible_order(@order, @operations, @selected_assets, @show_traspasos_only) do %>
-            <% entry = @operations[id] %>
-            <tr class={if entry.traspaso, do: "traspaso-row", else: ""}>
-              <%= for {cell, idx} <- Enum.with_index(entry.row) do %>
-                <td>
-                  <%= if idx == 3 do %>
-                    <span class={"badge badge-#{String.downcase(cell)}"}>
-                      <%= cell %>
-                    </span>
-                  <% else %>
-                    <%= cell %>
-                  <% end %>
-                </td>
+      <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="operations-table">
+          <thead>
+            <tr>
+              <%= for h <- @headers do %>
+                <th><%= h %></th>
               <% end %>
-              <td class={earnings_class(entry.earnings_abs)}>
-                <%= format_abs(entry.earnings_abs) %>
-              </td>
-              <td class={earnings_class(entry.earnings_pct)}>
-                <%= format_pct(entry.earnings_pct) %>
-              </td>
             </tr>
-          <% end %>
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            <%= for id <- visible_order(@order, @operations, @selected_assets, @show_traspasos_only) do %>
+              <% entry = @operations[id] %>
+              <tr class={if entry.traspaso, do: "traspaso-row", else: ""}>
+                <%= for {cell, idx} <- Enum.with_index(entry.row) do %>
+                  <td>
+                    <%= if idx == 3 do %>
+                      <span class={"badge badge-#{String.downcase(cell)}"}>
+                        <%= cell %>
+                      </span>
+                    <% else %>
+                      <%= cell %>
+                    <% end %>
+                  </td>
+                <% end %>
+                <td class={earnings_class(entry.earnings_abs)}>
+                  <%= format_abs(entry.earnings_abs) %>
+                </td>
+                <td class={earnings_class(entry.earnings_pct)}>
+                  <%= format_pct(entry.earnings_pct) %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
     <% end %>
     """
   end

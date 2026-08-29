@@ -345,26 +345,29 @@ defmodule SheetfolioWeb.PortfolioLive do
               </div>
             </div>
             <div class="alloc-legend">
-              <table>
-                <tbody>
-                  <%= for slice <- @allocation do %>
+              <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
+                <button class="table-expand" aria-label="Toggle full screen"></button>
+                <table>
+                  <tbody>
+                    <%= for slice <- @allocation do %>
+                      <tr>
+                        <td>
+                          <span class="alloc-dot" style={"background:#{category_color(slice.category)}"}></span><%= slice.category %>
+                        </td>
+                        <td class="num"><%= format_eur(slice.value) %></td>
+                        <td class="pct"><%= slice.pct %>%</td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                  <tfoot>
                     <tr>
-                      <td>
-                        <span class="alloc-dot" style={"background:#{category_color(slice.category)}"}></span><%= slice.category %>
-                      </td>
-                      <td class="num"><%= format_eur(slice.value) %></td>
-                      <td class="pct"><%= slice.pct %>%</td>
+                      <td>Total</td>
+                      <td class="num"><%= format_eur(allocation_total(@allocation)) %></td>
+                      <td class="pct"></td>
                     </tr>
-                  <% end %>
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td>Total</td>
-                    <td class="num"><%= format_eur(allocation_total(@allocation)) %></td>
-                    <td class="pct"></td>
-                  </tr>
-                </tfoot>
-              </table>
+                  </tfoot>
+                </table>
+              </div>
             </div>
           </div>
         </div>

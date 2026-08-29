@@ -248,76 +248,79 @@ defmodule SheetfolioWeb.ComparisonLive do
             </div>
           </div>
 
-          <table class="cmp-table">
-            <thead>
-              <tr>
-                <th><%= if @view == "category", do: "Category", else: "Asset" %></th>
-                <%= if @view == "asset" do %>
-                  <th class="text">Category</th>
-                <% end %>
-                <th class="sortable" phx-click="set_sort" phx-value-key="from"><%= es_date(cmp.from_resolved) %> (€)<%= caret(@sort_key, @sort_dir, "from") %></th>
-                <th class="sortable" phx-click="set_sort" phx-value-key="to"><%= es_date(cmp.to_resolved) %> (€)<%= caret(@sort_key, @sort_dir, "to") %></th>
-                <th class="sortable" phx-click="set_sort" phx-value-key="flows">Money in/out (€)<%= caret(@sort_key, @sort_dir, "flows") %></th>
-                <th class="sortable" phx-click="set_sort" phx-value-key="earnings">Earnings (€)<%= caret(@sort_key, @sort_dir, "earnings") %></th>
-                <th class="sortable" phx-click="set_sort" phx-value-key="return">Return %<%= caret(@sort_key, @sort_dir, "return") %></th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for row <- cmp.rows do %>
+          <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
+            <button class="table-expand" aria-label="Toggle full screen"></button>
+            <table class="cmp-table">
+              <thead>
                 <tr>
-                  <td class={if @view == "category", do: "cat"}>
-                    <%= if @view == "category" do %>
-                      <span class="cmp-dot" style={"background:#{category_color(row.label)}"}></span>
-                    <% end %>
-                    <%= row.label %>
-                  </td>
+                  <th><%= if @view == "category", do: "Category", else: "Asset" %></th>
                   <%= if @view == "asset" do %>
-                    <td class="text cat">
-                      <span class="cmp-dot" style={"background:#{category_color(asset_category(row.key, @categories))}"}></span><%= asset_category(row.key, @categories) %>
-                    </td>
+                    <th class="text">Category</th>
                   <% end %>
-                  <td><%= format_eur(row.from) %></td>
-                  <td><%= format_eur(row.to) %></td>
-                  <td class="flow">
-                    <%= if row.events == [] do %>
-                      <%= signed_or_dash(row.flows) %>
-                    <% else %>
-                      <span class="flow-cell">
-                        <%= signed_or_dash(row.flows) %>
-                        <span class={"flow-tip#{if @view == "category", do: " with-asset"}"}>
-                          <%= for e <- row.events do %>
-                            <span class="flow-tip-row">
-                              <span class="flow-tip-date"><%= es_date(e.date) %></span>
-                              <%= if @view == "category" do %>
-                                <span class="flow-tip-asset"><%= e.asset %></span>
-                              <% end %>
-                              <span class="flow-tip-kind"><%= e.kind %></span>
-                              <span class={"flow-tip-amt #{num_class(e.amount)}"}><%= signed(e.amount) %></span>
-                            </span>
-                          <% end %>
-                        </span>
-                      </span>
-                    <% end %>
-                  </td>
-                  <td class={earnings_class(row.earnings)}><%= signed_or_dash(row.earnings) %></td>
-                  <td class={return_class(row)}><%= return_display(row) %></td>
+                  <th class="sortable" phx-click="set_sort" phx-value-key="from"><%= es_date(cmp.from_resolved) %> (€)<%= caret(@sort_key, @sort_dir, "from") %></th>
+                  <th class="sortable" phx-click="set_sort" phx-value-key="to"><%= es_date(cmp.to_resolved) %> (€)<%= caret(@sort_key, @sort_dir, "to") %></th>
+                  <th class="sortable" phx-click="set_sort" phx-value-key="flows">Money in/out (€)<%= caret(@sort_key, @sort_dir, "flows") %></th>
+                  <th class="sortable" phx-click="set_sort" phx-value-key="earnings">Earnings (€)<%= caret(@sort_key, @sort_dir, "earnings") %></th>
+                  <th class="sortable" phx-click="set_sort" phx-value-key="return">Return %<%= caret(@sort_key, @sort_dir, "return") %></th>
                 </tr>
-              <% end %>
-            </tbody>
-            <tfoot>
-              <tr>
-                <td>Total</td>
-                <%= if @view == "asset" do %>
-                  <td></td>
+              </thead>
+              <tbody>
+                <%= for row <- cmp.rows do %>
+                  <tr>
+                    <td class={if @view == "category", do: "cat"}>
+                      <%= if @view == "category" do %>
+                        <span class="cmp-dot" style={"background:#{category_color(row.label)}"}></span>
+                      <% end %>
+                      <%= row.label %>
+                    </td>
+                    <%= if @view == "asset" do %>
+                      <td class="text cat">
+                        <span class="cmp-dot" style={"background:#{category_color(asset_category(row.key, @categories))}"}></span><%= asset_category(row.key, @categories) %>
+                      </td>
+                    <% end %>
+                    <td><%= format_eur(row.from) %></td>
+                    <td><%= format_eur(row.to) %></td>
+                    <td class="flow">
+                      <%= if row.events == [] do %>
+                        <%= signed_or_dash(row.flows) %>
+                      <% else %>
+                        <span class="flow-cell">
+                          <%= signed_or_dash(row.flows) %>
+                          <span class={"flow-tip#{if @view == "category", do: " with-asset"}"}>
+                            <%= for e <- row.events do %>
+                              <span class="flow-tip-row">
+                                <span class="flow-tip-date"><%= es_date(e.date) %></span>
+                                <%= if @view == "category" do %>
+                                  <span class="flow-tip-asset"><%= e.asset %></span>
+                                <% end %>
+                                <span class="flow-tip-kind"><%= e.kind %></span>
+                                <span class={"flow-tip-amt #{num_class(e.amount)}"}><%= signed(e.amount) %></span>
+                              </span>
+                            <% end %>
+                          </span>
+                        </span>
+                      <% end %>
+                    </td>
+                    <td class={earnings_class(row.earnings)}><%= signed_or_dash(row.earnings) %></td>
+                    <td class={return_class(row)}><%= return_display(row) %></td>
+                  </tr>
                 <% end %>
-                <td><%= format_eur(cmp.from_total) %></td>
-                <td><%= format_eur(cmp.to_total) %></td>
-                <td class="flow"><%= signed_or_dash(cmp.flows_total) %></td>
-                <td class={num_class(cmp.earnings_total)}><%= signed_or_dash(cmp.earnings_total) %></td>
-                <td class={num_class(cmp.return_total)}><%= if cmp.return_total, do: signed_pct(cmp.return_total), else: "—" %></td>
-              </tr>
-            </tfoot>
-          </table>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td>Total</td>
+                  <%= if @view == "asset" do %>
+                    <td></td>
+                  <% end %>
+                  <td><%= format_eur(cmp.from_total) %></td>
+                  <td><%= format_eur(cmp.to_total) %></td>
+                  <td class="flow"><%= signed_or_dash(cmp.flows_total) %></td>
+                  <td class={num_class(cmp.earnings_total)}><%= signed_or_dash(cmp.earnings_total) %></td>
+                  <td class={num_class(cmp.return_total)}><%= if cmp.return_total, do: signed_pct(cmp.return_total), else: "—" %></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
       <% end %>
     <% end %>
     """

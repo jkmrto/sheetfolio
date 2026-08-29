@@ -225,48 +225,54 @@ defmodule SheetfolioWeb.BitcoinLive do
       The WisdomTree ETP tracks Bitcoin but is held in ETP units, not coins, so
       only the euro side of the two is comparable.
     </div>
-    <table class="btc-table">
-      <tr>
-        <th>Holding</th><th>Units</th><th>Invested</th><th>Value</th><th>Unrealized</th>
-      </tr>
-      <tr>
-        <td>Coinbase — spot BTC</td>
-        <td><%= btc(@coinbase.units) %> BTC</td>
-        <td><%= eur(@coinbase.cost_basis) %></td>
-        <td><%= eur_or_dash(@coinbase.value) %></td>
-        <td class={sign_class(@coinbase.unrealized)}><%= eur_or_dash(@coinbase.unrealized) %></td>
-      </tr>
-      <tr>
-        <td>WisdomTree Bitcoin ETP</td>
-        <td><%= units(@etp.net_qty) %></td>
-        <td><%= eur(@etp.cost_basis) %></td>
-        <td><%= eur_or_dash(etp_value(@etp, @etp_price)) %></td>
-        <td class={sign_class(etp_unrealized(@etp, @etp_price))}>
-          <%= eur_or_dash(etp_unrealized(@etp, @etp_price)) %>
-        </td>
-      </tr>
-      <tr class="sum">
-        <td>Total</td>
-        <td>—</td>
-        <td><%= eur(@totals.cost_basis) %></td>
-        <td><%= eur_or_dash(@totals.value) %></td>
-        <td class={sign_class(@totals.unrealized)}><%= eur_or_dash(@totals.unrealized) %></td>
-      </tr>
-    </table>
+    <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
+      <button class="table-expand" aria-label="Toggle full screen"></button>
+      <table class="btc-table">
+        <tr>
+          <th>Holding</th><th>Units</th><th>Invested</th><th>Value</th><th>Unrealized</th>
+        </tr>
+        <tr>
+          <td>Coinbase — spot BTC</td>
+          <td><%= btc(@coinbase.units) %> BTC</td>
+          <td><%= eur(@coinbase.cost_basis) %></td>
+          <td><%= eur_or_dash(@coinbase.value) %></td>
+          <td class={sign_class(@coinbase.unrealized)}><%= eur_or_dash(@coinbase.unrealized) %></td>
+        </tr>
+        <tr>
+          <td>WisdomTree Bitcoin ETP</td>
+          <td><%= units(@etp.net_qty) %></td>
+          <td><%= eur(@etp.cost_basis) %></td>
+          <td><%= eur_or_dash(etp_value(@etp, @etp_price)) %></td>
+          <td class={sign_class(etp_unrealized(@etp, @etp_price))}>
+            <%= eur_or_dash(etp_unrealized(@etp, @etp_price)) %>
+          </td>
+        </tr>
+        <tr class="sum">
+          <td>Total</td>
+          <td>—</td>
+          <td><%= eur(@totals.cost_basis) %></td>
+          <td><%= eur_or_dash(@totals.value) %></td>
+          <td class={sign_class(@totals.unrealized)}><%= eur_or_dash(@totals.unrealized) %></td>
+        </tr>
+      </table>
+    </div>
 
     <%= for row <- @coinbase.holdings do %>
       <div class="btc-section">{row.platform} detail</div>
-      <table class="btc-table">
-        <tr><th>Metric</th><th>Value</th></tr>
-        <tr><td>Units held</td><td><%= btc(row.units) %> BTC</td></tr>
-        <tr><td>Average cost</td><td><%= eur(row.avg_cost) %> / BTC</td></tr>
-        <tr><td>Cost basis</td><td><%= eur(row.cost_basis) %></td></tr>
-        <tr><td>Current value</td><td><%= eur_or_dash(row.value) %></td></tr>
-        <tr>
-          <td>Unrealized</td>
-          <td class={sign_class(row.unrealized)}><%= eur_or_dash(row.unrealized) %></td>
-        </tr>
-      </table>
+      <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="btc-table">
+          <tr><th>Metric</th><th>Value</th></tr>
+          <tr><td>Units held</td><td><%= btc(row.units) %> BTC</td></tr>
+          <tr><td>Average cost</td><td><%= eur(row.avg_cost) %> / BTC</td></tr>
+          <tr><td>Cost basis</td><td><%= eur(row.cost_basis) %></td></tr>
+          <tr><td>Current value</td><td><%= eur_or_dash(row.value) %></td></tr>
+          <tr>
+            <td>Unrealized</td>
+            <td class={sign_class(row.unrealized)}><%= eur_or_dash(row.unrealized) %></td>
+          </tr>
+        </table>
+      </div>
     <% end %>
 
     <.link navigate="/summary/dca/bitcoin" class="btc-link">

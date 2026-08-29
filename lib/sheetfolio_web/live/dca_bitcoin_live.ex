@@ -178,41 +178,44 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
     </div>
 
     <%= if buys != [] do %>
-      <table class="dca-table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Units</th>
-            <th>Avg Cost (€)</th>
-            <th>Invested (€)</th>
-            <th>Value Now (€)</th>
-            <th>Gain/Loss (€)</th>
-            <th>Return (%)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <%= for buy <- buys do %>
+      <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="dca-table">
+          <thead>
             <tr>
-              <td style="white-space:nowrap"><%= buy.fecha %></td>
-              <td><%= format_units(buy.units) %></td>
-              <td><%= format_eur(buy.unit_cost) %></td>
-              <td><%= format_eur(buy.invested) %></td>
-              <td><%= format_eur(buy.value_now) %></td>
-              <td class={earnings_class(buy.pnl)}><%= format_abs(buy.pnl) %></td>
-              <td class={earnings_class(buy.pnl_pct)}><%= format_pct(buy.pnl_pct) %></td>
+              <th>Date</th>
+              <th>Units</th>
+              <th>Avg Cost (€)</th>
+              <th>Invested (€)</th>
+              <th>Value Now (€)</th>
+              <th>Gain/Loss (€)</th>
+              <th>Return (%)</th>
             </tr>
-          <% end %>
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="3">Total</td>
-            <td><%= format_eur(total_invested) %></td>
-            <td><%= format_eur(total_value) %></td>
-            <td class={earnings_class(total_pnl)}><%= format_abs(total_pnl) %></td>
-            <td class={earnings_class(total_pnl_pct)}><%= format_pct(total_pnl_pct) %></td>
-          </tr>
-        </tfoot>
-      </table>
+          </thead>
+          <tbody>
+            <%= for buy <- buys do %>
+              <tr>
+                <td style="white-space:nowrap"><%= buy.fecha %></td>
+                <td><%= format_units(buy.units) %></td>
+                <td><%= format_eur(buy.unit_cost) %></td>
+                <td><%= format_eur(buy.invested) %></td>
+                <td><%= format_eur(buy.value_now) %></td>
+                <td class={earnings_class(buy.pnl)}><%= format_abs(buy.pnl) %></td>
+                <td class={earnings_class(buy.pnl_pct)}><%= format_pct(buy.pnl_pct) %></td>
+              </tr>
+            <% end %>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="3">Total</td>
+              <td><%= format_eur(total_invested) %></td>
+              <td><%= format_eur(total_value) %></td>
+              <td class={earnings_class(total_pnl)}><%= format_abs(total_pnl) %></td>
+              <td class={earnings_class(total_pnl_pct)}><%= format_pct(total_pnl_pct) %></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     <% end %>
     """
   end

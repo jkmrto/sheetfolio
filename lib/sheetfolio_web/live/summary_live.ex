@@ -117,44 +117,47 @@ defmodule SheetfolioWeb.SummaryLive do
       <% total_earnings = if total_invested > 0, do: Float.round(total_value - total_invested, 2), else: nil %>
       <% total_pct = if total_invested > 0 and total_earnings, do: Float.round(total_earnings / total_invested * 100, 2), else: nil %>
 
-      <table class="summary-table">
-        <thead>
-          <tr>
-            <th>Asset</th>
-            <th>Units held</th>
-            <th>Invested (€)</th>
-            <th>Current Value (€)</th>
-            <th>Gain/Loss (€)</th>
-            <th>Gain/Loss (%)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <%= for a <- active do %>
+      <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="summary-table">
+          <thead>
             <tr>
-              <td><strong><%= a.asset %></strong><br/><small style="color:#94a3b8"><%= a.isin %></small></td>
-              <td><%= format_qty(a.net_qty) %></td>
-              <td><%= if a.cost_basis > 0, do: format_eur(a.cost_basis), else: "—" %></td>
-              <td><%= if a.current_value, do: format_eur(a.current_value), else: "—" %></td>
-              <td class={earnings_class(if a.cost_basis > 0, do: a.earnings_abs, else: nil)}>
-                <%= if a.cost_basis > 0, do: format_abs(a.earnings_abs), else: "—" %>
-              </td>
-              <td class={earnings_class(if a.cost_basis > 0, do: a.earnings_pct, else: nil)}>
-                <%= if a.cost_basis > 0, do: format_pct(a.earnings_pct), else: "—" %>
-              </td>
+              <th>Asset</th>
+              <th>Units held</th>
+              <th>Invested (€)</th>
+              <th>Current Value (€)</th>
+              <th>Gain/Loss (€)</th>
+              <th>Gain/Loss (%)</th>
             </tr>
-          <% end %>
-        </tbody>
-        <tfoot>
-          <tr>
-            <td>Total</td>
-            <td></td>
-            <td><%= format_eur(total_invested) %></td>
-            <td><%= format_eur(total_value) %></td>
-            <td class={earnings_class(total_earnings)}><%= format_abs(total_earnings) %></td>
-            <td class={earnings_class(total_pct)}><%= format_pct(total_pct) %></td>
-          </tr>
-        </tfoot>
-      </table>
+          </thead>
+          <tbody>
+            <%= for a <- active do %>
+              <tr>
+                <td><strong><%= a.asset %></strong><br/><small style="color:#94a3b8"><%= a.isin %></small></td>
+                <td><%= format_qty(a.net_qty) %></td>
+                <td><%= if a.cost_basis > 0, do: format_eur(a.cost_basis), else: "—" %></td>
+                <td><%= if a.current_value, do: format_eur(a.current_value), else: "—" %></td>
+                <td class={earnings_class(if a.cost_basis > 0, do: a.earnings_abs, else: nil)}>
+                  <%= if a.cost_basis > 0, do: format_abs(a.earnings_abs), else: "—" %>
+                </td>
+                <td class={earnings_class(if a.cost_basis > 0, do: a.earnings_pct, else: nil)}>
+                  <%= if a.cost_basis > 0, do: format_pct(a.earnings_pct), else: "—" %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td></td>
+              <td><%= format_eur(total_invested) %></td>
+              <td><%= format_eur(total_value) %></td>
+              <td class={earnings_class(total_earnings)}><%= format_abs(total_earnings) %></td>
+              <td class={earnings_class(total_pct)}><%= format_pct(total_pct) %></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     <% end %>
     """
   end
@@ -180,77 +183,80 @@ defmodule SheetfolioWeb.SummaryLive do
       <% total_pnl = Float.round(total_received - total_invested, 2) %>
       <% total_pct = if total_invested > 0, do: Float.round(total_pnl / total_invested * 100, 2), else: nil %>
 
-      <table class="summary-table">
-        <thead>
-          <tr>
-            <th>Asset</th>
-            <th>Cost of sold (€)</th>
-            <th>Received (€)</th>
-            <th>Realized P&amp;L (€)</th>
-            <th>Realized P&amp;L (%)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <%= for a <- settled do %>
-            <% sold_cost = cost_sold.(a) %>
-            <% pnl = Float.round(a.total_received - sold_cost, 2) %>
-            <% pnl_pct = if sold_cost > 0, do: Float.round(pnl / sold_cost * 100, 2), else: nil %>
-            <% expanded = @selected_isin == a.isin %>
-            <% partial = a.net_qty > 0.001 %>
-            <tr class="row-clickable" phx-click="toggle_isin" phx-value-isin={a.isin}>
-              <td>
-                <strong><%= a.asset %></strong>
-                <%= if partial do %><span style="font-size:0.72rem;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;margin-left:4px;">active</span><% end %>
-                <span class="row-toggle-icon"><%= if expanded, do: "▲", else: "▼" %></span>
-                <br/><small style="color:#94a3b8"><%= a.isin %></small>
-              </td>
-              <td><%= format_eur(sold_cost) %></td>
-              <td><%= format_eur(a.total_received) %></td>
-              <td class={earnings_class(pnl)}><%= format_abs(pnl) %></td>
-              <td class={earnings_class(pnl_pct)}><%= format_pct(pnl_pct) %></td>
+      <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
+        <button class="table-expand" aria-label="Toggle full screen"></button>
+        <table class="summary-table">
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th>Cost of sold (€)</th>
+              <th>Received (€)</th>
+              <th>Realized P&amp;L (€)</th>
+              <th>Realized P&amp;L (%)</th>
             </tr>
-            <%= if expanded do %>
-              <% ops = Map.get(@ops_by_isin, a.isin, []) |> Enum.sort_by(& &1.fecha) %>
-              <tr class="ops-detail">
-                <td colspan="5" style="padding: 0;">
-                  <table style="width:100%; border-collapse: collapse;">
-                    <thead>
-                      <tr>
-                        <th>Type</th>
-                        <th>Date</th>
-                        <th>Units</th>
-                        <th>Amount (€)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <%= for op <- ops do %>
-                        <% is_buy = buy?(op.tipo) %>
-                        <tr>
-                          <td class={if is_buy, do: "ops-buy", else: "ops-sell"}>
-                            <%= if is_buy, do: "Buy", else: "Sell" %>
-                          </td>
-                          <td><%= op.fecha %></td>
-                          <td><%= format_qty(parse_cantidad(op.cantidad)) %></td>
-                          <td><%= format_eur(amount_in_eur(op.importe_with_comision, op.precio, parse_cantidad(op.cantidad), @eur_usd, @eur_cad)) %></td>
-                        </tr>
-                      <% end %>
-                    </tbody>
-                  </table>
+          </thead>
+          <tbody>
+            <%= for a <- settled do %>
+              <% sold_cost = cost_sold.(a) %>
+              <% pnl = Float.round(a.total_received - sold_cost, 2) %>
+              <% pnl_pct = if sold_cost > 0, do: Float.round(pnl / sold_cost * 100, 2), else: nil %>
+              <% expanded = @selected_isin == a.isin %>
+              <% partial = a.net_qty > 0.001 %>
+              <tr class="row-clickable" phx-click="toggle_isin" phx-value-isin={a.isin}>
+                <td>
+                  <strong><%= a.asset %></strong>
+                  <%= if partial do %><span style="font-size:0.72rem;background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;margin-left:4px;">active</span><% end %>
+                  <span class="row-toggle-icon"><%= if expanded, do: "▲", else: "▼" %></span>
+                  <br/><small style="color:#94a3b8"><%= a.isin %></small>
                 </td>
+                <td><%= format_eur(sold_cost) %></td>
+                <td><%= format_eur(a.total_received) %></td>
+                <td class={earnings_class(pnl)}><%= format_abs(pnl) %></td>
+                <td class={earnings_class(pnl_pct)}><%= format_pct(pnl_pct) %></td>
               </tr>
+              <%= if expanded do %>
+                <% ops = Map.get(@ops_by_isin, a.isin, []) |> Enum.sort_by(& &1.fecha) %>
+                <tr class="ops-detail">
+                  <td colspan="5" style="padding: 0;">
+                    <table style="width:100%; border-collapse: collapse;">
+                      <thead>
+                        <tr>
+                          <th>Type</th>
+                          <th>Date</th>
+                          <th>Units</th>
+                          <th>Amount (€)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <%= for op <- ops do %>
+                          <% is_buy = buy?(op.tipo) %>
+                          <tr>
+                            <td class={if is_buy, do: "ops-buy", else: "ops-sell"}>
+                              <%= if is_buy, do: "Buy", else: "Sell" %>
+                            </td>
+                            <td><%= op.fecha %></td>
+                            <td><%= format_qty(parse_cantidad(op.cantidad)) %></td>
+                            <td><%= format_eur(amount_in_eur(op.importe_with_comision, op.precio, parse_cantidad(op.cantidad), @eur_usd, @eur_cad)) %></td>
+                          </tr>
+                        <% end %>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              <% end %>
             <% end %>
-          <% end %>
-        </tbody>
-        <tfoot>
-          <tr>
-            <td>Total</td>
-            <td><%= format_eur(total_invested) %></td>
-            <td><%= format_eur(total_received) %></td>
-            <td class={earnings_class(total_pnl)}><%= format_abs(total_pnl) %></td>
-            <td class={earnings_class(total_pct)}><%= format_pct(total_pct) %></td>
-          </tr>
-        </tfoot>
-      </table>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td>Total</td>
+              <td><%= format_eur(total_invested) %></td>
+              <td><%= format_eur(total_received) %></td>
+              <td class={earnings_class(total_pnl)}><%= format_abs(total_pnl) %></td>
+              <td class={earnings_class(total_pct)}><%= format_pct(total_pct) %></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     <% end %>
     """
   end
