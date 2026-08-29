@@ -96,6 +96,13 @@ defmodule SheetfolioWeb.ComparisonLive do
 
   # First click on a column sorts it largest first; clicking the active column
   # again flips to ascending.
+  # A row is a question about one holding over one window; the history page is
+  # where that holding's whole line lives, so the click carries the row over.
+  def handle_event("open_history", %{"key" => key}, socket) do
+    query = URI.encode_query(view: socket.assigns.view, key: key)
+    {:noreply, push_navigate(socket, to: "/history?" <> query)}
+  end
+
   def handle_event("set_sort", %{"key" => key}, socket) when key in @sort_keys do
     %{sort_key: current, sort_dir: dir} = socket.assigns
     new_dir = if current == key and dir == "desc", do: "asc", else: "desc"
@@ -189,6 +196,7 @@ defmodule SheetfolioWeb.ComparisonLive do
       .cmp-table td:not(:first-child) { text-align: right; }
       .cmp-table tr:last-child td { border-bottom: none; }
       .cmp-table tr:hover td { background: #f8fafc; }
+      .cmp-table tr.drill { cursor: pointer; }
       .cmp-table tfoot td { background: #f8fafc; font-weight: 600; border-top: 2px solid #e2e8f0; }
       .cmp-dot { display: inline-block; width: 0.65rem; height: 0.65rem; border-radius: 50%; margin-right: 0.5rem; vertical-align: middle; }
       /* On a phone the column is narrow enough that "Renta fija corto plazo"
@@ -266,7 +274,7 @@ defmodule SheetfolioWeb.ComparisonLive do
               </thead>
               <tbody>
                 <%= for row <- cmp.rows do %>
-                  <tr>
+                  <tr class="drill" phx-click="open_history" phx-value-key={row.key}>
                     <td class={if @view == "category", do: "cat"}>
                       <%= if @view == "category" do %>
                         <span class="cmp-dot" style={"background:#{category_color(row.label)}"}></span>

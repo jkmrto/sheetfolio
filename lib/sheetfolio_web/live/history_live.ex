@@ -59,6 +59,33 @@ defmodule SheetfolioWeb.HistoryLive do
     end
   end
 
+  # Arriving from a comparison row: that holding, or that category, is what the
+  # page opens on. Anything it doesn't recognise leaves the default alone.
+  def handle_params(%{"view" => view, "key" => key}, _uri, socket) when view in ["asset", "category"] do
+    {:noreply, preselect(socket, view, key)}
+  end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  defp preselect(%{assigns: %{snapshots: []}} = socket, _view, _key), do: socket
+
+  defp preselect(socket, view, key) do
+    known = if view == "category", do: socket.assigns.category_list, else: socket.assigns.asset_list
+
+    if List.keymember?(known, key, 0) do
+      assign(socket,
+        view: view,
+        color_map: Map.put(socket.assigns.color_map, view, %{key => 0}),
+        collapsed: MapSet.delete(socket.assigns.collapsed, group_of(view, key, socket.assigns))
+      )
+    else
+      socket
+    end
+  end
+
+  defp group_of("category", key, _assigns), do: key
+  defp group_of(_asset, isin, assigns), do: AssetCategories.category_for(isin, assigns.categories)
+
   def handle_event("toggle_asset", %{"isin" => isin}, socket) do
     selected = toggle(selection(socket.assigns), isin)
     {:noreply, assign(socket, color_map: Map.put(socket.assigns.color_map, socket.assigns.view, selected))}
