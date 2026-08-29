@@ -22,8 +22,11 @@ defmodule SheetfolioWeb.HistoryLive do
           snapshots: [],
           asset_list: [],
           asset_groups: [],
+          category_list: [],
           collapsed: MapSet.new(),
-          color_map: %{},
+          # One selection per view: switching back and forth keeps both.
+          color_map: %{"asset" => %{}, "category" => %{}},
+          view: "asset",
           metric: "value",
           range: "1m",
           selected_date: nil
@@ -35,21 +38,19 @@ defmodule SheetfolioWeb.HistoryLive do
           |> Enum.to_list()
 
         asset_list = build_asset_list(snapshots)
-        asset_groups = group_by_category(asset_list)
-
-        color_map =
-          case asset_list do
-            [{isin, _name} | _rest] -> %{isin => 0}
-            [] -> %{}
-          end
+        categories = AssetCategories.get()
+        asset_groups = group_by_category(asset_list, categories)
+        category_list = Enum.map(asset_groups, fn {category, _assets} -> {category, category} end)
 
         {:ok,
          assign(socket,
            snapshots: snapshots,
            asset_list: asset_list,
            asset_groups: asset_groups,
+           category_list: category_list,
+           categories: categories,
            collapsed: asset_groups |> Enum.map(&elem(&1, 0)) |> MapSet.new(),
-           color_map: color_map,
+           color_map: %{"asset" => first_selected(asset_list), "category" => first_selected(category_list)},
            selected_date: latest_date(snapshots)
          )}
       else
@@ -59,23 +60,12 @@ defmodule SheetfolioWeb.HistoryLive do
   end
 
   def handle_event("toggle_asset", %{"isin" => isin}, socket) do
-    color_map = socket.assigns.color_map
+    selected = toggle(selection(socket.assigns), isin)
+    {:noreply, assign(socket, color_map: Map.put(socket.assigns.color_map, socket.assigns.view, selected))}
+  end
 
-    color_map =
-      cond do
-        Map.has_key?(color_map, isin) ->
-          Map.delete(color_map, isin)
-
-        map_size(color_map) >= @max_selected ->
-          color_map
-
-        true ->
-          used = MapSet.new(Map.values(color_map))
-          slot = Enum.find(0..(@max_selected - 1), &(not MapSet.member?(used, &1)))
-          Map.put(color_map, isin, slot)
-      end
-
-    {:noreply, assign(socket, color_map: color_map)}
+  def handle_event("set_view", %{"view" => view}, socket) when view in ["asset", "category"] do
+    {:noreply, assign(socket, view: view)}
   end
 
   def handle_event("toggle_category", %{"category" => category}, socket) do
@@ -107,6 +97,25 @@ defmodule SheetfolioWeb.HistoryLive do
   def handle_event("select_point", %{"date" => date}, socket) do
     {:noreply, assign(socket, selected_date: date)}
   end
+
+  defp toggle(selected, key) do
+    cond do
+      Map.has_key?(selected, key) ->
+        Map.delete(selected, key)
+
+      map_size(selected) >= @max_selected ->
+        selected
+
+      true ->
+        used = MapSet.new(Map.values(selected))
+        Map.put(selected, key, Enum.find(0..(@max_selected - 1), &(not MapSet.member?(used, &1))))
+    end
+  end
+
+  defp selection(assigns), do: Map.fetch!(assigns.color_map, assigns.view)
+
+  defp first_selected([{key, _label} | _rest]), do: %{key => 0}
+  defp first_selected([]), do: %{}
 
   defp series_btn(assigns) do
     ~H"""
@@ -168,6 +177,7 @@ defmodule SheetfolioWeb.HistoryLive do
       .metric-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
       .metric-toggle button.selected { background: #1e293b; color: white; }
       .range-toggle { margin-left: 0; }
+      .view-toggle { margin-left: 0; }
       .empty-note { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); color: #64748b; font-size: 0.9rem; }
       .date-bar { display: flex; align-items: center; gap: 1rem; margin: 2rem 0 1rem; }
       .date-bar label { font-size: 0.9rem; font-weight: 600; color: #475569; }
@@ -194,26 +204,42 @@ defmodule SheetfolioWeb.HistoryLive do
         No snapshots recorded yet. History accumulates one point per day once the recorder runs.
       </div>
     <% else %>
+      <div class="filter-row">
+        <div class="metric-toggle view-toggle">
+          <button class={if @view == "asset", do: "selected"} phx-click="set_view" phx-value-view="asset">By asset</button>
+          <button class={if @view == "category", do: "selected"} phx-click="set_view" phx-value-view="category">By category</button>
+        </div>
+      </div>
+
+      <%= if @view == "category" do %>
+        <div class="filter-row">
+          <%= for {category, name} <- @category_list do %>
+            <.series_btn id={category} name={name} slot={Map.get(selection(assigns), category)} />
+          <% end %>
+        </div>
+      <% else %>
       <div class="filter-groups">
         <%= for {category, assets} <- @asset_groups do %>
           <% open? = not MapSet.member?(@collapsed, category) %>
+          <% selected = selection(assigns) %>
           <div class="filter-group">
             <button class="cat-header" phx-click="toggle_category" phx-value-category={category}>
               <span class="cat-chevron"><%= if open?, do: "▼", else: "▶" %></span>
-              <span class={"cat-state #{selection_state(assets, @color_map)}"}><%= state_icon(selection_state(assets, @color_map)) %></span>
+              <span class={"cat-state #{selection_state(assets, selected)}"}><%= state_icon(selection_state(assets, selected)) %></span>
               <span><%= category %></span>
-              <span class="cat-count"><%= selected_count(assets, @color_map) %>/<%= length(assets) %></span>
+              <span class="cat-count"><%= selected_count(assets, selected) %>/<%= length(assets) %></span>
             </button>
             <div class="filter-buttons">
               <%= if open? do %>
                 <%= for {isin, name} <- assets do %>
-                  <.series_btn id={isin} name={name} slot={Map.get(@color_map, isin)} />
+                  <.series_btn id={isin} name={name} slot={Map.get(selected, isin)} />
                 <% end %>
               <% end %>
             </div>
           </div>
         <% end %>
       </div>
+      <% end %>
 
       <div class="filter-row">
         <div class="metric-toggle">
@@ -241,7 +267,7 @@ defmodule SheetfolioWeb.HistoryLive do
         <span class="price-note">Click a point on the chart to jump to that day</span>
       </div>
 
-      <%= case positions_on(@snapshots, @selected_date) do %>
+      <%= case rows_on(@snapshots, @selected_date, @view, @categories) do %>
         <% nil -> %>
           <div class="empty-note">No snapshot recorded for <%= es_date(@selected_date) %>.</div>
         <% positions -> %>
@@ -250,7 +276,7 @@ defmodule SheetfolioWeb.HistoryLive do
             <table class="snapshot-table">
               <thead>
                 <tr>
-                  <th>Asset</th><th>Units held</th><th>Invested (€)</th>
+                  <th><%= if @view == "category", do: "Category", else: "Asset" %></th><th>Units held</th><th>Invested (€)</th>
                   <th>Value (€)</th><th>Gain/Loss (€)</th><th>Gain/Loss (%)</th>
                 </tr>
               </thead>
@@ -258,8 +284,10 @@ defmodule SheetfolioWeb.HistoryLive do
                 <%= for p <- positions do %>
                   <tr>
                     <td>
-                      <strong><%= p.asset %></strong><br/>
-                      <small style="color:#94a3b8"><%= p.isin %></small>
+                      <strong><%= p.asset %></strong>
+                      <%= if p.isin do %>
+                        <br/><small style="color:#94a3b8"><%= p.isin %></small>
+                      <% end %>
                       <%= if p.stale_price do %>
                         <br/><small style="color:#f59e0b">⚠ price carried forward from an earlier day</small>
                       <% end %>
@@ -299,14 +327,42 @@ defmodule SheetfolioWeb.HistoryLive do
   # Read straight from the stored snapshot rather than replaying the operation
   # history: those figures are what every other page reports, and they already
   # carry the average-cost basis Positions computed when the day was recorded.
-  defp positions_on(_snapshots, nil), do: nil
+  defp rows_on(_snapshots, nil, _view, _categories), do: nil
 
-  defp positions_on(snapshots, date) do
+  defp rows_on(snapshots, date, view, categories) do
     case Enum.find(snapshots, &(&1["date"] == date)) do
-      nil -> nil
-      snapshot -> snapshot["positions"] |> List.wrap() |> Enum.map(&position_row/1) |> sort_rows()
+      nil ->
+        nil
+
+      snapshot ->
+        snapshot["positions"]
+        |> List.wrap()
+        |> Enum.map(&position_row/1)
+        |> rows_for(view, categories)
+        |> sort_rows()
     end
   end
+
+  defp rows_for(rows, "category", categories) do
+    rows
+    |> Enum.group_by(&AssetCategories.category_for(&1.isin, categories))
+    |> Enum.map(fn {category, group} ->
+      totals = totals(group)
+
+      %{
+        isin: nil,
+        asset: category,
+        units: nil,
+        invested: totals.invested,
+        value: totals.value,
+        gain: totals.gain,
+        gain_pct: totals.gain_pct,
+        stale_price: Enum.any?(group, & &1.stale_price)
+      }
+    end)
+  end
+
+  defp rows_for(rows, _asset, _categories), do: rows
 
   defp sort_rows(rows), do: Enum.sort_by(rows, & &1.invested, :desc)
 
@@ -356,6 +412,8 @@ defmodule SheetfolioWeb.HistoryLive do
   defp format_pct(value) when value >= 0, do: "+#{value}%"
   defp format_pct(value), do: "#{value}%"
 
+  defp format_qty(nil), do: "—"
+
   defp format_qty(value) do
     :erlang.float_to_binary(value * 1.0, decimals: 4)
     |> String.trim_trailing("0")
@@ -377,8 +435,7 @@ defmodule SheetfolioWeb.HistoryLive do
 
   # Categories in the order their biggest holding appears, so the heaviest ones
   # head the list and the rows read like the rest of the app's category views.
-  defp group_by_category(asset_list) do
-    categories = AssetCategories.get()
+  defp group_by_category(asset_list, categories) do
     pairs = Enum.map(asset_list, fn {isin, name} -> {AssetCategories.category_for(isin, categories), {isin, name}} end)
     grouped = Enum.group_by(pairs, &elem(&1, 0), &elem(&1, 1))
 
@@ -405,17 +462,20 @@ defmodule SheetfolioWeb.HistoryLive do
   defp chart_payload(assigns) do
     snapshots = filter_range(assigns.snapshots, assigns.range)
 
+    named = if assigns.view == "category", do: assigns.category_list, else: assigns.asset_list
+
     datasets =
-      assigns.color_map
-      |> Enum.sort_by(fn {_isin, slot} -> slot end)
-      |> Enum.flat_map(fn {isin, slot} ->
+      assigns
+      |> selection()
+      |> Enum.sort_by(fn {_key, slot} -> slot end)
+      |> Enum.flat_map(fn {key, slot} ->
         name =
-          case List.keyfind(assigns.asset_list, isin, 0) do
-            {_isin, found} -> found
-            nil -> isin
+          case List.keyfind(named, key, 0) do
+            {_key, found} -> found
+            nil -> key
           end
 
-        datasets_for(snapshots, isin, name, Enum.at(palette(), slot), assigns.metric)
+        datasets_for(snapshots, series_of(key, assigns), name, Enum.at(palette(), slot), assigns.metric)
       end)
 
     %{metric: assigns.metric, datasets: datasets, clickEvent: "select_point"}
@@ -443,6 +503,14 @@ defmodule SheetfolioWeb.HistoryLive do
     end)
   end
 
+  # A category's line is the sum of its holdings, so a series carries the list of
+  # ISINs behind it rather than a single one.
+  defp series_of(key, %{view: "category", categories: categories, asset_list: asset_list}) do
+    for {isin, _name} <- asset_list, AssetCategories.category_for(isin, categories) == key, do: isin
+  end
+
+  defp series_of(isin, _assigns), do: [isin]
+
   defp label_for(name, nil), do: name
   defp label_for(name, suffix), do: "#{name} · #{suffix}"
 
@@ -467,14 +535,24 @@ defmodule SheetfolioWeb.HistoryLive do
   defp cutoff_date("1y", today), do: Date.shift(today, year: -1)
   defp cutoff_date("ytd", today), do: Date.new!(today.year, 1, 1)
 
-  defp series_points(snapshots, isin, metric) do
+  defp series_points(snapshots, isins, metric) do
     snapshots
     |> Enum.flat_map(fn snap ->
-      case Enum.find(snap["positions"], &(&1["isin"] == isin)) do
-        nil -> []
-        position -> point(snap["date"], position, metric)
+      case Enum.filter(snap["positions"], &(&1["isin"] in isins)) do
+        [] -> []
+        positions -> point(snap["date"], held(positions), metric)
       end
     end)
+  end
+
+  # One holding's figures, or the sum of a category's.
+  defp held([position]), do: position
+
+  defp held(positions) do
+    %{
+      "value" => Enum.reduce(positions, 0.0, &(number(&1["value"]) + &2)),
+      "invested" => Enum.reduce(positions, 0.0, &(number(&1["invested"]) + &2))
+    }
   end
 
   defp point(date, %{"value" => value, "invested" => invested}, :pct)
