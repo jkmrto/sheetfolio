@@ -239,6 +239,11 @@ defmodule SheetfolioWeb.PortfolioLive do
         .alloc { display: flex; flex-wrap: wrap; gap: 2rem; align-items: center; margin-top: 1.5rem; }
         .alloc-chart { flex: 0 0 260px; max-width: 260px; }
         .alloc-legend { flex: 1 1 320px; min-width: 280px; }
+        /* Full screen: the donut grows into the height the panel gives the row,
+           and the legend beside it scrolls if the categories outrun it. */
+        .expand-panel.expanded .alloc { min-height: 0; align-items: stretch; }
+        .expand-panel.expanded .alloc-chart { flex: 1 1 40%; max-width: none; }
+        .expand-panel.expanded .alloc-legend { overflow: auto; }
         .alloc-title { font-size: 0.85rem; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 1rem; }
         .alloc-legend table { width: 100%; border-collapse: collapse; font-size: 0.88rem; font-variant-numeric: tabular-nums; }
         .alloc-legend td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #f1f5f9; }
@@ -329,24 +334,27 @@ defmodule SheetfolioWeb.PortfolioLive do
         </div>
       </div>
 
-      <div class="chart-container" id="portfolio-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(filter_range(@snapshots, @range), filter_cash_range(@cash, @range), @urbanitae_by_date, @equito_by_date))}>
-        <div id="portfolio-chart-canvas" phx-update="ignore">
-          <canvas></canvas>
+      <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
+        <div class="chart-container" id="portfolio-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(filter_range(@snapshots, @range), filter_cash_range(@cash, @range), @urbanitae_by_date, @equito_by_date))}>
+          <div id="portfolio-chart-canvas" phx-update="ignore">
+            <canvas></canvas>
+          </div>
         </div>
       </div>
 
       <%= if @allocation != [] do %>
-        <div class="chart-container" style="margin-top:1.5rem;">
-          <div class="alloc-title">Allocation by category</div>
-          <div class="alloc">
-            <div class="alloc-chart" id="allocation-chart" phx-hook="CategoryPie" data-chart={Jason.encode!(allocation_payload(@allocation))}>
-              <div id="allocation-chart-canvas" phx-update="ignore">
-                <canvas></canvas>
+        <div class="expand-panel" id="panel-3" phx-hook="ExpandPanel">
+          <button class="expand-btn" aria-label="Toggle full screen"></button>
+          <div class="chart-container" style="margin-top:1.5rem;">
+            <div class="alloc-title">Allocation by category</div>
+            <div class="alloc">
+              <div class="alloc-chart" id="allocation-chart" phx-hook="CategoryPie" data-chart={Jason.encode!(allocation_payload(@allocation))}>
+                <div id="allocation-chart-canvas" phx-update="ignore">
+                  <canvas></canvas>
+                </div>
               </div>
-            </div>
-            <div class="alloc-legend">
-              <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
-                <button class="table-expand" aria-label="Toggle full screen"></button>
+              <div class="alloc-legend">
                 <table>
                   <tbody>
                     <%= for slice <- @allocation do %>
@@ -372,29 +380,32 @@ defmodule SheetfolioWeb.PortfolioLive do
           </div>
         </div>
 
-        <div class="chart-container" style="margin-top:1.5rem;">
-          <div class="alloc-title">Allocation history</div>
-          <div class="alloc-controls">
-            <div class="range-toggle">
-              <%= for {value, label} <- history_view_options() do %>
-                <button class={if @history_view == value, do: "selected"} phx-click="set_history_view" phx-value-view={value}>{label}</button>
-              <% end %>
-            </div>
-            <div class="range-toggle">
-              <%= for {value, label} <- range_options() do %>
-                <button class={if @history_range == value, do: "selected"} phx-click="set_history_range" phx-value-range={value}>{label}</button>
-              <% end %>
-            </div>
-          </div>
-          <%= if @category_history == nil do %>
-            <div class="alloc-loading">Loading category history…</div>
-          <% else %>
-            <div id="category-history-chart" phx-hook="CategoryHistoryChart" data-chart={Jason.encode!(category_history_payload(filter_history(@category_history, @history_range), @history_view))}>
-              <div id="category-history-canvas" phx-update="ignore">
-                <canvas></canvas>
+        <div class="expand-panel" id="panel-4" phx-hook="ExpandPanel">
+          <button class="expand-btn" aria-label="Toggle full screen"></button>
+          <div class="chart-container" style="margin-top:1.5rem;">
+            <div class="alloc-title">Allocation history</div>
+            <div class="alloc-controls">
+              <div class="range-toggle">
+                <%= for {value, label} <- history_view_options() do %>
+                  <button class={if @history_view == value, do: "selected"} phx-click="set_history_view" phx-value-view={value}>{label}</button>
+                <% end %>
+              </div>
+              <div class="range-toggle">
+                <%= for {value, label} <- range_options() do %>
+                  <button class={if @history_range == value, do: "selected"} phx-click="set_history_range" phx-value-range={value}>{label}</button>
+                <% end %>
               </div>
             </div>
-          <% end %>
+            <%= if @category_history == nil do %>
+              <div class="alloc-loading">Loading category history…</div>
+            <% else %>
+              <div id="category-history-chart" phx-hook="CategoryHistoryChart" data-chart={Jason.encode!(category_history_payload(filter_history(@category_history, @history_range), @history_view))}>
+                <div id="category-history-canvas" phx-update="ignore">
+                  <canvas></canvas>
+                </div>
+              </div>
+            <% end %>
+          </div>
         </div>
       <% end %>
     <% end %>

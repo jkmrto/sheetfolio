@@ -117,8 +117,8 @@ defmodule SheetfolioWeb.SummaryLive do
       <% total_earnings = if total_invested > 0, do: Float.round(total_value - total_invested, 2), else: nil %>
       <% total_pct = if total_invested > 0 and total_earnings, do: Float.round(total_earnings / total_invested * 100, 2), else: nil %>
 
-      <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
-        <button class="table-expand" aria-label="Toggle full screen"></button>
+      <div class="expand-panel" id="panel-1" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="summary-table">
           <thead>
             <tr>
@@ -183,8 +183,8 @@ defmodule SheetfolioWeb.SummaryLive do
       <% total_pnl = Float.round(total_received - total_invested, 2) %>
       <% total_pct = if total_invested > 0, do: Float.round(total_pnl / total_invested * 100, 2), else: nil %>
 
-      <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
-        <button class="table-expand" aria-label="Toggle full screen"></button>
+      <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="summary-table">
           <thead>
             <tr>

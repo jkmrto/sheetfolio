@@ -170,8 +170,8 @@ defmodule SheetfolioWeb.EquitoLive do
       <%= if @rollup == [] do %>
         <p style="color:#64748b; font-size:0.85rem;">No movements recorded yet.</p>
       <% else %>
-        <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
-          <button class="table-expand" aria-label="Toggle full screen"></button>
+        <div class="expand-panel" id="panel-1" phx-hook="ExpandPanel">
+          <button class="expand-btn" aria-label="Toggle full screen"></button>
           <table class="e-table">
             <thead>
               <tr>
@@ -221,8 +221,8 @@ defmodule SheetfolioWeb.EquitoLive do
       <%= if @properties == [] do %>
         <p style="color:#64748b; font-size:0.85rem;">No properties recorded yet.</p>
       <% else %>
-        <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
-          <button class="table-expand" aria-label="Toggle full screen"></button>
+        <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
+          <button class="expand-btn" aria-label="Toggle full screen"></button>
           <table class="e-table">
             <thead>
               <tr>
@@ -268,8 +268,8 @@ defmodule SheetfolioWeb.EquitoLive do
       <%= if @rows == [] do %>
         <p style="color:#64748b; font-size:0.85rem;">No movements in this window.</p>
       <% else %>
-        <div class="table-panel" id="table-panel-3" phx-hook="TablePanel">
-          <button class="table-expand" aria-label="Toggle full screen"></button>
+        <div class="expand-panel" id="panel-3" phx-hook="ExpandPanel">
+          <button class="expand-btn" aria-label="Toggle full screen"></button>
           <table class="e-table">
             <thead>
               <tr>

@@ -9,6 +9,22 @@ const Hooks = {}
 // viewports get a squarer chart and a tighter legend instead.
 const narrow = () => window.innerWidth <= 768
 const chartAspectRatio = () => narrow() ? 1 : 2
+
+// A chart lifted over the viewport fills it, so it drops the aspect ratio that
+// derives its height from its width and takes the panel's height instead.
+const isExpanded = (el) => !!el.closest(".expand-panel.expanded")
+
+// The panel can't reach into a chart's hook, so it says so on the DOM and the
+// chart redraws itself at its new size.
+const redrawOnExpand = (hook) => hook.el.addEventListener("expand:toggle", () => hook.render())
+
+// The DCA charts are built once in mounted() and updated in place, so they
+// resize rather than redraw.
+const resizeOnExpand = (hook) =>
+  hook.el.addEventListener("expand:toggle", () => {
+    hook.chart.options.maintainAspectRatio = !isExpanded(hook.el)
+    hook.chart.resize()
+  })
 const legend = (position) => ({
   position,
   labels: narrow() ? {boxWidth: 10, boxHeight: 10, padding: 8, font: {size: 10}} : {}
@@ -18,19 +34,22 @@ const legend = (position) => ({
 // readable on a phone. The class lives on the panel rather than in an assign,
 // so no page has to track it — but a LiveView patch rewrites the class
 // attribute it rendered, so the hook puts it back after every update.
-Hooks.TablePanel = {
+Hooks.ExpandPanel = {
   mounted() {
     this.el.addEventListener("click", (e) => {
-      if (!e.target.closest(".table-expand")) return
+      const btn = e.target.closest(".expand-btn")
+      // A panel inside a panel answers for its own button only.
+      if (!btn || btn.closest(".expand-panel") !== this.el) return
       this.expanded = !this.expanded
       this.el.classList.toggle("expanded", this.expanded)
+      this.el.querySelectorAll("[phx-hook]").forEach((el) => el.dispatchEvent(new Event("expand:toggle")))
     })
   },
   updated() { this.el.classList.toggle("expanded", !!this.expanded) }
 }
 
 Hooks.HistoryChart = {
-  mounted() { this.render() },
+  mounted() { redrawOnExpand(this); this.render() },
   updated() { this.render() },
   destroyed() { if (this.chart) this.chart.destroy() },
   render() {
@@ -86,6 +105,7 @@ Hooks.HistoryChart = {
       options: {
         responsive: true,
         aspectRatio: chartAspectRatio(),
+        maintainAspectRatio: !isExpanded(this.el),
         onClick: pushOnClick,
         interaction: {mode: "index", intersect: false},
         plugins: {
@@ -110,7 +130,7 @@ Hooks.HistoryChart = {
 }
 
 Hooks.CategoryPie = {
-  mounted() { this.render() },
+  mounted() { redrawOnExpand(this); this.render() },
   updated() { this.render() },
   destroyed() { if (this.chart) this.chart.destroy() },
   render() {
@@ -135,6 +155,7 @@ Hooks.CategoryPie = {
       },
       options: {
         responsive: true,
+        maintainAspectRatio: !isExpanded(this.el),
         cutout: "55%",
         plugins: {
           // The table beside the chart already names every slice with its
@@ -156,7 +177,7 @@ Hooks.CategoryPie = {
 }
 
 Hooks.CategoryHistoryChart = {
-  mounted() { this.render() },
+  mounted() { redrawOnExpand(this); this.render() },
   updated() { this.render() },
   destroyed() { if (this.chart) this.chart.destroy() },
   render() {
@@ -196,6 +217,7 @@ Hooks.CategoryHistoryChart = {
       options: {
         responsive: true,
         aspectRatio: chartAspectRatio(),
+        maintainAspectRatio: !isExpanded(this.el),
         interaction: {mode: "index", intersect: false},
         plugins: {
           legend: legend("top"),
@@ -232,6 +254,7 @@ Hooks.CategoryHistoryChart = {
 
 Hooks.DcaChart = {
   mounted() {
+    resizeOnExpand(this)
     const ctx = this.el.getContext('2d')
     this.chart = new Chart(ctx, {
       type: 'line',
@@ -239,6 +262,7 @@ Hooks.DcaChart = {
       options: {
         responsive: true,
         aspectRatio: chartAspectRatio(),
+        maintainAspectRatio: !isExpanded(this.el),
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: legend('top'),
@@ -327,6 +351,7 @@ Hooks.DcaChart = {
 
 Hooks.DcaBitcoinChart = {
   mounted() {
+    resizeOnExpand(this)
     const ctx = this.el.getContext('2d')
     this.chart = new Chart(ctx, {
       type: 'line',
@@ -334,6 +359,7 @@ Hooks.DcaBitcoinChart = {
       options: {
         responsive: true,
         aspectRatio: chartAspectRatio(),
+        maintainAspectRatio: !isExpanded(this.el),
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: legend('top'),

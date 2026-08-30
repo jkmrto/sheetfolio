@@ -225,8 +225,8 @@ defmodule SheetfolioWeb.BitcoinLive do
       The WisdomTree ETP tracks Bitcoin but is held in ETP units, not coins, so
       only the euro side of the two is comparable.
     </div>
-    <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
-      <button class="table-expand" aria-label="Toggle full screen"></button>
+    <div class="expand-panel" id="panel-1" phx-hook="ExpandPanel">
+      <button class="expand-btn" aria-label="Toggle full screen"></button>
       <table class="btc-table">
         <tr>
           <th>Holding</th><th>Units</th><th>Invested</th><th>Value</th><th>Unrealized</th>
@@ -259,8 +259,8 @@ defmodule SheetfolioWeb.BitcoinLive do
 
     <%= for row <- @coinbase.holdings do %>
       <div class="btc-section">{row.platform} detail</div>
-      <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
-        <button class="table-expand" aria-label="Toggle full screen"></button>
+      <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="btc-table">
           <tr><th>Metric</th><th>Value</th></tr>
           <tr><td>Units held</td><td><%= btc(row.units) %> BTC</td></tr>

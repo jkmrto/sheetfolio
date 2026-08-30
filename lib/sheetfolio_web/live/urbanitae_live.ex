@@ -214,16 +214,19 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     assigns = assign(assigns, chart_payload: chart_payload(assigns.transactions, assigns.range))
 
     ~H"""
-    <div class="chart-container" id="urbanitae-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(@chart_payload)}>
-      <div class="range-row">
-        <div class="range-toggle">
-          <%= for {value, label} <- range_options() do %>
-            <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}>{label}</button>
-          <% end %>
+    <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
+      <button class="expand-btn" aria-label="Toggle full screen"></button>
+      <div class="chart-container" id="urbanitae-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(@chart_payload)}>
+        <div class="range-row">
+          <div class="range-toggle">
+            <%= for {value, label} <- range_options() do %>
+              <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}>{label}</button>
+            <% end %>
+          </div>
         </div>
-      </div>
-      <div id="urbanitae-chart-canvas" phx-update="ignore">
-        <canvas id="urbanitaeChartCanvas"></canvas>
+        <div id="urbanitae-chart-canvas" phx-update="ignore">
+          <canvas id="urbanitaeChartCanvas"></canvas>
+        </div>
       </div>
     </div>
     """
@@ -312,8 +315,8 @@ defmodule SheetfolioWeb.UrbanitaeLive do
           <span><span class="k">Net P&amp;L</span><span class={"v #{pnl_class(@r.net_pnl)}"}>{format_eur(@r.net_pnl)}</span></span>
         <% end %>
       </div>
-      <div class="table-panel" id={"table-panel-#{@r.project_key}"} phx-hook="TablePanel">
-        <button class="table-expand" aria-label="Toggle full screen"></button>
+      <div class="expand-panel" id={"panel-#{@r.project_key}"} phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="u-table">
           <thead>
             <tr>
@@ -357,8 +360,8 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       <%= if @rows == [] do %>
         <p style="color:#64748b; font-size:0.85rem;">No transactions in this window.</p>
       <% else %>
-        <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
-          <button class="table-expand" aria-label="Toggle full screen"></button>
+        <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
+          <button class="expand-btn" aria-label="Toggle full screen"></button>
           <table class="u-table">
             <thead>
               <tr>

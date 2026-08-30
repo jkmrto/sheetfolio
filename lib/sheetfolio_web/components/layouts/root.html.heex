@@ -28,13 +28,23 @@
          whole viewport, which is the only way a wide one is readable on a
          phone. The button toggles `expanded` on its own panel, so no page has
          to track the state. */
-      .table-panel { position: relative; }
-      .table-expand { display: block; margin: 0 0 0.35rem auto; border: 1px solid #e2e8f0; background: white; color: #64748b; font-size: 0.78rem; line-height: 1.2; padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; }
-      .table-expand::before { content: "⛶ Full screen"; }
-      .table-expand:hover { background: #f1f5f9; color: #1e293b; }
-      .table-panel.expanded { position: fixed; inset: 0; z-index: 30; margin: 0; padding: 0.6rem; background: #f8fafc; overflow: auto; }
-      .table-panel.expanded .table-expand { position: sticky; top: 0; }
-      .table-panel.expanded .table-expand::before { content: "✕ Close"; }
+      .expand-panel { position: relative; }
+      .expand-btn { display: block; margin: 0 0 0.35rem auto; border: 1px solid #e2e8f0; background: white; color: #64748b; font-size: 0.78rem; line-height: 1.2; padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; }
+      .expand-btn::before { content: "⛶ Full screen"; }
+      .expand-btn:hover { background: #f1f5f9; color: #1e293b; }
+      .expand-panel.expanded { position: fixed; inset: 0; z-index: 30; margin: 0; padding: 0.6rem; background: #f8fafc; overflow: auto; }
+      .expand-panel.expanded .expand-btn { position: sticky; top: 0; }
+      .expand-panel.expanded .expand-btn::before { content: "✕ Close"; }
+      /* A chart has no natural height, so over the whole viewport it takes the
+         panel's. Whatever the card puts above the chart (a title, a toggle)
+         keeps its own height and the chart takes the rest. */
+      /* The margin a card carries to space it from the one above is what pushes
+         the panel past the viewport, hence the override. */
+      .expand-panel.expanded .chart-container { height: calc(100vh - 3.4rem); margin: 0 !important; display: flex; flex-direction: column; }
+      .expand-panel.expanded .chart-container > :last-child { flex: 1; min-height: 0; }
+      /* Chart.js sizes a canvas from its parent, so every wrapper between the
+         card and the canvas has to pass the height down. */
+      .expand-panel.expanded .chart-container :has(canvas) { height: 100%; min-height: 0; }
       .nav-toggle { display: none; }
       .burger, .nav-backdrop { display: none; }
       @media (max-width: 768px) {

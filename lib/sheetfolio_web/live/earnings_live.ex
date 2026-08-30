@@ -133,8 +133,8 @@ defmodule SheetfolioWeb.EarningsLive do
     </div>
 
     <%= if @view == "by_asset" do %>
-      <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
-        <button class="table-expand" aria-label="Toggle full screen"></button>
+      <div class="expand-panel" id="panel-1" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="earnings-table">
           <tr>
             <th class="left">Asset</th>
@@ -198,8 +198,8 @@ defmodule SheetfolioWeb.EarningsLive do
         </table>
       </div>
     <% else %>
-      <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
-        <button class="table-expand" aria-label="Toggle full screen"></button>
+      <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="earnings-table">
           <tr>
             <th>Fecha</th><th class="left">Asset</th><th class="left">Tipo</th>
@@ -236,8 +236,8 @@ defmodule SheetfolioWeb.EarningsLive do
     <%= if @dividends_by_asset == [] do %>
       <div class="earnings-total muted">No distributions recorded yet.</div>
     <% else %>
-      <div class="table-panel" id="table-panel-3" phx-hook="TablePanel">
-        <button class="table-expand" aria-label="Toggle full screen"></button>
+      <div class="expand-panel" id="panel-3" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="earnings-table">
           <tr>
             <th class="left">Asset</th><th>Payments</th><th>First</th><th>Last</th><th>Received</th>
@@ -283,8 +283,8 @@ defmodule SheetfolioWeb.EarningsLive do
     <%= if @urbanitae == [] do %>
       <div class="earnings-total muted">No Urbanitae earnings recorded yet.</div>
     <% else %>
-      <div class="table-panel" id="table-panel-4" phx-hook="TablePanel">
-        <button class="table-expand" aria-label="Toggle full screen"></button>
+      <div class="expand-panel" id="panel-4" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="earnings-table">
           <tr>
             <th class="left">Project</th><th class="left">Type</th><th class="left">Status</th>
@@ -312,8 +312,8 @@ defmodule SheetfolioWeb.EarningsLive do
     <%= if @equito == [] do %>
       <div class="earnings-total muted">No Equito earnings recorded yet.</div>
     <% else %>
-      <div class="table-panel" id="table-panel-5" phx-hook="TablePanel">
-        <button class="table-expand" aria-label="Toggle full screen"></button>
+      <div class="expand-panel" id="panel-5" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="earnings-table">
           <tr>
             <th class="left">Property</th><th>Payouts</th>
@@ -337,8 +337,8 @@ defmodule SheetfolioWeb.EarningsLive do
     <% end %>
 
     <div class="earnings-section">Unrealized — open positions at the latest snapshot</div>
-    <div class="table-panel" id="table-panel-6" phx-hook="TablePanel">
-      <button class="table-expand" aria-label="Toggle full screen"></button>
+    <div class="expand-panel" id="panel-6" phx-hook="ExpandPanel">
+      <button class="expand-btn" aria-label="Toggle full screen"></button>
       <table class="earnings-table">
         <tr>
           <th class="left">Asset</th><th>Invested</th><th>Value</th><th>Unrealized</th>

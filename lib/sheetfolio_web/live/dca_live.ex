@@ -211,20 +211,23 @@ defmodule SheetfolioWeb.DcaLive do
       </div>
     </div>
 
-    <div class="chart-container" style="margin-bottom: 2rem;">
-      <div class="range-row">
-        <div class="range-toggle">
-          <%= for {value, label} <- range_options() do %>
-            <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}><%= label %></button>
-          <% end %>
+    <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
+      <button class="expand-btn" aria-label="Toggle full screen"></button>
+      <div class="chart-container" style="margin-bottom: 2rem;">
+        <div class="range-row">
+          <div class="range-toggle">
+            <%= for {value, label} <- range_options() do %>
+              <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}><%= label %></button>
+            <% end %>
+          </div>
         </div>
+        <canvas id="dca-chart" phx-hook="DcaChart" phx-update="ignore"></canvas>
       </div>
-      <canvas id="dca-chart" phx-hook="DcaChart" phx-update="ignore"></canvas>
     </div>
 
     <%= if ops != [] do %>
-      <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
-        <button class="table-expand" aria-label="Toggle full screen"></button>
+      <div class="expand-panel" id="panel-1" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="dca-table">
           <thead>
             <tr>

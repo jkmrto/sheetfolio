@@ -115,15 +115,18 @@ defmodule SheetfolioWeb.ExpensesLive do
           <% end %>
         </div>
 
-        <div class="chart-container" id="expenses-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(@expenses, @categories, @year))}>
-          <div id="expenses-chart-canvas" phx-update="ignore">
-            <canvas id="expensesChartCanvas"></canvas>
+        <div class="expand-panel" id="panel-4" phx-hook="ExpandPanel">
+          <button class="expand-btn" aria-label="Toggle full screen"></button>
+          <div class="chart-container" id="expenses-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(@expenses, @categories, @year))}>
+            <div id="expenses-chart-canvas" phx-update="ignore">
+              <canvas id="expensesChartCanvas"></canvas>
+            </div>
           </div>
         </div>
 
         <div class="expenses-table">
-          <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
-            <button class="table-expand" aria-label="Toggle full screen"></button>
+          <div class="expand-panel" id="panel-1" phx-hook="ExpandPanel">
+            <button class="expand-btn" aria-label="Toggle full screen"></button>
             <table>
               <thead>
                 <tr>
@@ -192,21 +195,27 @@ defmodule SheetfolioWeb.ExpensesLive do
           </button>
         </div>
 
-        <div class="chart-container" id="expenses-years-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(years_chart_payload(@expenses, @years))}>
-          <div id="expenses-years-chart-canvas" phx-update="ignore">
-            <canvas id="expensesYearsChartCanvas"></canvas>
+        <div class="expand-panel" id="panel-5" phx-hook="ExpandPanel">
+          <button class="expand-btn" aria-label="Toggle full screen"></button>
+          <div class="chart-container" id="expenses-years-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(years_chart_payload(@expenses, @years))}>
+            <div id="expenses-years-chart-canvas" phx-update="ignore">
+              <canvas id="expensesYearsChartCanvas"></canvas>
+            </div>
           </div>
         </div>
 
-        <div class="chart-container" style="margin-top: 1.5rem;" id="expenses-categories-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(categories_chart_payload(@expenses, @years, @categories, @mode))}>
-          <div id="expenses-categories-chart-canvas" phx-update="ignore">
-            <canvas id="expensesCategoriesChartCanvas"></canvas>
+        <div class="expand-panel" id="panel-6" phx-hook="ExpandPanel">
+          <button class="expand-btn" aria-label="Toggle full screen"></button>
+          <div class="chart-container" style="margin-top: 1.5rem;" id="expenses-categories-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(categories_chart_payload(@expenses, @years, @categories, @mode))}>
+            <div id="expenses-categories-chart-canvas" phx-update="ignore">
+              <canvas id="expensesCategoriesChartCanvas"></canvas>
+            </div>
           </div>
         </div>
 
         <div class="expenses-table">
-          <div class="table-panel" id="table-panel-2" phx-hook="TablePanel">
-            <button class="table-expand" aria-label="Toggle full screen"></button>
+          <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
+            <button class="expand-btn" aria-label="Toggle full screen"></button>
             <table>
               <thead>
                 <tr>
@@ -261,8 +270,8 @@ defmodule SheetfolioWeb.ExpensesLive do
         </div>
 
         <div class="expenses-table" style="margin-top: 0;">
-          <div class="table-panel" id="table-panel-3" phx-hook="TablePanel">
-            <button class="table-expand" aria-label="Toggle full screen"></button>
+          <div class="expand-panel" id="panel-3" phx-hook="ExpandPanel">
+            <button class="expand-btn" aria-label="Toggle full screen"></button>
             <table>
               <thead>
                 <tr>

@@ -114,9 +114,12 @@ defmodule SheetfolioWeb.CashLive do
         </div>
       </div>
 
-      <div class="chart-container" id="cash-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(filter_range(@snapshots, @range)))}>
-        <div id="cash-chart-canvas" phx-update="ignore">
-          <canvas id="cashChartCanvas"></canvas>
+      <div class="expand-panel" id="panel-1" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
+        <div class="chart-container" id="cash-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(filter_range(@snapshots, @range)))}>
+          <div id="cash-chart-canvas" phx-update="ignore">
+            <canvas id="cashChartCanvas"></canvas>
+          </div>
         </div>
       </div>
     <% end %>

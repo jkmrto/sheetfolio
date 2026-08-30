@@ -280,9 +280,12 @@ defmodule SheetfolioWeb.HistoryLive do
         </div>
       </div>
 
-      <div class="chart-container" id="history-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(assigns))}>
-        <div id="history-chart-canvas" phx-update="ignore">
-          <canvas id="historyChartCanvas"></canvas>
+      <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
+        <div class="chart-container" id="history-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(assigns))}>
+          <div id="history-chart-canvas" phx-update="ignore">
+            <canvas id="historyChartCanvas"></canvas>
+          </div>
         </div>
       </div>
 
@@ -298,8 +301,8 @@ defmodule SheetfolioWeb.HistoryLive do
         <% nil -> %>
           <div class="empty-note">No snapshot recorded for <%= es_date(@selected_date) %>.</div>
         <% positions -> %>
-          <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
-            <button class="table-expand" aria-label="Toggle full screen"></button>
+          <div class="expand-panel" id="panel-1" phx-hook="ExpandPanel">
+            <button class="expand-btn" aria-label="Toggle full screen"></button>
             <table class="snapshot-table">
               <thead>
                 <tr>

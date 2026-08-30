@@ -256,8 +256,8 @@ defmodule SheetfolioWeb.ComparisonLive do
             </div>
           </div>
 
-          <div class="table-panel" id="table-panel-1" phx-hook="TablePanel">
-            <button class="table-expand" aria-label="Toggle full screen"></button>
+          <div class="expand-panel" id="panel-1" phx-hook="ExpandPanel">
+            <button class="expand-btn" aria-label="Toggle full screen"></button>
             <table class="cmp-table">
               <thead>
                 <tr>
