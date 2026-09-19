@@ -30,6 +30,12 @@ defmodule SheetfolioWeb.Endpoint do
     gzip: false,
     cache_control_for_etags: "public, no-cache"
 
+  plug Plug.Static,
+    at: "/",
+    from: {:sheetfolio, "priv/static"},
+    gzip: false,
+    only: ~w(favicon.svg)
+
   if code_reloading? do
     plug Phoenix.CodeReloader
   end
