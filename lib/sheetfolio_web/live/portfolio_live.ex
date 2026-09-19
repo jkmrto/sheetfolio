@@ -144,6 +144,12 @@ defmodule SheetfolioWeb.PortfolioLive do
 
   defp category_color(category), do: Map.get(@category_colors, category, @other_color)
 
+  # Cash has no line on the history page — its record is the cash page.
+  defp category_history_path("Efectivo"), do: "/cash?range=all"
+
+  defp category_history_path(category),
+    do: "/history?" <> URI.encode_query(view: "category", key: category, range: "all")
+
   def handle_info(:load_category_history, socket) do
     {:noreply, assign(socket, category_history: category_history(socket.assigns))}
   end
@@ -271,7 +277,9 @@ defmodule SheetfolioWeb.PortfolioLive do
         .kpi-value { font-size: 1.35rem; font-weight: 700; color: #0f172a; }
         .kpi-sub { font-size: 0.78rem; color: #64748b; margin-top: 0.3rem; }
         .kpi-sub + .kpi-sub { margin-top: 0.1rem; }
-        .kpi-mix { display: flex; align-items: center; gap: 0.4rem; }
+        .kpi-mix { display: flex; align-items: center; gap: 0.4rem; color: inherit; text-decoration: none; }
+        .kpi-mix:hover { color: #1e293b; }
+        .kpi-mix:hover .kpi-name { text-decoration: underline; }
         .kpi-sub:not(.kpi-mix) + .kpi-mix { margin-top: 0.4rem; }
         .kpi-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; flex: none; }
         .kpi-pct { margin-left: auto; font-variant-numeric: tabular-nums; }
@@ -321,11 +329,11 @@ defmodule SheetfolioWeb.PortfolioLive do
             <div class="kpi-value"><%= eur(k.value) %></div>
             <div class="kpi-sub"><%= eur(k.invested) %> invested</div>
             <%= for slice <- @portfolio_mix do %>
-              <div class="kpi-sub kpi-mix">
+              <a class="kpi-sub kpi-mix" href={category_history_path(slice.category)}>
                 <span class="kpi-dot" style={"background: #{category_color(slice.category)}"}></span>
-                <span><%= slice.category %></span>
+                <span class="kpi-name"><%= slice.category %></span>
                 <span class="kpi-pct"><%= slice.pct %>% · <%= keur(slice.value) %></span>
-              </div>
+              </a>
             <% end %>
           </div>
           <div class="kpi">

@@ -11,7 +11,7 @@ defmodule SheetfolioWeb.CashLive do
   @collection "cash_snapshots"
   @ranges ~w(1w 1m 3m 1y ytd all)
 
-  def mount(_params, session, socket) do
+  def mount(params, session, socket) do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
@@ -21,7 +21,7 @@ defmodule SheetfolioWeb.CashLive do
        assign(socket,
          authenticated: true,
          saved: false,
-         range: "1m",
+         range: if(params["range"] in @ranges, do: params["range"], else: "1m"),
          snapshots: load_snapshots(socket),
          wise_balance: nil
        )}

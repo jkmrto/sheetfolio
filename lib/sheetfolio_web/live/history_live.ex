@@ -59,13 +59,18 @@ defmodule SheetfolioWeb.HistoryLive do
     end
   end
 
-  # Arriving from a comparison row: that holding, or that category, is what the
-  # page opens on. Anything it doesn't recognise leaves the default alone.
-  def handle_params(%{"view" => view, "key" => key}, _uri, socket) when view in ["asset", "category"] do
-    {:noreply, preselect(socket, view, key)}
+  # Arriving from a comparison row or a dashboard card: that holding, or that
+  # category, is what the page opens on, over the window asked for. Anything it
+  # doesn't recognise leaves the default alone.
+  def handle_params(%{"view" => view, "key" => key} = params, _uri, socket)
+      when view in ["asset", "category"] do
+    {:noreply, socket |> preselect(view, key) |> preselect_range(params["range"])}
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  defp preselect_range(socket, range) when range in @ranges, do: assign(socket, range: range)
+  defp preselect_range(socket, _range), do: socket
 
   defp preselect(%{assigns: %{snapshots: []}} = socket, _view, _key), do: socket
 
