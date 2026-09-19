@@ -259,6 +259,7 @@ defmodule SheetfolioWeb.PortfolioLive do
         .kpi-label { font-size: 0.72rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem; }
         .kpi-value { font-size: 1.35rem; font-weight: 700; color: #0f172a; }
         .kpi-sub { font-size: 0.78rem; color: #64748b; margin-top: 0.3rem; }
+        .kpi-sub + .kpi-sub { margin-top: 0.1rem; }
         .kpi-up { color: #16a34a; font-weight: 600; }
         .kpi-down { color: #dc2626; font-weight: 600; }
         .kpi-warn { background: #fffbeb; border: 1px solid #fde68a; color: #b45309; border-radius: 8px; padding: 0.55rem 0.9rem; font-size: 0.82rem; margin-bottom: 1.5rem; }
@@ -313,8 +314,11 @@ defmodule SheetfolioWeb.PortfolioLive do
           <div class="kpi">
             <div class="kpi-label">Total earnings</div>
             <div class={"kpi-value #{delta_class(k.earnings)}"}><%= signed(k.earnings) %></div>
-            <div class="kpi-sub"><%= eur(k.realized) %> realized · <%= eur(k.unrealized) %> unrealized</div>
-            <div class="kpi-sub"><%= eur(k.dividends) %> dividends · <%= eur(k.urbanitae) %> Urbanitae · <%= eur(k.equito) %> Equito</div>
+            <div class="kpi-sub"><%= eur(k.realized) %> realized</div>
+            <div class="kpi-sub"><%= eur(k.unrealized) %> unrealized</div>
+            <div class="kpi-sub"><%= eur(k.dividends) %> dividends</div>
+            <div class="kpi-sub"><%= eur(k.urbanitae) %> Urbanitae</div>
+            <div class="kpi-sub"><%= eur(k.equito) %> Equito</div>
           </div>
         </div>
 
