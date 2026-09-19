@@ -85,8 +85,8 @@ defmodule SheetfolioWeb.PortfolioLive do
   # The latest snapshot already carries each position's value, so the
   # allocation needs no price fetching. Cash, Urbanitae and Equito aren't
   # market positions, so each is folded in from its own source. The second
-  # breakdown covers the market positions alone — the same set the snapshot
-  # sums into total_value, so its percentages describe the Portfolio value card.
+  # breakdown is the liquid side only — market positions plus cash, property
+  # left out — and feeds the lines under the Portfolio value card.
   defp allocation(transactions, equito) do
     case Mongo.find_one(:mongo, "portfolio_snapshots", %{}, sort: %{date: -1}) do
       nil ->
@@ -94,16 +94,19 @@ defmodule SheetfolioWeb.PortfolioLive do
 
       doc ->
         categories = AssetCategories.get()
-        market = Enum.reject(doc["positions"] || [], &(&1["isin"] == "URBANITAE"))
 
-        positions =
-          market
-          |> Enum.concat(urbanitae_entries(transactions))
-          |> Enum.concat(equito_entries(equito))
+        liquid =
+          (doc["positions"] || [])
+          |> Enum.reject(&(&1["isin"] == "URBANITAE"))
           |> Enum.concat(cash_entries())
 
+        positions =
+          liquid
+          |> Enum.concat(urbanitae_entries(transactions))
+          |> Enum.concat(equito_entries(equito))
+
         {AssetCategories.breakdown(positions, categories),
-         AssetCategories.breakdown(market, categories)}
+         AssetCategories.breakdown(liquid, categories)}
     end
   end
 
@@ -321,7 +324,7 @@ defmodule SheetfolioWeb.PortfolioLive do
               <div class="kpi-sub kpi-mix">
                 <span class="kpi-dot" style={"background: #{category_color(slice.category)}"}></span>
                 <span><%= slice.category %></span>
-                <span class="kpi-pct"><%= slice.pct %>%</span>
+                <span class="kpi-pct"><%= slice.pct %>% · <%= keur(slice.value) %></span>
               </div>
             <% end %>
           </div>
@@ -455,6 +458,14 @@ defmodule SheetfolioWeb.PortfolioLive do
 
   # Thousands-separated, for the headline cards where the numbers are large
   # enough that the grouping is what makes them readable at a glance.
+  # Thousands with one decimal, es-ES style: 59812.4 → "59,8k".
+  defp keur(value) do
+    (value / 1000)
+    |> :erlang.float_to_binary(decimals: 1)
+    |> String.replace(".", ",")
+    |> Kernel.<>("k")
+  end
+
   defp eur(nil), do: "—"
 
   defp eur(value) do
