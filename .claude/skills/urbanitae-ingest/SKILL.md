@@ -16,7 +16,12 @@ Two collections back the `/urbanitae` page:
   or `"principal"` (return of capital, typically at project closure).
 - **`urbanitae_projects`** — one doc per project with `type`
   (`plusvalia` | `alquiler` | `prestamo`). Type controls how future
-  repayments default (see below).
+  repayments default (see below). An optional `status: "pending"` marks a
+  project whose round closed but which Urbanitae hasn't listed under "Mis
+  inversiones" yet ("se procederá a dar entrada a los inversores"); the
+  money still counts as outstanding, the page just shows a `pending` pill.
+  Set/clear it with `UrbanitaeProjects.upsert(%{project_key: ..., status: "pending" | nil})`
+  — clear it once the project shows up in a Mis inversiones screenshot.
 
 ## Movimientos row anatomy
 

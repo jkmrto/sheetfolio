@@ -13,11 +13,12 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      {transactions, types, pending} =
+      {transactions, types, pending, pending_keys} =
         if connected?(socket) do
-          {UrbanitaeTransactions.all(), UrbanitaeProjects.types_by_key(), UrbanitaePending.list()}
+          {UrbanitaeTransactions.all(), UrbanitaeProjects.types_by_key(), UrbanitaePending.list(),
+           UrbanitaeProjects.pending_keys()}
         else
-          {[], %{}, []}
+          {[], %{}, [], MapSet.new()}
         end
 
       {:ok,
@@ -26,6 +27,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
          transactions: transactions,
          types_by_key: types,
          pending: pending,
+         pending_keys: pending_keys,
          range: "1m",
          # The movements list is a record rather than a chart, so it opens on
          # the full history instead of the chart's last-month window.
@@ -98,6 +100,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       .u-pill { display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
       .u-pill.active { background: #e0f2fe; color: #0369a1; }
       .u-pill.closed { background: #dcfce7; color: #166534; }
+      .u-pill.pending { background: #fef3c7; color: #92400e; }
       .u-pill.investment { background: #fef3c7; color: #92400e; }
       .u-pill.repayment { background: #dcfce7; color: #166534; }
       .u-pill.yield { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
@@ -301,7 +304,8 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     ~H"""
     <div class="u-project">
       <div class="u-project-header">
-        <span class={"u-pill #{@r.status}"}>{@r.status}</span>
+        <% pill = if MapSet.member?(@pending_keys, @r.project_key), do: "pending", else: @r.status %>
+        <span class={"u-pill #{pill}"}>{pill}</span>
         <span class={"u-pill type-#{@r.type || "unknown"}"}>{type_label(@r.type)}</span>
         <span class="u-project-title">{@r.project}</span>
         <span class="u-project-city">{@r.city}</span>
