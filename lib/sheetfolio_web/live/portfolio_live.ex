@@ -60,6 +60,8 @@ defmodule SheetfolioWeb.PortfolioLive do
         transactions = UrbanitaeTransactions.all()
         equito = EquitoTransactions.all()
 
+        {allocation, portfolio_mix} = allocation(transactions, equito)
+
         # Re-reading every snapshot with its positions costs ~1.5s, so the page
         # renders first and the category history arrives after.
         send(self(), :load_category_history)
@@ -70,7 +72,8 @@ defmodule SheetfolioWeb.PortfolioLive do
            cash: cash,
            urbanitae_by_date: urbanitae_by_date(snapshots, transactions),
            equito_by_date: equito_by_date(snapshots, equito),
-           allocation: allocation(transactions, equito),
+           allocation: allocation,
+           portfolio_mix: portfolio_mix,
            dividends: Sheetfolio.Dividends.total(Sheetfolio.Dividends.all())
          )}
       else
@@ -81,21 +84,26 @@ defmodule SheetfolioWeb.PortfolioLive do
 
   # The latest snapshot already carries each position's value, so the
   # allocation needs no price fetching. Cash, Urbanitae and Equito aren't
-  # market positions, so each is folded in from its own source.
+  # market positions, so each is folded in from its own source. The second
+  # breakdown covers the market positions alone — the same set the snapshot
+  # sums into total_value, so its percentages describe the Portfolio value card.
   defp allocation(transactions, equito) do
     case Mongo.find_one(:mongo, "portfolio_snapshots", %{}, sort: %{date: -1}) do
       nil ->
-        []
+        {[], []}
 
       doc ->
+        categories = AssetCategories.get()
+        market = Enum.reject(doc["positions"] || [], &(&1["isin"] == "URBANITAE"))
+
         positions =
-          (doc["positions"] || [])
-          |> Enum.reject(&(&1["isin"] == "URBANITAE"))
+          market
           |> Enum.concat(urbanitae_entries(transactions))
           |> Enum.concat(equito_entries(equito))
           |> Enum.concat(cash_entries())
 
-        AssetCategories.breakdown(positions, AssetCategories.get())
+        {AssetCategories.breakdown(positions, categories),
+         AssetCategories.breakdown(market, categories)}
     end
   end
 
@@ -260,6 +268,10 @@ defmodule SheetfolioWeb.PortfolioLive do
         .kpi-value { font-size: 1.35rem; font-weight: 700; color: #0f172a; }
         .kpi-sub { font-size: 0.78rem; color: #64748b; margin-top: 0.3rem; }
         .kpi-sub + .kpi-sub { margin-top: 0.1rem; }
+        .kpi-mix { display: flex; align-items: center; gap: 0.4rem; }
+        .kpi-sub:not(.kpi-mix) + .kpi-mix { margin-top: 0.4rem; }
+        .kpi-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; flex: none; }
+        .kpi-pct { margin-left: auto; font-variant-numeric: tabular-nums; }
         .kpi-up { color: #16a34a; font-weight: 600; }
         .kpi-down { color: #dc2626; font-weight: 600; }
         .kpi-warn { background: #fffbeb; border: 1px solid #fde68a; color: #b45309; border-radius: 8px; padding: 0.55rem 0.9rem; font-size: 0.82rem; margin-bottom: 1.5rem; }
@@ -305,6 +317,13 @@ defmodule SheetfolioWeb.PortfolioLive do
             <div class="kpi-label">Portfolio value</div>
             <div class="kpi-value"><%= eur(k.value) %></div>
             <div class="kpi-sub"><%= eur(k.invested) %> invested</div>
+            <%= for slice <- @portfolio_mix do %>
+              <div class="kpi-sub kpi-mix">
+                <span class="kpi-dot" style={"background: #{category_color(slice.category)}"}></span>
+                <span><%= slice.category %></span>
+                <span class="kpi-pct"><%= slice.pct %>%</span>
+              </div>
+            <% end %>
           </div>
           <div class="kpi">
             <div class="kpi-label">Unrealized</div>
