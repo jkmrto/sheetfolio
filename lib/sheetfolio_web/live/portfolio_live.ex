@@ -326,11 +326,6 @@ defmodule SheetfolioWeb.PortfolioLive do
             <% end %>
           </div>
           <div class="kpi">
-            <div class="kpi-label">Unrealized</div>
-            <div class={"kpi-value #{delta_class(k.unrealized)}"}><%= signed(k.unrealized) %></div>
-            <div class="kpi-sub"><%= if k.unrealized_pct, do: signed_pct(k.unrealized_pct), else: "—" %> on cost</div>
-          </div>
-          <div class="kpi">
             <div class="kpi-label">Total earnings</div>
             <div class={"kpi-value #{delta_class(k.earnings)}"}><%= signed(k.earnings) %></div>
             <div class="kpi-sub"><%= eur(k.realized) %> realized</div>
@@ -569,7 +564,6 @@ defmodule SheetfolioWeb.PortfolioLive do
       invested: invested,
       value: value,
       unrealized: unrealized,
-      unrealized_pct: percentage(unrealized, invested),
       realized: realized,
       dividends: assigns.dividends,
       urbanitae: urbanitae,
