@@ -9,6 +9,7 @@ defmodule Sheetfolio.WiseExpenses do
   """
 
   alias Sheetfolio.WiseClient
+  require Logger
 
   @collection "wise_activities"
   @since ~D[2024-01-01]
@@ -110,8 +111,16 @@ defmodule Sheetfolio.WiseExpenses do
   end
 
   defp store(profile_id, activity_id) do
-    {:ok, detail} = WiseClient.activity(profile_id, activity_id)
+    profile_id |> WiseClient.activity(activity_id) |> store_detail(activity_id)
+  end
 
+  # Some activity details are refused (403) by the API; skip them so they are
+  # retried on the next sync instead of crashing it.
+  defp store_detail({:error, reason}, activity_id) do
+    Logger.warning("Wise activity #{activity_id} detail unavailable: #{inspect(reason)}")
+  end
+
+  defp store_detail({:ok, detail}, activity_id) do
     # Activity details have no createdOn; scheduled ones also lack visibleOn.
     date = detail["visibleOn"] || detail["finishedOn"] || detail["willStartOn"] || ""
 
