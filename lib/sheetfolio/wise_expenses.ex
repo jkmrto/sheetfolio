@@ -9,7 +9,6 @@ defmodule Sheetfolio.WiseExpenses do
   """
 
   alias Sheetfolio.WiseClient
-  require Logger
 
   @collection "wise_activities"
   @since ~D[2024-01-01]
@@ -106,29 +105,26 @@ defmodule Sheetfolio.WiseExpenses do
 
     activities
     |> Enum.reject(&(known[&1["id"]] == {&1["status"], @schema_version}))
-    |> Task.async_stream(&store(profile["id"], &1["id"]), max_concurrency: 10, timeout: 60_000)
+    |> Task.async_stream(&store(profile["id"], &1), max_concurrency: 10, timeout: 60_000)
     |> Stream.run()
   end
 
-  defp store(profile_id, activity_id) do
-    profile_id |> WiseClient.activity(activity_id) |> store_detail(activity_id)
+  defp store(profile_id, activity) do
+    profile_id
+    |> WiseClient.activity(activity["id"])
+    |> to_doc(activity)
+    |> then(&Mongo.update_one(:mongo, @collection, %{_id: activity["id"]}, %{"$set" => &1}, upsert: true))
   end
 
-  # Some activity details are refused (403) by the API; skip them so they are
-  # retried on the next sync instead of crashing it.
-  defp store_detail({:error, reason}, activity_id) do
-    Logger.warning("Wise activity #{activity_id} detail unavailable: #{inspect(reason)}")
-  end
-
-  defp store_detail({:ok, detail}, activity_id) do
+  defp to_doc({:ok, detail}, _activity) do
     # Activity details have no createdOn; scheduled ones also lack visibleOn.
     date = detail["visibleOn"] || detail["finishedOn"] || detail["willStartOn"] || ""
 
-    doc = %{
+    %{
       status: detail["status"],
       type: detail["type"],
       category: detail["category"],
-      title: String.replace(detail["title"], ~r/<[^>]*>/, ""),
+      title: strip_tags(detail["title"]),
       note: note(detail),
       date: date,
       month: String.slice(date, 0, 7) <> "-01",
@@ -137,9 +133,34 @@ defmodule Sheetfolio.WiseExpenses do
       excluded: detail["isExcludedFromInsights"] == true,
       v: @schema_version
     }
-
-    {:ok, _} = Mongo.update_one(:mongo, @collection, %{_id: activity_id}, %{"$set" => doc}, upsert: true)
   end
+
+  # Wise refuses activity details without SCA (403, x-2fa-approval REJECTED),
+  # which a personal token can't provide. The list entry has no category or
+  # insights flag, so take them from the latest stored activity with the same title.
+  defp to_doc({:error, _reason}, activity) do
+    title = strip_tags(activity["title"])
+    date = activity["createdOn"]
+
+    previous =
+      Mongo.find_one(:mongo, @collection, %{title: title, category: %{"$ne" => nil}}, sort: %{date: -1}) || %{}
+
+    %{
+      status: activity["status"],
+      type: activity["type"],
+      category: previous["category"],
+      title: title,
+      note: note(activity),
+      date: date,
+      month: String.slice(date, 0, 7) <> "-01",
+      amount: amount_eur(activity),
+      positive: String.contains?(activity["primaryAmount"], "<positive>"),
+      excluded: previous["excluded"] == true,
+      v: @schema_version
+    }
+  end
+
+  defp strip_tags(title), do: String.replace(title, ~r/<[^>]*>/, "")
 
   defp months do
     Date.utc_today()
