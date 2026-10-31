@@ -32,6 +32,7 @@ defmodule Sheetfolio.WiseExpenses do
   # Share of a title's history its dominant category needs before a new
   # activity with that title inherits it.
   @agreement 0.8
+  @note_agreement 0.6
 
   @codes Map.new(@labels, fn {code, label} -> {label, code} end)
 
@@ -80,6 +81,7 @@ defmodule Sheetfolio.WiseExpenses do
         note: doc["note"] || "",
         category: Map.get(@labels, doc["category"], "Other"),
         uncategorized: is_nil(doc["category"]),
+        guessed: doc["guessed"] == true,
         amount: doc["amount"]
       }
     end)
@@ -117,11 +119,11 @@ defmodule Sheetfolio.WiseExpenses do
       Mongo.find(:mongo, @collection, %{}, projection: %{status: 1, v: 1})
       |> Map.new(&{&1["_id"], {&1["status"], &1["v"]}})
 
-    by_title = categorized_titles()
+    inference = inference()
 
     activities
     |> Enum.reject(&(known[&1["id"]] == {&1["status"], @schema_version}))
-    |> Task.async_stream(&store(profile["id"], &1, by_title),
+    |> Task.async_stream(&store(profile["id"], &1, inference),
       max_concurrency: 10,
       timeout: 60_000
     )
@@ -131,13 +133,13 @@ defmodule Sheetfolio.WiseExpenses do
   end
 
   @doc """
-  Files one uncategorized activity under `label`. Other uncategorized ones
-  from the same merchant follow only if their history then agrees on it
-  (see `title_categories/1`).
+  Files one uncategorized or guessed activity under `label`, which also makes
+  it something later guesses learn from. Other uncategorized ones follow if
+  that settles their merchant or note (see `infer/3`).
   """
   def categorize(id, label) when is_map_key(@codes, label) do
-    Mongo.update_one(:mongo, @collection, %{_id: id, category: nil}, %{
-      "$set" => %{category: @codes[label]}
+    Mongo.update_one(:mongo, @collection, %{_id: id}, %{
+      "$set" => %{category: @codes[label], guessed: false}
     })
 
     fill_uncategorized()
@@ -151,13 +153,44 @@ defmodule Sheetfolio.WiseExpenses do
   def title_key(nil), do: ""
   def title_key(title), do: title |> String.downcase() |> String.replace(~r/[^\p{L}\p{N}]/u, "")
 
-  defp categorized_titles do
-    Mongo.find(:mongo, @collection, %{category: %{"$ne" => nil}, positive: false},
-      sort: %{date: 1},
-      projection: %{title: 1, category: 1, excluded: 1}
-    )
-    |> title_categories()
+  # What a guess may learn from: outgoing activities whose category came from
+  # Wise or from a person, never another guess.
+  defp inference do
+    docs =
+      Mongo.find(
+        :mongo,
+        @collection,
+        %{category: %{"$ne" => nil}, positive: false, guessed: %{"$ne" => true}},
+        sort: %{date: 1},
+        projection: %{title: 1, note: 1, category: 1, excluded: 1}
+      )
+      |> Enum.to_list()
+
+    %{
+      titles: title_categories(docs),
+      notes: note_model(Enum.filter(docs, &(&1["note"] not in [nil, ""])))
+    }
   end
+
+  @doc """
+  The category, insights flag and guessed mark for an activity Wise gave no
+  detail for. A merchant whose history agrees decides it outright; otherwise
+  the transfer note, if any, is guessed from (see `guess_from_note/2`), and
+  the result is marked as a guess so it can be corrected.
+  """
+  def infer(title, note, %{titles: titles, notes: notes}) do
+    case Map.fetch(titles, title_key(title)) do
+      {:ok, known} -> Map.put(known, :guessed, false)
+      :error -> note_guess(guess_from_note(note || "", notes))
+    end
+  end
+
+  # Only a guess that lands in a category of its own is worth showing; GENERAL
+  # and the like would only file it under Other with a question mark.
+  defp note_guess(category) when is_map_key(@labels, category),
+    do: %{category: category, excluded: false, guessed: true}
+
+  defp note_guess(_category), do: %{category: nil, excluded: false, guessed: false}
 
   @doc """
   The category and insights flag an activity stored without a detail takes
@@ -184,24 +217,91 @@ defmodule Sheetfolio.WiseExpenses do
       else: []
   end
 
-  # An activity stored before its merchant had any categorized match gets one
-  # as soon as a match exists, e.g. after a manual categorization.
-  defp fill_uncategorized do
-    by_title = categorized_titles()
+  @months ~w(enero febrero marzo abril mayo junio julio agosto septiembre setiembre octubre noviembre diciembre)
+  @stopwords ~w(del las los con por para una mes)
 
-    Mongo.find(:mongo, @collection, %{category: nil}, projection: %{title: 1})
-    |> Enum.filter(&Map.has_key?(by_title, title_key(&1["title"])))
-    |> Enum.each(fn doc ->
-      Mongo.update_one(:mongo, @collection, %{_id: doc["_id"]}, %{
-        "$set" => by_title[title_key(doc["title"])]
-      })
+  @doc """
+  The words a transfer note is matched on: lowercased, accents stripped,
+  month names and filler dropped, and cut to five letters, which is a crude
+  stem that still lets "restaurante" meet "restaurantes" and "ticker" meet
+  "ticket".
+  """
+  def note_tokens(note) do
+    note
+    |> String.downcase()
+    |> :unicode.characters_to_nfd_binary()
+    |> String.replace(~r/\p{Mn}/u, "")
+    |> String.split(~r/[^a-z]+/, trim: true)
+    |> Enum.reject(&(String.length(&1) < 3 or &1 in @months or &1 in @stopwords))
+    |> Enum.map(&String.slice(&1, 0, 5))
+    |> Enum.uniq()
+  end
+
+  @doc """
+  How often each note word was filed under each category, from activities
+  whose category Wise or a person gave: `%{word => %{category => count}}`.
+  """
+  def note_model(docs) do
+    for doc <- docs, word <- note_tokens(doc["note"] || ""), reduce: %{} do
+      model ->
+        Map.update(
+          model,
+          word,
+          %{doc["category"] => 1},
+          &Map.update(&1, doc["category"], 1, fn n -> n + 1 end)
+        )
+    end
+  end
+
+  @doc """
+  The category a transfer's note points to, or nil. Every known word casts
+  one vote, split across the categories it has been filed under; the winner
+  needs #{trunc(@note_agreement * 100)}% of the votes, so a note whose words
+  pull different ways stays uncategorized.
+  """
+  def guess_from_note(note, model) do
+    note
+    |> note_tokens()
+    |> Enum.flat_map(&word_votes(model[&1]))
+    |> Enum.reduce(%{}, fn {category, vote}, acc ->
+      Map.update(acc, category, vote, &(&1 + vote))
+    end)
+    |> winner()
+  end
+
+  defp word_votes(nil), do: []
+
+  defp word_votes(counts) do
+    total = counts |> Map.values() |> Enum.sum()
+    Enum.map(counts, fn {category, n} -> {category, n / total} end)
+  end
+
+  defp winner(votes) when map_size(votes) == 0, do: nil
+
+  defp winner(votes) do
+    {category, vote} = Enum.max_by(votes, &elem(&1, 1))
+    if vote / Enum.sum(Map.values(votes)) >= @note_agreement, do: category
+  end
+
+  @doc """
+  Gives every uncategorized activity whatever `infer/3` now makes of it, e.g.
+  after a manual categorization settled its merchant.
+  """
+  def fill_uncategorized do
+    inference = inference()
+
+    Mongo.find(:mongo, @collection, %{category: nil}, projection: %{title: 1, note: 1})
+    |> Enum.map(&{&1["_id"], infer(&1["title"], &1["note"], inference)})
+    |> Enum.reject(fn {_id, inferred} -> is_nil(inferred.category) end)
+    |> Enum.each(fn {id, inferred} ->
+      Mongo.update_one(:mongo, @collection, %{_id: id}, %{"$set" => inferred})
     end)
   end
 
-  defp store(profile_id, activity, by_title) do
+  defp store(profile_id, activity, inference) do
     profile_id
     |> WiseClient.activity(activity["id"])
-    |> to_doc(activity, by_title)
+    |> to_doc(activity, inference)
     |> then(
       &Mongo.update_one(:mongo, @collection, %{_id: activity["id"]}, %{"$set" => &1},
         upsert: true
@@ -209,7 +309,7 @@ defmodule Sheetfolio.WiseExpenses do
     )
   end
 
-  defp to_doc({:ok, detail}, _activity, _by_title) do
+  defp to_doc({:ok, detail}, _activity, _inference) do
     # Activity details have no createdOn; scheduled ones also lack visibleOn.
     date = detail["visibleOn"] || detail["finishedOn"] || detail["willStartOn"] || ""
 
@@ -224,29 +324,32 @@ defmodule Sheetfolio.WiseExpenses do
       amount: amount_eur(detail),
       positive: String.contains?(detail["primaryAmount"], "<positive>"),
       excluded: detail["isExcludedFromInsights"] == true,
+      guessed: false,
       v: @schema_version
     }
   end
 
   # Wise refuses activity details without SCA (403, x-2fa-approval REJECTED),
   # which a personal token can't provide. The list entry has no category or
-  # insights flag, so take them from the latest stored activity with the same title.
-  defp to_doc({:error, _reason}, activity, by_title) do
+  # insights flag, so infer them from the title and the transfer note.
+  defp to_doc({:error, _reason}, activity, inference) do
     title = strip_tags(activity["title"])
+    note = note(activity)
     date = activity["createdOn"]
-    previous = Map.get(by_title, title_key(title), %{category: nil, excluded: false})
+    inferred = infer(title, note, inference)
 
     %{
       status: activity["status"],
       type: activity["type"],
-      category: previous.category,
+      category: inferred.category,
       title: title,
-      note: note(activity),
+      note: note,
       date: date,
       month: String.slice(date, 0, 7) <> "-01",
       amount: amount_eur(activity),
       positive: String.contains?(activity["primaryAmount"], "<positive>"),
-      excluded: previous.excluded,
+      excluded: inferred.excluded,
+      guessed: inferred.guessed,
       v: @schema_version
     }
   end

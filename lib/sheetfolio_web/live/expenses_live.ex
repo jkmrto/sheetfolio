@@ -92,6 +92,7 @@ defmodule SheetfolioWeb.ExpensesLive do
       .expenses-table th.left, .expenses-table td.left { text-align: left; }
       .expenses-table form.categorize { display: inline; }
       .expenses-table form.categorize select { font: inherit; color: #9c8400; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 0.1rem 0.3rem; background: white; }
+      .expenses-table form.categorize.guessed select { color: inherit; }
       .expenses-table thead th { color: #64748b; border-bottom: 1px solid #e2e8f0; }
       .expenses-table tbody tr:nth-child(even) { background: #f8fafc; }
       /* The month column is pinned on mobile, so it paints its own background
@@ -297,10 +298,10 @@ defmodule SheetfolioWeb.ExpensesLive do
                   <tr>
                     <td><%= row.date %></td>
                     <td class="left">
-                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= if row.uncategorized do %><form phx-change="categorize" class="categorize"><input type="hidden" name="activity" value={row.id} /><select name="category" aria-label="Category">
-                            <option value="" selected>Uncategorized</option>
+                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= if row.uncategorized or row.guessed do %><form phx-change="categorize" class={"categorize#{if row.guessed, do: " guessed"}"} title={if row.guessed, do: "Guessed from the transfer note"}><input type="hidden" name="activity" value={row.id} /><select name="category" aria-label="Category">
+                            <option :if={row.uncategorized} value="" selected>Uncategorized</option>
                             <%= for category <- assignable_categories() do %>
-                              <option value={category}><%= category %></option>
+                              <option value={category} selected={row.guessed and category == row.category}><%= category %><%= if row.guessed and category == row.category, do: "?" %></option>
                             <% end %>
                           </select></form><% else %><%= row.category %><% end %>
                     </td>
