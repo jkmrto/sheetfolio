@@ -36,6 +36,7 @@ defmodule SheetfolioWeb.HistoryLive do
         snapshots =
           Mongo.find(:mongo, "portfolio_snapshots", %{}, sort: %{date: 1})
           |> Enum.to_list()
+          |> with_dividends(Enum.group_by(Sheetfolio.Dividends.all(), & &1["isin"]))
 
         asset_list = build_asset_list(snapshots)
         categories = AssetCategories.get()
@@ -353,6 +354,22 @@ defmodule SheetfolioWeb.HistoryLive do
     """
   end
 
+  # A distribution is paid out as cash, so the snapshot's value no longer holds
+  # it; each position carries what it has paid up to that day so the gain
+  # counts it back.
+  defp with_dividends(snapshots, by_isin) do
+    Enum.map(snapshots, fn snap ->
+      positions = Enum.map(List.wrap(snap["positions"]), &Map.put(&1, "dividends", dividends_to(by_isin, &1["isin"], snap["date"])))
+      Map.put(snap, "positions", positions)
+    end)
+  end
+
+  defp dividends_to(by_isin, isin, date) do
+    by_isin
+    |> Map.get(isin, [])
+    |> Enum.reduce(0.0, fn payment, acc -> if payment["date"] <= date, do: acc + payment["amount"], else: acc end)
+  end
+
   defp latest_date([]), do: nil
   defp latest_date(snapshots), do: List.last(snapshots)["date"]
 
@@ -404,7 +421,7 @@ defmodule SheetfolioWeb.HistoryLive do
   defp position_row(position) do
     invested = number(position["invested"])
     value = number(position["value"])
-    gain = Float.round(value - invested, 2)
+    gain = Float.round(value + number(position["dividends"]) - invested, 2)
 
     %{
       isin: position["isin"],
@@ -421,7 +438,7 @@ defmodule SheetfolioWeb.HistoryLive do
   defp totals(rows) do
     invested = rows |> Enum.reduce(0.0, &(&1.invested + &2)) |> Float.round(2)
     value = rows |> Enum.reduce(0.0, &(&1.value + &2)) |> Float.round(2)
-    gain = Float.round(value - invested, 2)
+    gain = rows |> Enum.reduce(0.0, &(&1.gain + &2)) |> Float.round(2)
 
     %{invested: invested, value: value, gain: gain, gain_pct: percentage(gain, invested)}
   end
@@ -586,13 +603,14 @@ defmodule SheetfolioWeb.HistoryLive do
   defp held(positions) do
     %{
       "value" => Enum.reduce(positions, 0.0, &(number(&1["value"]) + &2)),
-      "invested" => Enum.reduce(positions, 0.0, &(number(&1["invested"]) + &2))
+      "invested" => Enum.reduce(positions, 0.0, &(number(&1["invested"]) + &2)),
+      "dividends" => Enum.reduce(positions, 0.0, &(number(&1["dividends"]) + &2))
     }
   end
 
-  defp point(date, %{"value" => value, "invested" => invested}, :pct)
+  defp point(date, %{"value" => value, "invested" => invested} = position, :pct)
        when is_number(value) and is_number(invested) and invested > 0 do
-    [%{x: date, y: Float.round((value - invested) / invested * 100, 2)}]
+    [%{x: date, y: Float.round((value + number(position["dividends"]) - invested) / invested * 100, 2)}]
   end
 
   defp point(date, %{"value" => value}, :value) when is_number(value) do
@@ -603,9 +621,9 @@ defmodule SheetfolioWeb.HistoryLive do
     [%{x: date, y: invested}]
   end
 
-  defp point(date, %{"value" => value, "invested" => invested}, :gain)
+  defp point(date, %{"value" => value, "invested" => invested} = position, :gain)
        when is_number(value) and is_number(invested) do
-    [%{x: date, y: Float.round(value - invested, 2)}]
+    [%{x: date, y: Float.round(value + number(position["dividends"]) - invested, 2)}]
   end
 
   defp point(_date, _position, _metric), do: []
