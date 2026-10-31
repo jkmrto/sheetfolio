@@ -34,7 +34,9 @@ defmodule Sheetfolio.WiseExpenses do
   @agreement 0.8
   @note_agreement 0.6
 
-  @codes Map.new(@labels, fn {code, label} -> {label, code} end)
+  # "Other" is what Wise's own GENERAL shows as, so filing a row there by hand
+  # stores that.
+  @codes @labels |> Map.new(fn {code, label} -> {label, code} end) |> Map.put("Other", "GENERAL")
 
   @colors %{
     "Groceries" => "#2a78d6",
@@ -133,9 +135,10 @@ defmodule Sheetfolio.WiseExpenses do
   end
 
   @doc """
-  Files one uncategorized or guessed activity under `label`, which also makes
-  it something later guesses learn from. Other uncategorized ones follow if
-  that settles their merchant or note (see `infer/3`).
+  Files an activity under `label`, overriding whatever Wise or a guess gave
+  it, which also makes it something later guesses learn from. Other
+  uncategorized ones follow if that settles their merchant or note (see
+  `infer/3`).
   """
   def categorize(id, label) when is_map_key(@codes, label) do
     Mongo.update_one(:mongo, @collection, %{_id: id}, %{

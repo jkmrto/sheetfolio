@@ -18,6 +18,7 @@ defmodule SheetfolioWeb.ExpensesLive do
          authenticated: true,
          expenses: nil,
          registry: [],
+         editing: false,
          year: year,
          view: "months",
          mode: "total",
@@ -51,13 +52,18 @@ defmodule SheetfolioWeb.ExpensesLive do
   end
 
   # Wise no longer hands out categories, so a new merchant arrives
-  # uncategorized until it is filed here once.
+  # uncategorized and a transfer's category is a guess; either can be filed
+  # here, and in edit mode so can any other row Wise filed wrong.
   def handle_event("categorize", %{"activity" => id, "category" => category}, socket) do
     if category in assignable_categories(), do: WiseExpenses.categorize(id, category)
     {:noreply, assign(socket, expenses: WiseExpenses.stored_monthly_by_category(), registry: WiseExpenses.list())}
   end
 
-  defp assignable_categories, do: WiseExpenses.categories() -- ["Other"]
+  def handle_event("toggle_edit", _params, socket) do
+    {:noreply, assign(socket, editing: !socket.assigns.editing)}
+  end
+
+  defp assignable_categories, do: WiseExpenses.categories()
 
   def render(assigns) do
     assigns =
@@ -91,8 +97,13 @@ defmodule SheetfolioWeb.ExpensesLive do
       .expenses-table th:first-child, .expenses-table td:first-child { text-align: left; }
       .expenses-table th.left, .expenses-table td.left { text-align: left; }
       .expenses-table form.categorize { display: inline; }
-      .expenses-table form.categorize select { font: inherit; color: #9c8400; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 0.1rem 0.3rem; background: white; }
-      .expenses-table form.categorize.guessed select { color: inherit; }
+      .expenses-table form.categorize select { font: inherit; color: inherit; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 0.1rem 0.3rem; background: white; }
+      .expenses-table form.categorize.uncategorized select { color: #9c8400; }
+      .registry-toolbar { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; }
+      .registry-toolbar .expand-btn { margin: 0 0 0 auto; }
+      .edit-toggle { border: 1px solid #e2e8f0; background: white; color: #64748b; font-size: 0.78rem; line-height: 1.2; padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; }
+      .edit-toggle:hover { background: #f1f5f9; color: #1e293b; }
+      .edit-toggle.active { background: #1e293b; border-color: #1e293b; color: white; }
       .expenses-table thead th { color: #64748b; border-bottom: 1px solid #e2e8f0; }
       .expenses-table tbody tr:nth-child(even) { background: #f8fafc; }
       /* The month column is pinned on mobile, so it paints its own background
@@ -283,7 +294,12 @@ defmodule SheetfolioWeb.ExpensesLive do
 
         <div class="expenses-table" style="margin-top: 0;">
           <div class="expand-panel" id="panel-3" phx-hook="ExpandPanel">
-            <button class="expand-btn" aria-label="Toggle full screen"></button>
+            <div class="registry-toolbar">
+              <button type="button" class={"edit-toggle#{if @editing, do: " active"}"} phx-click="toggle_edit" aria-pressed={to_string(@editing)}>
+                <%= if @editing, do: "Done", else: "Edit categories" %>
+              </button>
+              <button class="expand-btn" aria-label="Toggle full screen"></button>
+            </div>
             <table>
               <thead>
                 <tr>
@@ -298,10 +314,10 @@ defmodule SheetfolioWeb.ExpensesLive do
                   <tr>
                     <td><%= row.date %></td>
                     <td class="left">
-                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= if row.uncategorized or row.guessed do %><form phx-change="categorize" class={"categorize#{if row.guessed, do: " guessed"}"} title={if row.guessed, do: "Guessed from the transfer note"}><input type="hidden" name="activity" value={row.id} /><select name="category" aria-label="Category">
+                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= if @editing or row.uncategorized or row.guessed do %><form phx-change="categorize" class={"categorize#{if row.uncategorized, do: " uncategorized"}"} title={if row.guessed, do: "Guessed from the transfer note"}><input type="hidden" name="activity" value={row.id} /><select name="category" aria-label="Category">
                             <option :if={row.uncategorized} value="" selected>Uncategorized</option>
                             <%= for category <- assignable_categories() do %>
-                              <option value={category} selected={row.guessed and category == row.category}><%= category %><%= if row.guessed and category == row.category, do: "?" %></option>
+                              <option value={category} selected={not row.uncategorized and category == row.category}><%= category %><%= if row.guessed and category == row.category, do: "?" %></option>
                             <% end %>
                           </select></form><% else %><%= row.category %><% end %>
                     </td>
