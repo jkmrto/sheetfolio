@@ -55,6 +55,7 @@ A Stop hook in `.claude/settings.json` blocks ending the turn while the working 
 ### Web layer (`lib/sheetfolio_web/`)
 - Everything is LiveView; routes in `router.ex`. All pages sit behind `AuthPlug` (single password, `APP_PASSWORD`).
 - Routes under the `live_session :authenticated` block mount `LoadingHook`, which redirects to `/loading` until `OperationsServer` has finished its boot load. Pages that need operation history belong inside that block.
+- `POST /mcp` serves the Model Context Protocol (stateless Streamable HTTP, JSON responses only) for AI clients. It sits outside the browser pipeline behind `McpAuthPlug`, a bearer token checked against `MCP_TOKEN` (unset refuses everything). `Sheetfolio.Mcp.Server` is the JSON-RPC layer; `Sheetfolio.Mcp.Tools` holds the tools, which must stay read-only.
 - LiveViews are self-contained: markup, inline CSS, and chart JS live in each `*_live.ex` file. Follow that pattern rather than extracting shared components.
 
 ## Conventions

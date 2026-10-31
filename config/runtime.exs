@@ -26,6 +26,9 @@ if config_env() != :test do
 
   config :sheetfolio, app_password: app_password
 
+  # Bearer token for /mcp; unset leaves the MCP endpoint refusing everything.
+  config :sheetfolio, mcp_token: System.get_env("MCP_TOKEN")
+
   spreadsheet_id =
     System.get_env("SPREADSHEET_ID") ||
       raise "Missing SPREADSHEET_ID environment variable"

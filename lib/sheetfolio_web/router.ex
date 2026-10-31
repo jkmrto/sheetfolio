@@ -31,6 +31,20 @@ defmodule SheetfolioWeb.Router do
     plug SheetfolioWeb.AuthPlug
   end
 
+  # Model Context Protocol for AI clients, behind a bearer token rather than
+  # the browser session. Read-only.
+  pipeline :mcp do
+    plug SheetfolioWeb.McpAuthPlug
+  end
+
+  scope "/mcp", SheetfolioWeb do
+    pipe_through :mcp
+
+    post "/", McpController, :handle
+    get "/", McpController, :no_stream
+    delete "/", McpController, :no_session
+  end
+
   scope "/", SheetfolioWeb do
     pipe_through :browser
 
