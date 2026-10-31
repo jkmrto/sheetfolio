@@ -1,11 +1,29 @@
 defmodule SheetfolioWeb.Router do
   use SheetfolioWeb, :router
 
+  # No inline scripts anywhere, so scripts are limited to the bundle and the two
+  # pinned Chart.js files. Styles stay inline: every LiveView carries its own
+  # <style> block and style attributes.
+  @csp Enum.join(
+         [
+           "default-src 'self'",
+           "script-src 'self' https://cdn.jsdelivr.net",
+           "style-src 'self' 'unsafe-inline'",
+           "img-src 'self' data:",
+           "connect-src 'self'",
+           "object-src 'none'",
+           "base-uri 'self'",
+           "form-action 'self'",
+           "frame-ancestors 'none'"
+         ],
+         "; "
+       )
+
   pipeline :browser do
     plug :accepts, ["html"]
     plug :fetch_session
     plug :protect_from_forgery
-    plug :put_secure_browser_headers, %{"content-security-policy" => "frame-ancestors 'none'"}
+    plug :put_secure_browser_headers, %{"content-security-policy" => @csp}
     plug :put_root_layout, html: {SheetfolioWeb.Layouts, :root}
   end
 
