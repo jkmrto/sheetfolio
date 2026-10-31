@@ -29,6 +29,10 @@ defmodule Sheetfolio.WiseExpenses do
     "ENTERTAINMENT" => "Entertainment"
   }
 
+  # Share of a title's history its dominant category needs before a new
+  # activity with that title inherits it.
+  @agreement 0.8
+
   @codes Map.new(@labels, fn {code, label} -> {label, code} end)
 
   @colors %{
@@ -65,7 +69,9 @@ defmodule Sheetfolio.WiseExpenses do
 
   @doc "All spending activities, most recent first."
   def list do
-    Mongo.find(:mongo, @collection, %{status: "COMPLETED", excluded: false, positive: false}, sort: %{date: -1})
+    Mongo.find(:mongo, @collection, %{status: "COMPLETED", excluded: false, positive: false},
+      sort: %{date: -1}
+    )
     |> Enum.map(fn doc ->
       %{
         id: doc["_id"],
@@ -115,33 +121,26 @@ defmodule Sheetfolio.WiseExpenses do
 
     activities
     |> Enum.reject(&(known[&1["id"]] == {&1["status"], @schema_version}))
-    |> Task.async_stream(&store(profile["id"], &1, by_title), max_concurrency: 10, timeout: 60_000)
+    |> Task.async_stream(&store(profile["id"], &1, by_title),
+      max_concurrency: 10,
+      timeout: 60_000
+    )
     |> Stream.run()
 
     fill_uncategorized()
   end
 
   @doc """
-  Files an uncategorized activity under `label`, along with every other
-  uncategorized one with the same title. Later activities from that merchant
-  then inherit it through the title match in `to_doc/3`.
+  Files one uncategorized activity under `label`. Other uncategorized ones
+  from the same merchant follow only if their history then agrees on it
+  (see `title_categories/1`).
   """
   def categorize(id, label) when is_map_key(@codes, label) do
-    case Mongo.find_one(:mongo, @collection, %{_id: id}) do
-      nil -> :ok
-      doc -> set_category(uncategorized_ids(title_key(doc["title"])), @codes[label])
-    end
-  end
+    Mongo.update_one(:mongo, @collection, %{_id: id, category: nil}, %{
+      "$set" => %{category: @codes[label]}
+    })
 
-  defp uncategorized_ids(key) do
-    Mongo.find(:mongo, @collection, %{category: nil}, projection: %{title: 1})
-    |> Enum.filter(&(title_key(&1["title"]) == key))
-    |> Enum.map(& &1["_id"])
-  end
-
-  defp set_category(ids, code) do
-    Mongo.update_many(:mongo, @collection, %{_id: %{"$in" => ids}}, %{"$set" => %{category: code}})
-    :ok
+    fill_uncategorized()
   end
 
   @doc """
@@ -152,11 +151,37 @@ defmodule Sheetfolio.WiseExpenses do
   def title_key(nil), do: ""
   def title_key(title), do: title |> String.downcase() |> String.replace(~r/[^\p{L}\p{N}]/u, "")
 
-  # Latest category and insights flag per title, for activities stored
-  # without a detail.
   defp categorized_titles do
-    Mongo.find(:mongo, @collection, %{category: %{"$ne" => nil}}, sort: %{date: 1}, projection: %{title: 1, category: 1, excluded: 1})
-    |> Map.new(&{title_key(&1["title"]), %{category: &1["category"], excluded: &1["excluded"] == true}})
+    Mongo.find(:mongo, @collection, %{category: %{"$ne" => nil}, positive: false},
+      sort: %{date: 1},
+      projection: %{title: 1, category: 1, excluded: 1}
+    )
+    |> title_categories()
+  end
+
+  @doc """
+  The category and insights flag an activity stored without a detail takes
+  from earlier outgoing activities with the same title, keyed by
+  `title_key/1`. A title gets an entry only when one category covers at least
+  80% of its history: Wise files a few of a merchant's payments oddly (one
+  Lidl trip in 190), but a transfer's title is the recipient, not the
+  purpose, so transfers to one person spread across every category and any
+  pick would be a guess. The insights flag is the latest activity's.
+  """
+  def title_categories(docs) do
+    docs
+    |> Enum.group_by(&title_key(&1["title"]))
+    |> Enum.flat_map(fn {key, group} -> dominant_category(key, group) end)
+    |> Map.new()
+  end
+
+  defp dominant_category(key, group) do
+    {category, count} =
+      group |> Enum.frequencies_by(& &1["category"]) |> Enum.max_by(&elem(&1, 1))
+
+    if count / length(group) >= @agreement,
+      do: [{key, %{category: category, excluded: List.last(group)["excluded"] == true}}],
+      else: []
   end
 
   # An activity stored before its merchant had any categorized match gets one
@@ -167,7 +192,9 @@ defmodule Sheetfolio.WiseExpenses do
     Mongo.find(:mongo, @collection, %{category: nil}, projection: %{title: 1})
     |> Enum.filter(&Map.has_key?(by_title, title_key(&1["title"])))
     |> Enum.each(fn doc ->
-      Mongo.update_one(:mongo, @collection, %{_id: doc["_id"]}, %{"$set" => by_title[title_key(doc["title"])]})
+      Mongo.update_one(:mongo, @collection, %{_id: doc["_id"]}, %{
+        "$set" => by_title[title_key(doc["title"])]
+      })
     end)
   end
 
@@ -175,7 +202,11 @@ defmodule Sheetfolio.WiseExpenses do
     profile_id
     |> WiseClient.activity(activity["id"])
     |> to_doc(activity, by_title)
-    |> then(&Mongo.update_one(:mongo, @collection, %{_id: activity["id"]}, %{"$set" => &1}, upsert: true))
+    |> then(
+      &Mongo.update_one(:mongo, @collection, %{_id: activity["id"]}, %{"$set" => &1},
+        upsert: true
+      )
+    )
   end
 
   defp to_doc({:ok, detail}, _activity, _by_title) do
