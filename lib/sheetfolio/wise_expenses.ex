@@ -29,6 +29,8 @@ defmodule Sheetfolio.WiseExpenses do
     "ENTERTAINMENT" => "Entertainment"
   }
 
+  @codes Map.new(@labels, fn {code, label} -> {label, code} end)
+
   @colors %{
     "Groceries" => "#2a78d6",
     "Eating out" => "#1baf7a",
@@ -66,10 +68,12 @@ defmodule Sheetfolio.WiseExpenses do
     Mongo.find(:mongo, @collection, %{status: "COMPLETED", excluded: false, positive: false}, sort: %{date: -1})
     |> Enum.map(fn doc ->
       %{
+        id: doc["_id"],
         date: String.slice(doc["date"] || "", 0, 10),
         title: doc["title"],
         note: doc["note"] || "",
         category: Map.get(@labels, doc["category"], "Other"),
+        uncategorized: is_nil(doc["category"]),
         amount: doc["amount"]
       }
     end)
@@ -85,7 +89,11 @@ defmodule Sheetfolio.WiseExpenses do
   """
   def monthly_by_category do
     sync()
+    stored_monthly_by_category()
+  end
 
+  @doc "`monthly_by_category/0` from what is already stored, without asking Wise."
+  def stored_monthly_by_category do
     totals =
       Mongo.find(:mongo, @collection, %{status: "COMPLETED", excluded: false, positive: false})
       |> Enum.group_by(&{&1["month"], Map.get(@labels, &1["category"], "Other")}, & &1["amount"])
@@ -103,20 +111,74 @@ defmodule Sheetfolio.WiseExpenses do
       Mongo.find(:mongo, @collection, %{}, projection: %{status: 1, v: 1})
       |> Map.new(&{&1["_id"], {&1["status"], &1["v"]}})
 
+    by_title = categorized_titles()
+
     activities
     |> Enum.reject(&(known[&1["id"]] == {&1["status"], @schema_version}))
-    |> Task.async_stream(&store(profile["id"], &1), max_concurrency: 10, timeout: 60_000)
+    |> Task.async_stream(&store(profile["id"], &1, by_title), max_concurrency: 10, timeout: 60_000)
     |> Stream.run()
+
+    fill_uncategorized()
   end
 
-  defp store(profile_id, activity) do
+  @doc """
+  Files an uncategorized activity under `label`, along with every other
+  uncategorized one with the same title. Later activities from that merchant
+  then inherit it through the title match in `to_doc/3`.
+  """
+  def categorize(id, label) when is_map_key(@codes, label) do
+    case Mongo.find_one(:mongo, @collection, %{_id: id}) do
+      nil -> :ok
+      doc -> set_category(uncategorized_ids(title_key(doc["title"])), @codes[label])
+    end
+  end
+
+  defp uncategorized_ids(key) do
+    Mongo.find(:mongo, @collection, %{category: nil}, projection: %{title: 1})
+    |> Enum.filter(&(title_key(&1["title"]) == key))
+    |> Enum.map(& &1["_id"])
+  end
+
+  defp set_category(ids, code) do
+    Mongo.update_many(:mongo, @collection, %{_id: %{"$in" => ids}}, %{"$set" => %{category: code}})
+    :ok
+  end
+
+  @doc """
+  The key two titles are matched on: Wise spells the same merchant with
+  varying case and spacing ("Escuela infantil Sol y Luna" and "Escuela
+  Infantil SolYLuna"), so only letters and digits count.
+  """
+  def title_key(nil), do: ""
+  def title_key(title), do: title |> String.downcase() |> String.replace(~r/[^\p{L}\p{N}]/u, "")
+
+  # Latest category and insights flag per title, for activities stored
+  # without a detail.
+  defp categorized_titles do
+    Mongo.find(:mongo, @collection, %{category: %{"$ne" => nil}}, sort: %{date: 1}, projection: %{title: 1, category: 1, excluded: 1})
+    |> Map.new(&{title_key(&1["title"]), %{category: &1["category"], excluded: &1["excluded"] == true}})
+  end
+
+  # An activity stored before its merchant had any categorized match gets one
+  # as soon as a match exists, e.g. after a manual categorization.
+  defp fill_uncategorized do
+    by_title = categorized_titles()
+
+    Mongo.find(:mongo, @collection, %{category: nil}, projection: %{title: 1})
+    |> Enum.filter(&Map.has_key?(by_title, title_key(&1["title"])))
+    |> Enum.each(fn doc ->
+      Mongo.update_one(:mongo, @collection, %{_id: doc["_id"]}, %{"$set" => by_title[title_key(doc["title"])]})
+    end)
+  end
+
+  defp store(profile_id, activity, by_title) do
     profile_id
     |> WiseClient.activity(activity["id"])
-    |> to_doc(activity)
+    |> to_doc(activity, by_title)
     |> then(&Mongo.update_one(:mongo, @collection, %{_id: activity["id"]}, %{"$set" => &1}, upsert: true))
   end
 
-  defp to_doc({:ok, detail}, _activity) do
+  defp to_doc({:ok, detail}, _activity, _by_title) do
     # Activity details have no createdOn; scheduled ones also lack visibleOn.
     date = detail["visibleOn"] || detail["finishedOn"] || detail["willStartOn"] || ""
 
@@ -138,24 +200,22 @@ defmodule Sheetfolio.WiseExpenses do
   # Wise refuses activity details without SCA (403, x-2fa-approval REJECTED),
   # which a personal token can't provide. The list entry has no category or
   # insights flag, so take them from the latest stored activity with the same title.
-  defp to_doc({:error, _reason}, activity) do
+  defp to_doc({:error, _reason}, activity, by_title) do
     title = strip_tags(activity["title"])
     date = activity["createdOn"]
-
-    previous =
-      Mongo.find_one(:mongo, @collection, %{title: title, category: %{"$ne" => nil}}, sort: %{date: -1}) || %{}
+    previous = Map.get(by_title, title_key(title), %{category: nil, excluded: false})
 
     %{
       status: activity["status"],
       type: activity["type"],
-      category: previous["category"],
+      category: previous.category,
       title: title,
       note: note(activity),
       date: date,
       month: String.slice(date, 0, 7) <> "-01",
       amount: amount_eur(activity),
       positive: String.contains?(activity["primaryAmount"], "<positive>"),
-      excluded: previous["excluded"] == true,
+      excluded: previous.excluded,
       v: @schema_version
     }
   end

@@ -50,6 +50,15 @@ defmodule SheetfolioWeb.ExpensesLive do
     {:noreply, assign(socket, mode: mode)}
   end
 
+  # Wise no longer hands out categories, so a new merchant arrives
+  # uncategorized until it is filed here once.
+  def handle_event("categorize", %{"activity" => id, "category" => category}, socket) do
+    if category in assignable_categories(), do: WiseExpenses.categorize(id, category)
+    {:noreply, assign(socket, expenses: WiseExpenses.stored_monthly_by_category(), registry: WiseExpenses.list())}
+  end
+
+  defp assignable_categories, do: WiseExpenses.categories() -- ["Other"]
+
   def render(assigns) do
     assigns =
       assign(assigns,
@@ -81,6 +90,8 @@ defmodule SheetfolioWeb.ExpensesLive do
       .expenses-table th, .expenses-table td { padding: 0.4rem 0.8rem; text-align: right; white-space: nowrap; }
       .expenses-table th:first-child, .expenses-table td:first-child { text-align: left; }
       .expenses-table th.left, .expenses-table td.left { text-align: left; }
+      .expenses-table form.categorize { display: inline; }
+      .expenses-table form.categorize select { font: inherit; color: #9c8400; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 0.1rem 0.3rem; background: white; }
       .expenses-table thead th { color: #64748b; border-bottom: 1px solid #e2e8f0; }
       .expenses-table tbody tr:nth-child(even) { background: #f8fafc; }
       /* The month column is pinned on mobile, so it paints its own background
@@ -286,7 +297,12 @@ defmodule SheetfolioWeb.ExpensesLive do
                   <tr>
                     <td><%= row.date %></td>
                     <td class="left">
-                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= row.category %>
+                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= if row.uncategorized do %><form phx-change="categorize" class="categorize"><input type="hidden" name="activity" value={row.id} /><select name="category" aria-label="Category">
+                            <option value="" selected>Uncategorized</option>
+                            <%= for category <- assignable_categories() do %>
+                              <option value={category}><%= category %></option>
+                            <% end %>
+                          </select></form><% else %><%= row.category %><% end %>
                     </td>
                     <td class="left"><%= if row.note != "", do: row.note, else: row.title %></td>
                     <td><%= format(row.amount) %></td>
