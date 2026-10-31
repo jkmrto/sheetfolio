@@ -17,7 +17,13 @@ if config_env() != :test do
 
   config :sheetfolio, google_credentials: credentials
 
-  app_password = System.get_env("APP_PASSWORD", "")
+  # An empty password would let anyone in, so production refuses to boot without one.
+  app_password =
+    case {config_env(), System.get_env("APP_PASSWORD", "")} do
+      {:prod, ""} -> raise "Missing APP_PASSWORD environment variable"
+      {_env, password} -> password
+    end
+
   config :sheetfolio, app_password: app_password
 
   spreadsheet_id =

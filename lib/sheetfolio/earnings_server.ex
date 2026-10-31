@@ -23,6 +23,7 @@ defmodule Sheetfolio.EarningsServer do
   @table :sheetfolio_price_cache
   @price_ttl_ms 15 * 60 * 1000
   @fx_refresh_ms 60 * 60 * 1000
+  @fx_retry_ms 60 * 1000
 
   def start_link(_), do: GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
 
@@ -51,7 +52,13 @@ defmodule Sheetfolio.EarningsServer do
     # Fetched synchronously: SnapshotRecorder asks for these as soon as it
     # starts, and recording a day's USD positions at a placeholder rate of 1.0
     # would write a wrong number that nothing later corrects.
-    {:ok, %{eur_usd: fetch_fx("EURUSD=X"), eur_cad: fetch_fx("EURCAD=X")}}
+    eur_usd = fetch_fx("EURUSD=X")
+    eur_cad = fetch_fx("EURCAD=X")
+
+    if is_nil(eur_usd) or is_nil(eur_cad),
+      do: Process.send_after(self(), :refresh_fx, @fx_retry_ms)
+
+    {:ok, update_fx(%{eur_usd: 1.0, eur_cad: 1.0}, eur_usd, eur_cad)}
   end
 
   def handle_info(:refresh_fx, state) do
@@ -62,7 +69,7 @@ defmodule Sheetfolio.EarningsServer do
   end
 
   def handle_info({:fx, eur_usd, eur_cad}, state) do
-    {:noreply, %{state | eur_usd: eur_usd, eur_cad: eur_cad}}
+    {:noreply, update_fx(state, eur_usd, eur_cad)}
   end
 
   def handle_call(:get_fx_rates, _from, state) do
@@ -129,9 +136,9 @@ defmodule Sheetfolio.EarningsServer do
   end
 
   defp compute_and_cache_price_at(key, isin, date) do
-    {eur_usd, eur_cad} = fx_at(date)
+    {fx_status, {eur_usd, eur_cad}} = fx_at(date)
     result = compute_price_at(isin, date, eur_usd, eur_cad)
-    :ets.insert(@table, {key, result})
+    if fx_status == :ok, do: :ets.insert(@table, {key, result})
     result
   end
 
@@ -157,27 +164,45 @@ defmodule Sheetfolio.EarningsServer do
     key = {:fx_at, Date.to_iso8601(date)}
 
     case :ets.lookup(@table, key) do
-      [{_key, rates}] ->
-        rates
-
-      [] ->
-        rates = {fetch_fx_at("EURUSD=X", date), fetch_fx_at("EURCAD=X", date)}
-        :ets.insert(@table, {key, rates})
-        rates
+      [{_key, rates}] -> {:ok, rates}
+      [] -> cache_fx_at(key, fetch_fx_at("EURUSD=X", date), fetch_fx_at("EURCAD=X", date))
     end
+  end
+
+  # Only a complete answer is cached. A failed lookup borrows today's rate for
+  # this one request and is retried next time, instead of pinning a wrong rate
+  # to that date for as long as the machine runs.
+  defp cache_fx_at(key, eur_usd, eur_cad) when is_number(eur_usd) and is_number(eur_cad) do
+    :ets.insert(@table, {key, {eur_usd, eur_cad}})
+    {:ok, {eur_usd, eur_cad}}
+  end
+
+  defp cache_fx_at(_key, eur_usd, eur_cad) do
+    {usd_now, cad_now} = get_fx_rates()
+    {:fallback, {eur_usd || usd_now, eur_cad || cad_now}}
+  end
+
+  # A failed fetch keeps the last good rate: falling back to 1.0 would value
+  # every USD and CAD position at par until the next refresh.
+  defp update_fx(state, eur_usd, eur_cad) do
+    %{state | eur_usd: eur_usd || state.eur_usd, eur_cad: eur_cad || state.eur_cad}
   end
 
   defp fetch_fx(pair) do
     case YahooFinance.fetch_price(pair) do
-      {:ok, rate, _} -> rate
-      _ -> 1.0
+      {:ok, rate, _} ->
+        rate
+
+      error ->
+        Logger.warning("[EarningsServer] FX fetch for #{pair} failed: #{inspect(error)}")
+        nil
     end
   end
 
   defp fetch_fx_at(pair, date) do
     case YahooFinance.fetch_price_at(pair, date) do
       {:ok, rate, _} -> rate
-      _ -> 1.0
+      _ -> nil
     end
   end
 end
