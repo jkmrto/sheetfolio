@@ -101,9 +101,12 @@ defmodule SheetfolioWeb.ExpensesLive do
       .expenses-table form.categorize.uncategorized select { color: #9c8400; }
       .registry-toolbar { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; }
       .registry-toolbar .expand-btn { margin: 0 0 0 auto; }
-      .edit-toggle { border: 1px solid #e2e8f0; background: white; color: #64748b; font-size: 0.78rem; line-height: 1.2; padding: 0.3rem 0.6rem; border-radius: 6px; cursor: pointer; }
-      .edit-toggle:hover { background: #f1f5f9; color: #1e293b; }
-      .edit-toggle.active { background: #1e293b; border-color: #1e293b; color: white; }
+      .edit-toggle { display: inline-flex; align-items: center; gap: 0.45rem; border: 0; background: none; color: #64748b; font-size: 0.8rem; padding: 0.2rem 0; cursor: pointer; }
+      .edit-toggle:hover, .edit-toggle.on { color: #1e293b; }
+      .edit-toggle .switch { position: relative; width: 2rem; height: 1.1rem; border-radius: 999px; background: #cbd5e1; transition: background 0.15s; flex-shrink: 0; }
+      .edit-toggle .switch::after { content: ""; position: absolute; top: 0.15rem; left: 0.15rem; width: 0.8rem; height: 0.8rem; border-radius: 50%; background: white; box-shadow: 0 1px 2px rgba(0,0,0,0.2); transition: transform 0.15s; }
+      .edit-toggle.on .switch { background: #1e293b; }
+      .edit-toggle.on .switch::after { transform: translateX(0.9rem); }
       .expenses-table thead th { color: #64748b; border-bottom: 1px solid #e2e8f0; }
       .expenses-table tbody tr:nth-child(even) { background: #f8fafc; }
       /* The month column is pinned on mobile, so it paints its own background
@@ -295,8 +298,8 @@ defmodule SheetfolioWeb.ExpensesLive do
         <div class="expenses-table" style="margin-top: 0;">
           <div class="expand-panel" id="panel-3" phx-hook="ExpandPanel">
             <div class="registry-toolbar">
-              <button type="button" class={"edit-toggle#{if @editing, do: " active"}"} phx-click="toggle_edit" aria-pressed={to_string(@editing)}>
-                <%= if @editing, do: "Done", else: "Edit categories" %>
+              <button type="button" role="switch" class={"edit-toggle#{if @editing, do: " on"}"} phx-click="toggle_edit" aria-checked={to_string(@editing)}>
+                <span class="switch" aria-hidden="true"></span>Edit categories
               </button>
               <button class="expand-btn" aria-label="Toggle full screen"></button>
             </div>
