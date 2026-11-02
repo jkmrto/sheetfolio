@@ -22,9 +22,7 @@ defmodule SheetfolioWeb.EquitoLive do
          authenticated: true,
          transactions: transactions,
          properties: properties,
-         range: "1m",
-         # The movements list is a record rather than a chart, so it opens on
-         # the full history instead of the chart's last-month window.
+         range: "all",
          tx_range: "all",
          view: "overview"
        )}
@@ -84,7 +82,16 @@ defmodule SheetfolioWeb.EquitoLive do
       .range-toggle { display: flex; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
       .range-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
       .range-toggle button.selected { background: #1e293b; color: white; }
+      .re-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+      .re-subtabs a { color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
+      .re-subtabs a:hover { color: #1e293b; }
+      .re-subtabs a.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
     </style>
+
+    <div class="re-subtabs">
+      <.link navigate="/urbanitae">Urbanitae</.link>
+      <.link navigate="/equito" class="active">Equito</.link>
+    </div>
 
     <%= if @transactions == [] and @properties == [] do %>
       <div class="e-empty">

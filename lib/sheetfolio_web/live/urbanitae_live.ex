@@ -126,7 +126,16 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       .u-project-stats .v { font-variant-numeric: tabular-nums; font-weight: 600; color: #0f172a; }
       .u-project-stats .v.pos { color: #1baf7a; }
       .u-project-stats .v.neg { color: #e34948; }
+      .re-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+      .re-subtabs a { color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
+      .re-subtabs a:hover { color: #1e293b; }
+      .re-subtabs a.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
     </style>
+
+    <div class="re-subtabs">
+      <.link navigate="/urbanitae" class="active">Urbanitae</.link>
+      <.link navigate="/equito">Equito</.link>
+    </div>
 
     <%= if @pending != [] do %>
       <div class="u-pending">
