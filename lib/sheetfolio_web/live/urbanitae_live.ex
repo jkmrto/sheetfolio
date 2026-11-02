@@ -28,9 +28,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
          types_by_key: types,
          pending: pending,
          pending_keys: pending_keys,
-         range: "1m",
-         # The movements list is a record rather than a chart, so it opens on
-         # the full history instead of the chart's last-month window.
+         range: "all",
          tx_range: "all",
          view: "overview"
        )}
