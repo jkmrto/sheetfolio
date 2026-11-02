@@ -162,7 +162,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
             <span class="stat-value">{format_eur(@totals.invested_all_time)}</span>
           </div>
           <div class="stat">
-            <span class="stat-label">Outstanding</span>
+            <span class="stat-label">Currently invested</span>
             <span class="stat-value">{format_eur(@totals.outstanding)}</span>
           </div>
           <div class="stat has-tip" tabindex="0">
@@ -250,10 +250,10 @@ defmodule SheetfolioWeb.UrbanitaeLive do
 
     %{
       metric: "value",
-      title: "Outstanding balance and cumulative earnings (€)",
+      title: "Currently invested and cumulative earnings (€)",
       datasets: [
         %{
-          label: "Outstanding",
+          label: "Currently invested",
           color: "#2a78d6",
           data: Enum.map(series, &%{x: &1.date, y: &1.outstanding})
         },
@@ -274,7 +274,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
         <div class="u-type-section">
           <div class="u-type-header">
             <span class="label">{type_label(type)}</span>
-            <span class="subtotal">Outstanding {format_eur(sum_field(group, :outstanding))}</span>
+            <span class="subtotal">Currently invested {format_eur(sum_field(group, :outstanding))}</span>
           </div>
           <%= for r <- group do %>
             {render_project(assign(assigns, r: r))}
@@ -287,7 +287,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
         <div class="u-type-section">
           <div class="u-type-header">
             <span class="label">Untyped</span>
-            <span class="subtotal">Outstanding {format_eur(sum_field(unknown, :outstanding))}</span>
+            <span class="subtotal">Currently invested {format_eur(sum_field(unknown, :outstanding))}</span>
           </div>
           <%= for r <- unknown do %>
             {render_project(assign(assigns, r: r))}
@@ -319,7 +319,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       </div>
       <div class="u-project-stats">
         <span><span class="k">Invested</span><span class="v">{format_eur(@r.invested)}</span></span>
-        <span><span class="k">Outstanding</span><span class="v">{format_eur(@r.outstanding)}</span></span>
+        <span><span class="k">Currently invested</span><span class="v">{format_eur(@r.outstanding)}</span></span>
         <span><span class="k">Yield</span><span class="v pos">{format_eur(@r.yield_returned)}</span></span>
         <%= if @r.status == "closed" do %>
           <span><span class="k">Principal back</span><span class="v">{format_eur(@r.principal_returned)}</span></span>
