@@ -254,7 +254,13 @@ defmodule SheetfolioWeb.EquitoLive do
   end
 
   defp render_movements(assigns) do
-    assigns = assign(assigns, rows: filter_range(assigns.transactions, assigns.tx_range))
+    assigns =
+      assign(assigns,
+        rows:
+          assigns.transactions
+          |> filter_range(assigns.tx_range)
+          |> EquitoTransactions.movement_rows()
+      )
 
     ~H"""
     <div class="e-card">
@@ -276,16 +282,20 @@ defmodule SheetfolioWeb.EquitoLive do
                 <th>Date</th>
                 <th>Property</th>
                 <th>Kind</th>
+                <th class="num">Rent</th>
+                <th class="num">Withheld</th>
                 <th class="num">Amount</th>
               </tr>
             </thead>
             <tbody>
-              <%= for tx <- @rows do %>
+              <%= for row <- @rows do %>
                 <tr>
-                  <td>{tx["date"]}</td>
-                  <td class="code">{tx["code"] || "—"}</td>
-                  <td><span class={"e-pill #{tx["kind"]}"}>{tx["raw_label"] || tx["kind"]}</span></td>
-                  <td class="num">{format_eur(tx["amount"])}</td>
+                  <td>{row.date}</td>
+                  <td class="code">{row.code || "—"}</td>
+                  <td><span class={"e-pill #{row.kind}"}>{row.label}</span></td>
+                  <td class="num">{if row.rent, do: format_eur(row.rent), else: ""}</td>
+                  <td class="num">{if row.withheld, do: format_eur(row.withheld), else: ""}</td>
+                  <td class="num">{format_eur(row.amount)}</td>
                 </tr>
               <% end %>
             </tbody>

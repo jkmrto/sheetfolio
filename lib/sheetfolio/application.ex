@@ -52,6 +52,8 @@ defmodule Sheetfolio.Application do
       # Keeps the Urbanitae email cache current (boot + 23:00 UTC), which is what
       # feeds the "missing distribution" banner on /urbanitae
       Sheetfolio.UrbanitaeEmailSync,
+      # Records Equito's monthly rent payouts from Gmail (boot + 12:00 UTC)
+      Sheetfolio.EquitoEmailSync,
       # Phoenix HTTP endpoint
       SheetfolioWeb.Endpoint
     ]

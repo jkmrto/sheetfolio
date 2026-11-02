@@ -81,6 +81,51 @@ defmodule Sheetfolio.EquitoTransactions do
   end
 
   @doc """
+  The movement list as shown on /equito, newest first. A payout's RENTA and
+  RET. FISCAL legs fold into one row, since they're one distribution:
+
+      %{date, code, kind: "rent", label: "RENTA", rent: 1.42, withheld: -0.26, amount: 1.16}
+
+  Every other movement keeps its own row with `rent` and `withheld` nil.
+  """
+  def movement_rows(transactions) do
+    {legs, others} = Enum.split_with(transactions, &(&1["kind"] in ["rent", "tax"]))
+
+    payouts =
+      legs
+      |> Enum.group_by(&{&1["date"], &1["code"]})
+      |> Enum.map(fn {{date, code}, rows} ->
+        rent = sum_amount(rows, "rent")
+        withheld = sum_amount(rows, "tax")
+
+        %{
+          date: date,
+          code: code,
+          kind: "rent",
+          label: "RENTA",
+          rent: round2(rent),
+          withheld: round2(withheld),
+          amount: round2(rent + withheld)
+        }
+      end)
+
+    singles =
+      Enum.map(others, fn tx ->
+        %{
+          date: tx["date"],
+          code: tx["code"],
+          kind: tx["kind"],
+          label: tx["raw_label"] || tx["kind"],
+          rent: nil,
+          withheld: nil,
+          amount: tx["amount"]
+        }
+      end)
+
+    Enum.sort_by(payouts ++ singles, &{&1.date, &1.code || ""}, :desc)
+  end
+
+  @doc """
   Portfolio-wide figures. `rewards` covers the movements with no property
   attached (RECOMPENSA), which are income but not a property's yield.
   """
@@ -151,6 +196,7 @@ defmodule Sheetfolio.EquitoTransactions do
   defp purchase_amount(_tx), do: 0.0
 
   defp income_amount(%{"kind" => kind, "amount" => amount}) when kind in ["rent", "tax"], do: amount
+
   defp income_amount(_tx), do: 0.0
 
   defp reward_amount(%{"kind" => "reward", "amount" => amount}), do: amount
