@@ -89,6 +89,7 @@ defmodule SheetfolioWeb.EquitoLive do
     </style>
 
     <div class="re-subtabs">
+      <.link navigate="/real-estate">Overview</.link>
       <.link navigate="/urbanitae">Urbanitae</.link>
       <.link navigate="/equito" class="active">Equito</.link>
     </div>

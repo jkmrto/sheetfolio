@@ -131,6 +131,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     </style>
 
     <div class="re-subtabs">
+      <.link navigate="/real-estate">Overview</.link>
       <.link navigate="/urbanitae" class="active">Urbanitae</.link>
       <.link navigate="/equito">Equito</.link>
     </div>

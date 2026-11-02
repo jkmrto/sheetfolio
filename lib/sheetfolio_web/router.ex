@@ -62,6 +62,7 @@ defmodule SheetfolioWeb.Router do
     live "/comparison", ComparisonLive
     live "/cash", CashLive
     live "/expenses", ExpensesLive
+    live "/real-estate", RealEstateLive
     live "/urbanitae", UrbanitaeLive
     live "/equito", EquitoLive
 
