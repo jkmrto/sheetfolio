@@ -17,7 +17,7 @@ Sheetfolio is a single-user Elixir/Phoenix portfolio dashboard. It reads holding
 - `fly deploy` — deploy to production.
 - One-off backfills live in `scripts/*.exs` (run with `mix run`).
 
-CI (GitHub Actions) runs `mix compile --warnings-as-errors`, `mix credo`, `mix test`, `mix hex.audit`, and `mix sobelow --config`.
+CI (GitHub Actions) runs `mix compile --warnings-as-errors`, `mix credo`, `mix test`, `mix hex.audit`, and `mix sobelow --config` — run all of them locally before committing (see Quality gate).
 
 ## End-of-task routine
 When a task that changed code is complete and verified, always finish by:
@@ -31,6 +31,8 @@ This is standing authorization — don't ask for confirmation.
 A Stop hook in `.claude/settings.json` blocks ending the turn while the working tree is dirty.
 
 ## Quality gate
+Before every commit, run the same checks CI does and fix anything they flag: `mix compile --warnings-as-errors`, `mix credo`, `mix test`, `mix sobelow --config`, and `mix hex.audit`. `mix hex.audit` only reports security advisories on Hex 2.6+, so keep the local Hex current (`mix local.hex --force`); an older Hex passes locally while CI fails.
+
 `mix credo` must stay clean before committing (also enforced in CI). `.credo.exs` loads a custom check, `Sheetfolio.Checks.NestedCase` (`checks/nested_case.ex`), which forbids a `case` nested inside another `case` — extract the inner one into a function with one clause per pattern.
 
 ## Architecture
