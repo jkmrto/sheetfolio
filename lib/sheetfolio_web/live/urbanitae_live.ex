@@ -262,6 +262,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
               <tr>
                 <th>Expected</th>
                 <th>Project</th>
+                <th>Invested on</th>
                 <th class="num">To receive</th>
                 <th>First estimate</th>
                 <th>Moved</th>
@@ -274,6 +275,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
                 <tr>
                   <td>{month_label(f["close_date"])}</td>
                   <td>{project_label(%{city: p["city"], project: p["project"]})}</td>
+                  <td>{date_label(p["invested_on"])}</td>
                   <td class="num">{format_eur(f["to_receive"])}</td>
                   <td>{month_label(f["first_close_date"])}</td>
                   <td class={delay_class(delay)}>{delay_label(delay)}</td>
@@ -290,12 +292,17 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   end
 
   defp active_forecasts(forecasts, rollup) do
-    active = for r <- rollup, r.status == "active", into: MapSet.new(), do: r.project_key
-    Enum.filter(forecasts, &MapSet.member?(active, &1["project_key"]))
+    invested_on = for r <- rollup, r.status == "active", into: %{}, do: {r.project_key, r.first_date}
+
+    for p <- forecasts, date = invested_on[p["project_key"]] do
+      Map.put(p, "invested_on", date)
+    end
   end
 
   defp month_label(nil), do: "-"
   defp month_label(iso_date), do: iso_date |> Date.from_iso8601!() |> Calendar.strftime("%b %Y")
+
+  defp date_label(iso_date), do: iso_date |> Date.from_iso8601!() |> Calendar.strftime("%d %b %Y")
 
   defp delay_label(0), do: "on time"
   defp delay_label(months) when months > 0, do: "#{months} mo later"
