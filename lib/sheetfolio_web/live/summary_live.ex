@@ -84,10 +84,12 @@ defmodule SheetfolioWeb.SummaryLive do
     ~H"""
     <style>
       .summary-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-      .summary-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 1; }
+      .summary-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 1; box-shadow: 1px 0 0 #1e293b; }
       .summary-table th:not(:first-child) { text-align: right; }
       .sort-btn { all: unset; cursor: pointer; white-space: nowrap; }
       .sort-btn:hover { text-decoration: underline; }
+      .sort-icon { display: inline-block; margin-left: 0.3rem; opacity: 0.55; }
+      .sort-icon.current { opacity: 1; }
       .sort-btn:focus-visible { outline: 2px solid white; outline-offset: 2px; }
       .summary-table td { padding: 0.65rem 1rem; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
       .summary-table td:not(:first-child) { text-align: right; }
@@ -271,7 +273,7 @@ defmodule SheetfolioWeb.SummaryLive do
     ~H"""
     <th aria-sort={aria_sort(@sort, @column)}>
       <button type="button" class="sort-btn" phx-click="sort" phx-value-column={@column}>
-        {@label}{sort_arrow(@sort, @column)}
+        {@label}<span class={["sort-icon", elem(@sort, 0) == @column && "current"]} aria-hidden="true">{sort_arrow(@sort, @column)}</span>
       </button>
     </th>
     """
@@ -281,9 +283,9 @@ defmodule SheetfolioWeb.SummaryLive do
   defp aria_sort({column, :desc}, column), do: "descending"
   defp aria_sort(_sort, _column), do: "none"
 
-  defp sort_arrow({column, :asc}, column), do: " ▲"
-  defp sort_arrow({column, :desc}, column), do: " ▼"
-  defp sort_arrow(_sort, _column), do: ""
+  defp sort_arrow({column, :asc}, column), do: "▲"
+  defp sort_arrow({column, :desc}, column), do: "▼"
+  defp sort_arrow(_sort, _column), do: "↕"
 
   defp default_sort(:settled), do: {:total_received, :desc}
   defp default_sort(_active), do: {:invested, :desc}
