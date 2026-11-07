@@ -121,6 +121,10 @@ logged in through Playwright the private area exposes the data:
 - `/es/menuPrivado/proyecto/{id}/`: "¿Cuándo recuperaré el dinero invertido?"
   (plan and extensions), and the Comunicaciones tab (what the manager reports).
 
+A project that pays instalments before closing (Pérez Galdós) also sets
+`recurring_amount` and `recurring_months`, so the monthly chart spreads them
+out. Refresh `to_receive` after each payment.
+
 Some of those POST responses contain session tokens. Never print or keep
 them, and delete captured bodies once you're done.
 

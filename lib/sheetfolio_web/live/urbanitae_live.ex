@@ -4,7 +4,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   alias Sheetfolio.{UrbanitaePending, UrbanitaeProjects, UrbanitaeTransactions}
 
   @ranges ~w(1w 1m 3m 1y ytd all)
-  @views ~w(overview projects transactions)
+  @views ~w(overview payouts projects transactions)
   @type_labels %{"plusvalia" => "Plusvalía", "alquiler" => "Alquiler", "prestamo" => "Préstamo"}
 
   defp type_order, do: ["plusvalia", "alquiler", "prestamo"]
@@ -85,8 +85,8 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       .u-totals .tip-popup .row { display: flex; justify-content: space-between; gap: 1.5rem; }
       .u-totals .tip-popup .k { color: #94a3b8; }
       .u-totals .stat.has-tip:hover .tip-popup, .u-totals .stat.has-tip:focus-within .tip-popup { display: block; }
-      .u-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
-      .u-subtabs button { border: none; background: none; color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+      .u-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; overflow-x: auto; scrollbar-width: none; }
+      .u-subtabs button { white-space: nowrap; border: none; background: none; color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
       .u-subtabs button:hover { color: #1e293b; }
       .u-subtabs button.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
       table.u-table { width: 100%; border-collapse: collapse; font-size: 0.87rem; }
@@ -116,8 +116,6 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       .u-type-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid #e2e8f0; }
       .u-type-header .label { font-size: 0.9rem; font-weight: 600; color: #0f172a; text-transform: uppercase; letter-spacing: 0.03em; }
       .u-type-header .subtotal { font-size: 0.85rem; color: #475569; font-variant-numeric: tabular-nums; }
-      .u-table td.neg { color: #e34948; font-weight: 600; }
-      .u-table td.pos { color: #1baf7a; font-weight: 600; }
       #panel-payouts td:not(:first-child):not(:last-child) { white-space: nowrap; }
       .u-project { border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.9rem 1.15rem; margin-bottom: 0.75rem; }
       .u-project-header { display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.65rem; flex-wrap: wrap; }
@@ -185,6 +183,9 @@ defmodule SheetfolioWeb.UrbanitaeLive do
         <button type="button" class={if @view == "overview", do: "active", else: ""} phx-click="set_view" phx-value-view="overview">
           Overview
         </button>
+        <button type="button" class={if @view == "payouts", do: "active", else: ""} phx-click="set_view" phx-value-view="payouts">
+          Expected payouts
+        </button>
         <button type="button" class={if @view == "projects", do: "active", else: ""} phx-click="set_view" phx-value-view="projects">
           Projects
         </button>
@@ -196,6 +197,8 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       <%= cond do %>
         <% @view == "overview" -> %>
           <%= render_overview(assigns) %>
+        <% @view == "payouts" -> %>
+          <%= render_payouts(assigns) %>
         <% @view == "projects" -> %>
           <%= render_projects(assigns) %>
         <% true -> %>
@@ -244,17 +247,27 @@ defmodule SheetfolioWeb.UrbanitaeLive do
         </div>
       </div>
     </div>
-    {render_payouts(assigns)}
     """
   end
 
   defp render_payouts(assigns) do
-    assigns = assign(assigns, payouts: active_forecasts(assigns.forecasts, assigns.rollup))
+    payouts = active_forecasts(assigns.forecasts, assigns.rollup)
+    monthly = UrbanitaeProjects.monthly_payouts(payouts, Date.utc_today())
+    assigns = assign(assigns, payouts: payouts, monthly: monthly)
 
     ~H"""
     <%= if @payouts != [] do %>
-      <div class="u-card">
-        <h2>Expected payouts</h2>
+      <div class="expand-panel" id="panel-payouts-chart" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
+        <div class="chart-container" id="payouts-chart" phx-hook="PayoutsChart" data-chart={Jason.encode!(payouts_chart_payload(@monthly))}>
+          <div id="payouts-chart-canvas" phx-update="ignore">
+            <canvas id="payoutsChartCanvas"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="u-card" style="margin-top: 1.5rem;">
+        <h2>By project</h2>
         <div class="expand-panel" id="panel-payouts" phx-hook="ExpandPanel">
           <button class="expand-btn" aria-label="Toggle full screen"></button>
           <table class="u-table">
@@ -291,6 +304,19 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       </div>
     <% end %>
     """
+  end
+
+  defp payouts_chart_payload(monthly) do
+    %{
+      title: "Expected Urbanitae payouts per month (€)",
+      labels: Enum.map(monthly, &Calendar.strftime(&1.month, "%b %Y")),
+      amounts: Enum.map(monthly, & &1.amount),
+      totals: Enum.map(monthly, &format_eur(&1.amount)),
+      projects:
+        Enum.map(monthly, fn row ->
+          Enum.map(row.projects, fn {name, amount} -> "#{name}: #{format_eur(amount)}" end)
+        end)
+    }
   end
 
   defp active_forecasts(forecasts, rollup) do

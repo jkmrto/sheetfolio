@@ -27,6 +27,8 @@ defmodule Sheetfolio.UrbanitaeProjects do
         "first_close_date" => "2027-05-27",  # earliest estimate, kept across refreshes
         "extension_date" => "2027-11-14",    # optional: latest date the contract allows
         "to_receive" => 1274.4,              # gross, still to be paid out
+        "recurring_amount" => 81.25,         # optional: instalments before the close,
+        "recurring_months" => [1, 4, 7, 10], # part of to_receive
         "note" => "...",                     # what the project manager last reported
         "as_of" => "2026-11-07"}
   """
@@ -100,6 +102,52 @@ defmodule Sheetfolio.UrbanitaeProjects do
   """
   def delay_months(%{"close_date" => close, "first_close_date" => first}) do
     month_index(close) - month_index(first)
+  end
+
+  @doc """
+  Expected payouts per calendar month, from `today`'s month to the last payout,
+  including the months with nothing due. A payout whose date has passed without
+  being paid counts as due this month.
+
+      [%{month: ~D[2026-11-01], amount: 7775.0, projects: [{"Julio Dinis", 6610.0}, ...]}, ...]
+  """
+  def monthly_payouts(projects, today) do
+    current = Date.beginning_of_month(today)
+    by_month = projects |> Enum.flat_map(&payments(&1, current)) |> Enum.group_by(&elem(&1, 0))
+    last = by_month |> Map.keys() |> Enum.max(Date, fn -> current end)
+
+    current
+    |> months_until(Date.shift(last, month: 1))
+    |> Enum.map(&month_row(&1, Map.get(by_month, &1, [])))
+  end
+
+  defp payments(%{"project" => name, "forecast" => forecast}, current) do
+    close = forecast["close_date"] |> Date.from_iso8601!() |> Date.beginning_of_month()
+    close = Enum.max([close, current], Date)
+    instalments = instalments(forecast, current, close)
+    paid = instalments |> Enum.map(&elem(&1, 1)) |> Enum.sum()
+
+    [{close, forecast["to_receive"] - paid} | instalments]
+    |> Enum.map(fn {month, amount} -> {month, name, amount} end)
+  end
+
+  defp instalments(%{"recurring_amount" => amount, "recurring_months" => months}, current, close) do
+    for month <- months_until(current, close), month.month in months, do: {month, amount}
+  end
+
+  defp instalments(_forecast, _current, _close), do: []
+
+  defp months_until(from, to) do
+    from
+    |> Stream.iterate(&Date.shift(&1, month: 1))
+    |> Enum.take_while(&(Date.compare(&1, to) == :lt))
+  end
+
+  defp month_row(month, payments) do
+    projects = Enum.map(payments, fn {_month, name, amount} -> {name, Float.round(amount / 1, 2)} end)
+    total = projects |> Enum.map(&elem(&1, 1)) |> Enum.sum()
+
+    %{month: month, amount: Float.round(total / 1, 2), projects: projects}
   end
 
   defp month_index(iso_date) do

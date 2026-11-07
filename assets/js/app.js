@@ -129,6 +129,48 @@ Hooks.HistoryChart = {
   }
 }
 
+// One bar per month, months with nothing due included, so gaps between payouts
+// read as time. Hovering anywhere in a month lists the projects paying in it.
+Hooks.PayoutsChart = {
+  mounted() { redrawOnExpand(this); this.render() },
+  updated() { this.render() },
+  destroyed() { if (this.chart) this.chart.destroy() },
+  render() {
+    const payload = JSON.parse(this.el.dataset.chart)
+    const fmt = (v) => `€${v.toLocaleString("es-ES")}`
+
+    if (this.chart) this.chart.destroy()
+
+    this.chart = new Chart(this.el.querySelector("canvas").getContext("2d"), {
+      type: "bar",
+      data: {
+        labels: payload.labels,
+        datasets: [{data: payload.amounts, backgroundColor: "#2a78d6", borderRadius: 4, maxBarThickness: 28}]
+      },
+      options: {
+        responsive: true,
+        aspectRatio: chartAspectRatio(),
+        maintainAspectRatio: !isExpanded(this.el),
+        interaction: {mode: "index", intersect: false},
+        plugins: {
+          legend: {display: false},
+          title: {display: true, text: payload.title, font: {size: narrow() ? 14 : 18}},
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ctx.parsed.y ? `Total: ${payload.totals[ctx.dataIndex]}` : "Nothing expected",
+              afterLabel: (ctx) => payload.projects[ctx.dataIndex]
+            }
+          }
+        },
+        scales: {
+          x: {grid: {display: false}, ticks: {autoSkip: true, maxRotation: 0}},
+          y: {beginAtZero: true, ticks: {callback: (v) => fmt(v)}}
+        }
+      }
+    })
+  }
+}
+
 Hooks.CategoryPie = {
   mounted() { redrawOnExpand(this); this.render() },
   updated() { this.render() },
