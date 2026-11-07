@@ -1,6 +1,11 @@
 defmodule SheetfolioWeb.SummaryLive do
   use SheetfolioWeb, :live_view
 
+  @sort_columns Map.new(
+                  ~w(asset net_qty invested current_value gain gain_pct sold_cost total_received pnl pnl_pct)a,
+                  &{Atom.to_string(&1), &1}
+                )
+
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
@@ -10,6 +15,7 @@ defmodule SheetfolioWeb.SummaryLive do
       socket = assign(socket,
         authenticated: true,
         assets: %{},
+        sort: default_sort(socket.assigns.live_action),
         eur_usd: eur_usd,
         eur_cad: eur_cad
       )
@@ -54,6 +60,11 @@ defmodule SheetfolioWeb.SummaryLive do
     {:noreply, assign(socket, selected_isin: selected)}
   end
 
+  def handle_event("sort", %{"column" => column}, socket) do
+    key = Map.fetch!(@sort_columns, column)
+    {:noreply, update(socket, :sort, &next_sort(&1, key))}
+  end
+
   def handle_event("refresh_prices", _, socket) do
     Sheetfolio.EarningsServer.clear_price_cache()
 
@@ -75,6 +86,9 @@ defmodule SheetfolioWeb.SummaryLive do
       .summary-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
       .summary-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 1; }
       .summary-table th:not(:first-child) { text-align: right; }
+      .sort-btn { all: unset; cursor: pointer; white-space: nowrap; }
+      .sort-btn:hover { text-decoration: underline; }
+      .sort-btn:focus-visible { outline: 2px solid white; outline-offset: 2px; }
       .summary-table td { padding: 0.65rem 1rem; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
       .summary-table td:not(:first-child) { text-align: right; }
       .summary-table tr:last-child td { border-bottom: none; }
@@ -110,7 +124,7 @@ defmodule SheetfolioWeb.SummaryLive do
   defp render_active(assigns) do
     ~H"""
     <%= if map_size(@assets) > 0 do %>
-      <% active = @assets |> Map.values() |> Enum.filter(& &1.net_qty > 0.001) |> Enum.sort_by(& &1.cost_basis, :desc) %>
+      <% active = @assets |> Map.values() |> Enum.filter(& &1.net_qty > 0.001) %>
       <% meaningful = Enum.filter(active, & &1.cost_basis > 0) %>
       <% total_invested = Enum.reduce(meaningful, 0, fn a, acc -> acc + a.cost_basis end) %>
       <% total_value = meaningful |> Enum.filter(& &1.current_value) |> Enum.reduce(0, fn a, acc -> acc + a.current_value end) %>
@@ -122,27 +136,23 @@ defmodule SheetfolioWeb.SummaryLive do
         <table class="summary-table">
           <thead>
             <tr>
-              <th>Asset</th>
-              <th>Units held</th>
-              <th>Invested (€)</th>
-              <th>Current Value (€)</th>
-              <th>Gain/Loss (€)</th>
-              <th>Gain/Loss (%)</th>
+              <.sort_header sort={@sort} column={:asset} label="Asset" />
+              <.sort_header sort={@sort} column={:net_qty} label="Units held" />
+              <.sort_header sort={@sort} column={:invested} label="Invested (€)" />
+              <.sort_header sort={@sort} column={:current_value} label="Current Value (€)" />
+              <.sort_header sort={@sort} column={:gain} label="Gain/Loss (€)" />
+              <.sort_header sort={@sort} column={:gain_pct} label="Gain/Loss (%)" />
             </tr>
           </thead>
           <tbody>
-            <%= for a <- active do %>
+            <%= for a <- active |> Enum.map(&active_row/1) |> sort_rows(@sort) do %>
               <tr>
                 <td><strong><%= a.asset %></strong><br/><small style="color:#94a3b8"><%= a.isin %></small></td>
                 <td><%= format_qty(a.net_qty) %></td>
-                <td><%= if a.cost_basis > 0, do: format_eur(a.cost_basis), else: "—" %></td>
-                <td><%= if a.current_value, do: format_eur(a.current_value), else: "—" %></td>
-                <td class={earnings_class(if a.cost_basis > 0, do: a.earnings_abs, else: nil)}>
-                  <%= if a.cost_basis > 0, do: format_abs(a.earnings_abs), else: "—" %>
-                </td>
-                <td class={earnings_class(if a.cost_basis > 0, do: a.earnings_pct, else: nil)}>
-                  <%= if a.cost_basis > 0, do: format_pct(a.earnings_pct), else: "—" %>
-                </td>
+                <td><%= format_eur(a.invested) %></td>
+                <td><%= format_eur(a.current_value) %></td>
+                <td class={earnings_class(a.gain)}><%= format_abs(a.gain) %></td>
+                <td class={earnings_class(a.gain_pct)}><%= format_pct(a.gain_pct) %></td>
               </tr>
             <% end %>
           </tbody>
@@ -176,9 +186,8 @@ defmodule SheetfolioWeb.SummaryLive do
       .ops-sell { color: #dc2626; }
     </style>
     <%= if map_size(@assets) > 0 do %>
-      <% settled = @assets |> Map.values() |> Enum.filter(& &1.total_received > 0) |> Enum.sort_by(& &1.total_received, :desc) %>
-      <% cost_sold = fn a -> max(0.0, a.total_bought - max(0.0, a.cost_basis)) end %>
-      <% total_invested = Enum.reduce(settled, 0, fn a, acc -> acc + cost_sold.(a) end) %>
+      <% settled = @assets |> Map.values() |> Enum.filter(& &1.total_received > 0) |> Enum.map(&settled_row/1) %>
+      <% total_invested = Enum.reduce(settled, 0, fn a, acc -> acc + a.sold_cost end) %>
       <% total_received = Enum.reduce(settled, 0, fn a, acc -> acc + a.total_received end) %>
       <% total_pnl = Float.round(total_received - total_invested, 2) %>
       <% total_pct = if total_invested > 0, do: Float.round(total_pnl / total_invested * 100, 2), else: nil %>
@@ -188,18 +197,15 @@ defmodule SheetfolioWeb.SummaryLive do
         <table class="summary-table">
           <thead>
             <tr>
-              <th>Asset</th>
-              <th>Cost of sold (€)</th>
-              <th>Received (€)</th>
-              <th>Realized P&amp;L (€)</th>
-              <th>Realized P&amp;L (%)</th>
+              <.sort_header sort={@sort} column={:asset} label="Asset" />
+              <.sort_header sort={@sort} column={:sold_cost} label="Cost of sold (€)" />
+              <.sort_header sort={@sort} column={:total_received} label="Received (€)" />
+              <.sort_header sort={@sort} column={:pnl} label="Realized P&L (€)" />
+              <.sort_header sort={@sort} column={:pnl_pct} label="Realized P&L (%)" />
             </tr>
           </thead>
           <tbody>
-            <%= for a <- settled do %>
-              <% sold_cost = cost_sold.(a) %>
-              <% pnl = Float.round(a.total_received - sold_cost, 2) %>
-              <% pnl_pct = if sold_cost > 0, do: Float.round(pnl / sold_cost * 100, 2), else: nil %>
+            <%= for a <- sort_rows(settled, @sort) do %>
               <% expanded = @selected_isin == a.isin %>
               <% partial = a.net_qty > 0.001 %>
               <tr class="row-clickable" phx-click="toggle_isin" phx-value-isin={a.isin}>
@@ -209,10 +215,10 @@ defmodule SheetfolioWeb.SummaryLive do
                   <span class="row-toggle-icon"><%= if expanded, do: "▲", else: "▼" %></span>
                   <br/><small style="color:#94a3b8"><%= a.isin %></small>
                 </td>
-                <td><%= format_eur(sold_cost) %></td>
+                <td><%= format_eur(a.sold_cost) %></td>
                 <td><%= format_eur(a.total_received) %></td>
-                <td class={earnings_class(pnl)}><%= format_abs(pnl) %></td>
-                <td class={earnings_class(pnl_pct)}><%= format_pct(pnl_pct) %></td>
+                <td class={earnings_class(a.pnl)}><%= format_abs(a.pnl) %></td>
+                <td class={earnings_class(a.pnl_pct)}><%= format_pct(a.pnl_pct) %></td>
               </tr>
               <%= if expanded do %>
                 <% ops = Map.get(@ops_by_isin, a.isin, []) |> Enum.sort_by(& &1.fecha) %>
@@ -261,6 +267,62 @@ defmodule SheetfolioWeb.SummaryLive do
     """
   end
 
+  defp sort_header(assigns) do
+    ~H"""
+    <th aria-sort={aria_sort(@sort, @column)}>
+      <button type="button" class="sort-btn" phx-click="sort" phx-value-column={@column}>
+        {@label}{sort_arrow(@sort, @column)}
+      </button>
+    </th>
+    """
+  end
+
+  defp aria_sort({column, :asc}, column), do: "ascending"
+  defp aria_sort({column, :desc}, column), do: "descending"
+  defp aria_sort(_sort, _column), do: "none"
+
+  defp sort_arrow({column, :asc}, column), do: " ▲"
+  defp sort_arrow({column, :desc}, column), do: " ▼"
+  defp sort_arrow(_sort, _column), do: ""
+
+  defp default_sort(:settled), do: {:total_received, :desc}
+  defp default_sort(_active), do: {:invested, :desc}
+
+  @doc """
+  The sort after clicking a column: the current one flips, a new one starts
+  A to Z for names and largest first for amounts.
+  """
+  def next_sort({key, :asc}, key), do: {key, :desc}
+  def next_sort({key, :desc}, key), do: {key, :asc}
+  def next_sort(_sort, :asset), do: {:asset, :asc}
+  def next_sort(_sort, key), do: {key, :desc}
+
+  @doc """
+  Sorts rows by one field. Rows with no value, shown as "—", stay last in both
+  directions so reversing a column never leads with blanks.
+  """
+  def sort_rows(rows, {key, direction}) do
+    {blank, filled} = Enum.split_with(rows, &is_nil(Map.fetch!(&1, key)))
+    Enum.sort_by(filled, &sort_value(Map.fetch!(&1, key)), direction) ++ blank
+  end
+
+  defp sort_value(value) when is_binary(value), do: String.downcase(value)
+  defp sort_value(value), do: value
+
+  defp active_row(%{cost_basis: cost_basis} = a) when cost_basis > 0 do
+    Map.merge(a, %{invested: cost_basis, gain: a.earnings_abs, gain_pct: a.earnings_pct})
+  end
+
+  defp active_row(a), do: Map.merge(a, %{invested: nil, gain: nil, gain_pct: nil})
+
+  defp settled_row(a) do
+    sold_cost = max(0.0, a.total_bought - max(0.0, a.cost_basis))
+    pnl = Float.round(a.total_received - sold_cost, 2)
+    pnl_pct = if sold_cost > 0, do: Float.round(pnl / sold_cost * 100, 2), else: nil
+
+    Map.merge(a, %{sold_cost: sold_cost, pnl: pnl, pnl_pct: pnl_pct})
+  end
+
   defdelegate buy?(tipo), to: Sheetfolio.Positions
   defdelegate parse_cantidad(str), to: Sheetfolio.Positions
   defdelegate amount_in_eur(importe, precio, qty, eur_usd, eur_cad), to: Sheetfolio.Positions
@@ -269,20 +331,36 @@ defmodule SheetfolioWeb.SummaryLive do
   defp earnings_class(val) when val >= 0, do: "positive"
   defp earnings_class(_), do: "negative"
 
-  defp format_eur(nil), do: "—"
-  defp format_eur(val), do: "#{:erlang.float_to_binary(val * 1.0, decimals: 2)} €"
+  def format_eur(nil), do: "—"
+  def format_eur(val), do: "#{two_decimals(val)} €"
 
-  defp format_abs(nil), do: "—"
-  defp format_abs(val) when val >= 0, do: "+#{:erlang.float_to_binary(val * 1.0, decimals: 2)} €"
-  defp format_abs(val), do: "#{:erlang.float_to_binary(val * 1.0, decimals: 2)} €"
+  def format_abs(nil), do: "—"
+  def format_abs(val) when val >= 0, do: "+#{two_decimals(val)} €"
+  def format_abs(val), do: "#{two_decimals(val)} €"
 
-  defp format_pct(nil), do: "—"
-  defp format_pct(val) when val >= 0, do: "+#{val}%"
-  defp format_pct(val), do: "#{val}%"
+  def format_pct(nil), do: "—"
+  def format_pct(val) when val >= 0, do: "+#{two_decimals(val)}%"
+  def format_pct(val), do: "#{two_decimals(val)}%"
 
-  defp format_qty(val) do
+  def format_qty(val) do
     :erlang.float_to_binary(val * 1.0, decimals: 4)
     |> String.trim_trailing("0")
     |> String.trim_trailing(".")
+    |> localize()
+  end
+
+  defp two_decimals(val), do: val |> Kernel.*(1.0) |> :erlang.float_to_binary(decimals: 2) |> localize()
+
+  # "1234567.89" -> "1.234.567,89"
+  defp localize(number) do
+    [whole | decimals] = String.split(number, ".")
+
+    grouped =
+      whole
+      |> String.reverse()
+      |> String.replace(~r/(\d{3})(?=\d)/, "\\1.")
+      |> String.reverse()
+
+    Enum.join([grouped | decimals], ",")
   end
 end
