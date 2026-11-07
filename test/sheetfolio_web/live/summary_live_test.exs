@@ -63,6 +63,7 @@ defmodule SheetfolioWeb.SummaryLiveTest do
     test "a new column starts largest first, names A to Z" do
       assert SummaryLive.next_sort({:asset, :asc}, :gain) == {:gain, :desc}
       assert SummaryLive.next_sort({:gain, :desc}, :asset) == {:asset, :asc}
+      assert SummaryLive.next_sort({:gain, :desc}, :category) == {:category, :asc}
     end
   end
 end
