@@ -118,7 +118,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       .u-type-header .subtotal { font-size: 0.85rem; color: #475569; font-variant-numeric: tabular-nums; }
       .u-table td.neg { color: #e34948; font-weight: 600; }
       .u-table td.pos { color: #1baf7a; font-weight: 600; }
-      #panel-payouts td:not(:nth-child(2)):not(:last-child) { white-space: nowrap; }
+      #panel-payouts td:not(:first-child):not(:last-child) { white-space: nowrap; }
       .u-project { border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.9rem 1.15rem; margin-bottom: 0.75rem; }
       .u-project-header { display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.65rem; flex-wrap: wrap; }
       .u-project-title { font-size: 1rem; font-weight: 600; color: #0f172a; }
@@ -260,9 +260,10 @@ defmodule SheetfolioWeb.UrbanitaeLive do
           <table class="u-table">
             <thead>
               <tr>
-                <th>Expected</th>
                 <th>Project</th>
+                <th class="num">Invested</th>
                 <th>Invested on</th>
+                <th>Expected</th>
                 <th class="num">To receive</th>
                 <th>First estimate</th>
                 <th>Moved</th>
@@ -273,9 +274,10 @@ defmodule SheetfolioWeb.UrbanitaeLive do
             <tbody>
               <%= for p <- @payouts, f = p["forecast"], delay = UrbanitaeProjects.delay_months(f) do %>
                 <tr>
-                  <td>{month_label(f["close_date"])}</td>
                   <td>{project_label(%{city: p["city"], project: p["project"]})}</td>
+                  <td class="num">{format_eur(p["invested"])}</td>
                   <td>{date_label(p["invested_on"])}</td>
+                  <td>{month_label(f["close_date"])}</td>
                   <td class="num">{format_eur(f["to_receive"])}</td>
                   <td>{month_label(f["first_close_date"])}</td>
                   <td class={delay_class(delay)}>{delay_label(delay)}</td>
@@ -292,10 +294,10 @@ defmodule SheetfolioWeb.UrbanitaeLive do
   end
 
   defp active_forecasts(forecasts, rollup) do
-    invested_on = for r <- rollup, r.status == "active", into: %{}, do: {r.project_key, r.first_date}
+    active = for r <- rollup, r.status == "active", into: %{}, do: {r.project_key, r}
 
-    for p <- forecasts, date = invested_on[p["project_key"]] do
-      Map.put(p, "invested_on", date)
+    for p <- forecasts, r = active[p["project_key"]] do
+      Map.merge(p, %{"invested" => r.invested, "invested_on" => r.first_date})
     end
   end
 
