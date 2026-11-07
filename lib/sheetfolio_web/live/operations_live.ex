@@ -62,6 +62,11 @@ defmodule SheetfolioWeb.OperationsLive do
   def render(assigns) do
     ~H"""
     <style>
+      main:has(.assets-subtabs) { max-width: 1400px; }
+      .assets-subtabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+      .assets-subtabs a { color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
+      .assets-subtabs a:hover { color: #1e293b; }
+      .assets-subtabs a.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
       .operations-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
       .operations-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 1; }
       .operations-table td { padding: 0.65rem 1rem; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
@@ -81,6 +86,11 @@ defmodule SheetfolioWeb.OperationsLive do
       .filter-btn.traspaso-btn.active { background: #f59e0b; border-color: #f59e0b; color: white; }
       .traspaso-row td { background: #fffbeb; }
     </style>
+
+    <div class="assets-subtabs">
+      <.link navigate="/summary">Positions</.link>
+      <.link navigate="/operations" class="active">Operations</.link>
+    </div>
 
     <%= if map_size(@operations) > 0 do %>
       <div class="filters">

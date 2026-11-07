@@ -82,7 +82,7 @@
         <input type="checkbox" id="nav-toggle" class="nav-toggle" />
         <label for="nav-toggle" class="burger" aria-label="Menu">☰</label>
         <nav>
-          <a href="/summary" class={if current_path(assigns) in ["/summary", "/summary/settled"], do: "active", else: ""}>Positions</a>
+          <a href="/summary" class={if current_path(assigns) in ["/summary", "/summary/settled", "/operations"], do: "active", else: ""}>Assets</a>
           <a href="/summary/dca" class={if String.starts_with?(current_path(assigns), "/summary/dca"), do: "active", else: ""}>DCA Impact</a>
           <a href="/history" class={if current_path(assigns) == "/history", do: "active", else: ""}>History</a>
           <a href="/comparison" class={if current_path(assigns) == "/comparison", do: "active", else: ""}>Compare</a>
@@ -90,7 +90,6 @@
           <a href="/real-estate" class={if current_path(assigns) in ["/real-estate", "/urbanitae", "/equito"], do: "active", else: ""}>Real Estate</a>
           <a href="/bitcoin" class={if current_path(assigns) == "/bitcoin", do: "active", else: ""}>Bitcoin</a>
           <a href="/earnings" class={if current_path(assigns) == "/earnings", do: "active", else: ""}>Earnings</a>
-          <a href="/operations" class={if current_path(assigns) == "/operations", do: "active", else: ""}>Operations</a>
         </nav>
         <label for="nav-toggle" class="nav-backdrop" aria-hidden="true"></label>
         <a href="/control" title="Control" aria-label="Control"
