@@ -15,7 +15,7 @@ Sheetfolio is a single-user Elixir/Phoenix portfolio dashboard. It reads holding
 - `mix wise_operations [days]` — dry run: fetch Wise balances and activities (needs `.env`, so use `make wise-operations`).
 - `mix parse_urbanitae_emails` — dry run: fetch and parse the Urbanitae inbox, reconciled against `urbanitae_transactions` (needs `.env`, so use `make urbanitae-emails`).
 - `fly deploy` — deploy to production.
-- One-off backfills live in `scripts/*.exs` (run with `mix run`).
+- One-off backfills live in `scripts/*.exs` (run with `mix run`). Any that pass placeholder rates to `Positions` must go through `Positions.pinned!/1`.
 
 CI (GitHub Actions) runs `mix compile --warnings-as-errors`, `mix credo`, `mix test`, `mix hex.audit`, and `mix sobelow --config` — run all of them locally before committing (see Quality gate).
 
@@ -41,7 +41,7 @@ Before every commit, run the same checks CI does and fix anything they flag: `mi
 - **Goth** — Google service-account auth for the Sheets API (Gmail uses a separate OAuth refresh-token flow in `GmailClient`).
 - **Mongo** (`:mongo`) — MongoDB Atlas; collections include `portfolio_snapshots`, `cash_snapshots`, `wise_activities`.
 - **`EarningsServer`** — caches current/historical prices and FX rates; LiveViews request computations via `cast` with a `caller_pid` and receive results as messages (async, non-blocking UI).
-- **`OperationsServer`** — at boot, loads the full operation history by fetching and parsing MyInvestor Gmail emails (slow: minutes); serves it from memory afterwards, syncing new emails daily at 21:30 UTC. `get_operations/1` blocks until loaded; `reload/0` refetches.
+- **`OperationsServer`** — at boot, serves the operation history from the cached MyInvestor emails, then syncs new ones in a task (and daily at 21:30 UTC). The network work (Gmail, Yahoo, Sheets) stays in that task, because every page calls this process. `get_operations/1` blocks until loaded; `reload/0` refetches.
 - **`SnapshotRecorder`** — writes a per-position portfolio snapshot to Mongo at boot and daily at 22:00 UTC; upserts by date.
 - **`EquitoEmailSync`** — at boot and daily at 12:00 UTC, parses Equito's monthly rent emails (`EquitoParser`) and inserts the RENTA/RET. FISCAL rows `equito_transactions` lacks. Purchases aren't emailed, so they still come from screenshots.
 - **`UrbanitaeEmailSync`** — refreshes the Urbanitae email cache (`urbanitae_emails`) at boot and daily at 23:00 UTC; only unseen Gmail ids are downloaded. `UrbanitaePending` derives what those emails mention but `urbanitae_transactions` lacks, and `/urbanitae` shows it as a banner.
@@ -54,6 +54,8 @@ Before every commit, run the same checks CI does and fix anything they flag: `mi
 2. `SyntheticOperations` (hardcoded ops missing from Gmail) and `OperationOverrides` (per-`{fecha, isin}` corrections, `skip: true` to exclude) patch the parsed history. This is the standard mechanism when an email is missing or wrong — add entries there, don't special-case downstream.
 3. `Positions` replays operations into per-ISIN positions using average-cost basis and computes realized P&L events (sells beyond recorded buy history are "uncovered" and realize nothing).
    `Returns` turns the same operations (`Positions.cash_flows/3`) plus dividends into XIRR. Its flows should reconcile with realized + unrealized + dividends, which is the check to run if it changes.
+   `HistoricalFx` pins each foreign-priced operation to its own day's EUR/USD and EUR/CAD, kept in `fx_rates` so a Yahoo outage can't undo them. `HoldingsCheck` then compares the replay with the `Participaciones` sheet as of the sheet's date, and reports differences on `/control`.
+   `TaxGains` is the FIFO view for the IRPF, separate from the average cost in `Positions`. The two must satisfy gain - cost held = same total, and a difference on one closed position is normal when a traspaso moved lots.
 4. `PriceFetcher` resolves ISIN → ticker (Yahoo Finance search, OpenFIGI fallback) and fetches EUR prices; `lib/sheetfolio/prices_api/` holds the Yahoo/Stooq/OpenFIGI clients. Problem ISINs are handled via `@ticker_overrides` / `@stooq_overrides` in `PriceFetcher`.
 5. `GoogleSheetsClient` reads the spreadsheet; `Urbanitae` derives a manual position from spreadsheet columns. ISINs come from the parsed emails, not from the sheet.
 6. `UrbanitaeParser` reads the three transactional Urbanitae emails (investment, funding close, distribution). Distributions never state the amount received, so they can only flag that a Movimientos screenshot is owed — they are never written as transactions.

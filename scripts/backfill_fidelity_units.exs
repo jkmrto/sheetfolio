@@ -22,7 +22,7 @@ defmodule BackfillFidelityUnits do
 
   def run(dry_run?) do
     operations = Sheetfolio.MyinvestorEmails.cached_operations() |> Sheetfolio.OperationHistory.patch()
-    states = Sheetfolio.Positions.history(operations, 1.0, 1.0)
+    states = operations |> Sheetfolio.Positions.pinned!() |> Sheetfolio.Positions.history(1.0, 1.0)
 
     docs = Mongo.find(:mongo, @collection, %{}, sort: %{date: 1}) |> Enum.to_list()
     holding = Enum.filter(docs, fn d -> Enum.any?(d["positions"] || [], &(&1["isin"] == @isin)) end)

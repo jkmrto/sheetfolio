@@ -108,7 +108,7 @@ defmodule Sheetfolio.Positions do
   defp phase(%{traspaso: true} = op), do: if(buy?(op.tipo), do: 2, else: 1)
   defp phase(op), do: if(buy?(op.tipo), do: 0, else: 3)
 
-  defp date_sort_key(fecha) do
+  def date_sort_key(fecha) do
     case String.split(fecha, "/") do
       [d, m, y] -> {y, m, d}
       _ -> {"", "", ""}
@@ -134,15 +134,47 @@ defmodule Sheetfolio.Positions do
     end
   end
 
-  # An operation carrying the rates of its own day converts at those; anything
-  # without them falls back to the rates the caller passed in. A foreign-currency
-  # cost basis is what it cost on the day, not what that day would cost today,
-  # so without this a 2021 purchase moved every time the euro did.
-  defp rates_for(%{fx_usd: usd, fx_cad: cad}, _eur_usd, _eur_cad)
-       when is_number(usd) and is_number(cad),
-       do: {usd, cad}
+  @doc """
+  The `{eur_usd, eur_cad}` an operation converts at. One carrying the rates of
+  its own day uses those; anything without them falls back to the rates passed
+  in. A foreign-currency cost basis is what it cost on the day, not what that
+  day would cost today, so without this a 2021 purchase moved every time the
+  euro did.
+  """
+  def rates_for(%{fx_usd: usd, fx_cad: cad}, _eur_usd, _eur_cad)
+      when is_number(usd) and is_number(cad),
+      do: {usd, cad}
 
-  defp rates_for(_data, eur_usd, eur_cad), do: {eur_usd, eur_cad}
+  def rates_for(_data, eur_usd, eur_cad), do: {eur_usd, eur_cad}
+
+  @doc """
+  The operations whose EUR amount depends on the rates a caller passes in:
+  foreign-priced, with no rates of their own day.
+  """
+  def unpinned(operations), do: Enum.filter(operations, &unpinned?/1)
+
+  defp unpinned?(op) do
+    qty = parse_cantidad(op.cantidad)
+
+    rates_for(op, nil, nil) == {nil, nil} and
+      amount_in_eur(op.importe_with_comision, op.precio, qty, 1.0, 1.0) !=
+        amount_in_eur(op.importe_with_comision, op.precio, qty, 2.0, 2.0)
+  end
+
+  @doc """
+  Returns the operations, or raises if any would convert through the caller's
+  rates. For scripts that pass placeholder rates, where a missing rate of the
+  day would otherwise convert USD and CAD at par and write that down.
+  """
+  def pinned!(operations) do
+    case unpinned(operations) do
+      [] -> operations
+      missing -> raise "#{length(missing)} operations have no FX rate of their own day"
+    end
+  end
+
+  @doc "Operations in the order they settle: by date, then buys before sells."
+  def in_settlement_order(operations), do: Enum.sort_by(operations, &settlement_key/1)
 
   defp buy(assets, carried, a, data, qty, cost_eur) do
     basis = cost_eur * basis_ratio(carried, data)
@@ -181,7 +213,7 @@ defmodule Sheetfolio.Positions do
     end
   end
 
-  defp traspaso?(data), do: Map.get(data, :traspaso, false) and Map.has_key?(data, :traspaso_to)
+  def traspaso?(data), do: Map.get(data, :traspaso, false) and Map.has_key?(data, :traspaso_to)
 
   # The basis that travels with the units. Units the buy history doesn't cover
   # have no known cost, so they move at the price they transferred at — the

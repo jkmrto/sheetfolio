@@ -3,7 +3,7 @@ defmodule SheetfolioWeb.EarningsLive do
 
   alias SheetfolioWeb.NumberFormat
 
-  @views ~w(by_asset by_operation)
+  @views ~w(by_asset by_operation tax)
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
@@ -13,6 +13,7 @@ defmodule SheetfolioWeb.EarningsLive do
         assign(socket,
           authenticated: true,
           realized_events: [],
+          tax_years: [],
           unrealized: [],
           dividends: [],
           urbanitae: [],
@@ -33,6 +34,7 @@ defmodule SheetfolioWeb.EarningsLive do
         {:ok,
          assign(socket,
            realized_events: realized_events,
+           tax_years: Sheetfolio.TaxGains.by_year(operations, eur_usd, eur_cad),
            unrealized: unrealized_positions(),
            dividends: Sheetfolio.Dividends.all(),
            urbanitae: urbanitae_earnings(),
@@ -132,9 +134,13 @@ defmodule SheetfolioWeb.EarningsLive do
       <button type="button" class={if @view == "by_operation", do: "active", else: ""} phx-click="set_view" phx-value-view="by_operation">
         By operation
       </button>
+      <button type="button" class={if @view == "tax", do: "active", else: ""} phx-click="set_view" phx-value-view="tax">
+        Tax (FIFO)
+      </button>
     </div>
 
-    <%= if @view == "by_asset" do %>
+    <%= cond do %>
+    <% @view == "by_asset" -> %>
       <div class="expand-panel" id="panel-1" phx-hook="ExpandPanel">
         <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="earnings-table">
@@ -199,7 +205,7 @@ defmodule SheetfolioWeb.EarningsLive do
           </tr>
         </table>
       </div>
-    <% else %>
+    <% @view == "by_operation" -> %>
       <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
         <button class="expand-btn" aria-label="Toggle full screen"></button>
         <table class="earnings-table">
@@ -230,6 +236,44 @@ defmodule SheetfolioWeb.EarningsLive do
             <td class="left" colspan="6">Total realized</td>
             <td class={sign_class(@realized_sum)}><%= eur(@realized_sum) %></td>
           </tr>
+        </table>
+      </div>
+    <% true -> %>
+      <div class="earnings-total muted">
+        Oldest units sold first, as the IRPF counts them, so yearly figures differ from the average-cost tabs.
+        An estimate to prepare the return from: the two-month rule on losses isn't applied, and USD and CAD
+        convert at the day's market rate, not what the broker charged.
+      </div>
+      <div class="expand-panel" id="panel-tax" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
+        <table class="earnings-table">
+          <tr>
+            <th class="left">Year / sale</th><th class="left">Tipo</th>
+            <th>Qty</th><th>Proceeds</th><th>Cost basis</th><th>Gain</th>
+          </tr>
+          <%= for year <- @tax_years do %>
+            <tr class="sum">
+              <td class="left" colspan="3">
+                <%= year.year %>
+                <%= if year.uncovered > 0 do %>
+                  <div class="warn">⚠ <%= year.uncovered %> sales include units without buy history — those are excluded</div>
+                <% end %>
+              </td>
+              <td><%= eur(year.proceeds) %></td>
+              <td><%= eur(year.cost) %></td>
+              <td class={sign_class(year.gain)}><%= eur(year.gain) %></td>
+            </tr>
+            <%= for s <- year.sales do %>
+              <tr>
+                <td class="left"><%= s.fecha %> · <%= s.asset %></td>
+                <td class="left"><%= s.tipo %></td>
+                <td><%= NumberFormat.qty(s.qty) %></td>
+                <td><%= eur(s.proceeds) %></td>
+                <td><%= eur(s.cost) %></td>
+                <td class={sign_class(s.gain)}><%= eur(s.gain) %></td>
+              </tr>
+            <% end %>
+          <% end %>
         </table>
       </div>
     <% end %>

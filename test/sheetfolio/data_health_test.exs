@@ -16,7 +16,9 @@ defmodule Sheetfolio.DataHealthTest do
       jobs: %{
         "myinvestor_emails" => job(~U[2026-11-07 09:00:00Z]),
         "urbanitae_emails" => job(~U[2026-11-06 23:00:00Z]),
-        "equito_emails" => job(~U[2026-11-07 09:00:00Z])
+        "equito_emails" => job(~U[2026-11-07 09:00:00Z]),
+        "historical_fx" => job(~U[2026-11-07 09:00:00Z]),
+        "holdings_check" => job(~U[2026-11-07 09:00:00Z])
       },
       equito_last: ~D[2026-11-01],
       dividends_last: ~D[2026-10-30],
@@ -28,6 +30,23 @@ defmodule Sheetfolio.DataHealthTest do
   end
 
   defp row(rows, label), do: Enum.find(rows, &(&1.label == label))
+
+  test "a difference with the sheet warns and says what differs" do
+    jobs =
+      Map.put(healthy().jobs, "holdings_check", job(~U[2026-11-06 09:00:00Z], ~U[2026-11-07 09:00:00Z], "As of 08/03/2026: Quanterix"))
+
+    holdings = row(DataHealth.evaluate(%{healthy() | jobs: jobs}, @now), "Holdings vs sheet")
+
+    assert holdings.status == :warning
+    assert holdings.detail == "As of 08/03/2026: Quanterix"
+  end
+
+  test "operations left on today's rate fail the FX row" do
+    jobs =
+      Map.put(healthy().jobs, "historical_fx", job(~U[2026-11-06 09:00:00Z], ~U[2026-11-07 09:00:00Z], "2 operations"))
+
+    assert row(DataHealth.evaluate(%{healthy() | jobs: jobs}, @now), "FX rates").status == :overdue
+  end
 
   test "fresh data is all clear" do
     rows = DataHealth.evaluate(healthy(), @now)

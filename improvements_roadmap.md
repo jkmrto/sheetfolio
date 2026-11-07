@@ -207,18 +207,22 @@ manual reload. The background sync fixes that.
 
 ## Still open
 
-- **Parser fixtures.** `MyinvestorParser` is still untested. The natural
-  fixtures are now sitting in the `myinvestor_emails` collection, but a raw
-  confirmation email likely carries name, address and account identifiers, so
-  it needs redacting before it can land in the repo.
-- **Cost basis is recomputed at today's FX rate.** `Positions.build/3` takes the
-  current `eur_usd`/`eur_cad` and applies them while replaying the whole
-  history, so the reported *invested* amount for USD and CAD positions drifts
-  every day even when nothing is bought or sold — Humacyte moved 2973.02 →
-  2987.40 between two consecutive snapshots on no activity. Cost basis should
-  arguably use the rate at the time of each operation. Pre-existing, unrelated
-  to anything changed here, and it changes historical numbers, so it wants a
-  deliberate decision rather than a drive-by fix.
+- **Parser fixtures.** `MyinvestorParser` only has tests for pension
+  contributions (`test/sheetfolio/myinvestor_parser_test.exs`). Fund, ETF and
+  traspaso emails are still uncovered. The natural fixtures are sitting in the
+  `myinvestor_emails` collection, but a raw confirmation email likely carries
+  name, address and account identifiers, so it needs redacting first.
+- **Snapshots older than August 2026 don't match the own-day replay.** Operations
+  have converted at their own day's rate since `3a6d9c7` (2026-08-03), and rates
+  are now kept in `fx_rates`. Stored `invested` on the FX holdings still differs
+  from a replay before that: -77,78 € on 2025-03-26, +302,28 € on 2026-05-20. FX
+  isn't proven as the cause, because the stored figure is identical on dates
+  months apart, which daily drift wouldn't produce. Find the cause before
+  restating anything.
+- **Two holdings disagree with the sheet.** As of its 08/03/2026 row, Quanterix is
+  1.386 units in the sheet and 1.188 replayed, and WisdomTree Bitcoin 183 and 173.
+  `/control` shows both until the broker settles which is right. If a buy is
+  missing, it goes in `SyntheticOperations`.
 - **Three same-day duplicate operations** appear in the history (one on
   23/09/2024, 04/07/2023 and 02/09/2025). They come from genuinely distinct
   Gmail messages and predate all of this work, so they're most likely two real

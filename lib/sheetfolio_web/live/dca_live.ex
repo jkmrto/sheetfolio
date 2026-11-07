@@ -317,7 +317,8 @@ defmodule SheetfolioWeb.DcaLive do
       {total_qty, total_amount} =
         Enum.reduce(ops, {0.0, 0.0}, fn op, {qty_acc, amt_acc} ->
           qty = Sheetfolio.Positions.parse_cantidad(op.cantidad)
-          amt = Sheetfolio.Positions.amount_in_eur(op.importe_with_comision, op.precio, qty, eur_usd, eur_cad)
+          {rate_usd, rate_cad} = Sheetfolio.Positions.rates_for(op, eur_usd, eur_cad)
+          amt = Sheetfolio.Positions.amount_in_eur(op.importe_with_comision, op.precio, qty, rate_usd, rate_cad)
           {qty_acc + qty, amt_acc + amt}
         end)
 

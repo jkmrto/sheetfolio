@@ -18,10 +18,12 @@ defmodule Sheetfolio.OperationsServer do
   @daily_minute_utc 30
 
   alias Sheetfolio.HistoricalFx
+  alias Sheetfolio.HoldingsCheck
   alias Sheetfolio.JobRuns
   alias Sheetfolio.MyinvestorEmails
   alias Sheetfolio.MyinvestorEmailStore
   alias Sheetfolio.OperationHistory
+  alias Sheetfolio.Positions
 
   def start_link(_), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
 
@@ -45,22 +47,34 @@ defmodule Sheetfolio.OperationsServer do
   end
 
   defp boot(cached, state) do
-    operations = history(MyinvestorEmails.cached_operations())
+    operations = MyinvestorEmails.cached_operations() |> OperationHistory.patch() |> HistoricalFx.attach_stored()
     Logger.info("[OperationsServer] Serving #{length(operations)} operations from #{cached} cached emails")
 
-    %{state | status: :ready, operations: operations} |> sync()
+    %{state | status: boot_status(operations), operations: operations} |> sync()
   end
 
-  # Patching stays pure; the FX rates each operation converts at are looked up
-  # here, once per load, because they need the network.
-  defp history(operations), do: operations |> OperationHistory.patch() |> HistoricalFx.attach()
+  # Serving before the sync has fetched a missing rate would let the boot
+  # snapshot convert those operations at today's rate.
+  defp boot_status(operations) do
+    if Positions.unpinned(operations) == [], do: :ready, else: :loading
+  end
+
+  # Everything here is network, so it runs in the sync's task: a slow Yahoo or
+  # Sheets must not hold up this process, which every page calls.
+  defp load(progress) do
+    with {:ok, operations} <- MyinvestorEmails.sync(progress) do
+      history = operations |> OperationHistory.patch() |> HistoricalFx.refresh()
+      HoldingsCheck.run(history)
+      {:ok, history}
+    end
+  end
 
   defp sync(state) do
     server = self()
 
     Task.start(fn ->
       progress = fn current, total -> send(server, {:progress, current, total}) end
-      send(server, {:load_done, MyinvestorEmails.sync(progress)})
+      send(server, {:load_done, load(progress)})
     end)
 
     %{state | syncing: true}
@@ -78,7 +92,6 @@ defmodule Sheetfolio.OperationsServer do
 
   def handle_info({:load_done, {:ok, ops}}, state) do
     JobRuns.success("myinvestor_emails")
-    ops = history(ops)
     Enum.each(state.pending, &GenServer.reply(&1, ops))
     {:noreply, %{state | status: :ready, operations: ops, pending: [], syncing: false}}
   end

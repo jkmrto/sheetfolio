@@ -35,6 +35,8 @@ defmodule Sheetfolio.DataHealth do
       snapshot_row(facts.snapshot, today),
       cash_row(facts.cash, today),
       job_row("MyInvestor emails", facts.jobs["myinvestor_emails"], today),
+      job_row("FX rates", facts.jobs["historical_fx"], today),
+      holdings_row(facts.jobs["holdings_check"], today),
       job_row("Urbanitae emails", facts.jobs["urbanitae_emails"], today),
       job_row("Equito emails", facts.jobs["equito_emails"], today),
       dated_row("Equito rent", :automatic, facts.equito_last, today, 35, 45),
@@ -84,6 +86,15 @@ defmodule Sheetfolio.DataHealth do
       %{row | status: :overdue, detail: "Last run failed: #{job["last_error"]}"}
     else
       row
+    end
+  end
+
+  # Disagreeing with the sheet isn't a broken sync: it wants a look, and it stays
+  # until the history or the sheet is corrected.
+  defp holdings_row(job, today) do
+    case job_row("Holdings vs sheet", job, today) do
+      %{detail: "Last run failed: " <> finding} = row -> %{row | status: :warning, detail: finding}
+      row -> row
     end
   end
 

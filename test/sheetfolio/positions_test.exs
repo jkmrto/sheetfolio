@@ -22,6 +22,32 @@ defmodule Sheetfolio.PositionsTest do
 
   defp build(ops), do: Positions.build(ops, 1.0, 1.0) |> Map.fetch!(@isin)
 
+  describe "unpinned/1 and pinned!/1" do
+    defp foreign(fecha) do
+      %{op(fecha, "Compra", "10", "0.00 USD") | precio: "110.00 USD"}
+    end
+
+    test "only a foreign-priced operation without its own rates counts" do
+      euro = op("01/01/2024", "Compra", "10", "100 EUR")
+      pinned = Map.merge(foreign("02/01/2024"), %{fx_usd: 1.1, fx_cad: 1.5})
+      missing = foreign("03/01/2024")
+
+      assert Positions.unpinned([euro, pinned, missing]) == [missing]
+    end
+
+    test "a foreign price with a real EUR amount doesn't depend on any rate" do
+      charged = op("01/01/2024", "Compra", "10", "100 EUR", "11.00 USD")
+      assert Positions.unpinned([charged]) == []
+    end
+
+    test "pinned!/1 refuses operations that would convert at the caller's rates" do
+      assert_raise RuntimeError, ~r/1 operations/, fn -> Positions.pinned!([foreign("03/01/2024")]) end
+
+      euro = [op("01/01/2024", "Compra", "10", "100 EUR")]
+      assert Positions.pinned!(euro) == euro
+    end
+  end
+
   describe "per-operation FX rates" do
     # MyInvestor zeroes importe on foreign-currency confirmations, so the cost
     # has to come from precio times quantity — which is where the rate matters.

@@ -51,6 +51,7 @@ defmodule RebuildPositionSnapshots do
     asset =
       operations
       |> Enum.filter(&(iso_of(&1.fecha) <= doc["date"]))
+      |> Positions.pinned!()
       |> Positions.build(1.0, 1.0)
       |> Map.get(isin)
 

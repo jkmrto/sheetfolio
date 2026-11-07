@@ -524,18 +524,11 @@ defmodule SheetfolioWeb.ComparisonLive do
   defp buy?(_op), do: false
 
   defp buy_amount(op, {eur_usd, eur_cad}) do
-    {rate_usd, rate_cad} = op_fx(op, eur_usd, eur_cad)
+    {rate_usd, rate_cad} = Positions.rates_for(op, eur_usd, eur_cad)
     qty = Positions.parse_cantidad(Map.get(op, :cantidad, "0"))
     importe = Map.get(op, :importe_with_comision, "")
     Float.round(Positions.amount_in_eur(importe, Map.get(op, :precio, ""), qty, rate_usd, rate_cad), 2)
   end
-
-  # A purchase converted at the operation's own day rate holds still; only fall
-  # back to today's rate when the pin is missing.
-  defp op_fx(%{fx_usd: usd, fx_cad: cad}, _eur_usd, _eur_cad) when is_number(usd) and is_number(cad),
-    do: {usd, cad}
-
-  defp op_fx(_op, eur_usd, eur_cad), do: {eur_usd, eur_cad}
 
   # Cash and Urbanitae already reconcile from their own ledgers; every other
   # holding gets the gap between its listed events and its actual money in/out

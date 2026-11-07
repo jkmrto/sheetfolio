@@ -9,55 +9,119 @@ defmodule Sheetfolio.HistoricalFx do
   stored snapshots, 58 were on the six US and Canadian holdings and were nothing
   but FX drift.
 
-  Two daily series cover the whole history, so this costs two requests at boot
-  rather than one per operation. If either fetch fails the operations come back
-  untouched and `Positions` falls back to the rate it was passed, which is the
-  behaviour this replaces.
+  A past rate never changes, so each one is kept in `fx_rates`, one document per
+  operation date:
+
+      { _id: "2026-01-09", usd: 1.1643, cad: 1.6197 }
+
+  That makes `attach_stored/1` safe to call without the network, and means a
+  Yahoo outage only affects operations new enough to have no stored rate. Those
+  fall back to the rate `Positions` is passed until a later `refresh/1` fills
+  them in, and the failure shows on the data health panel.
   """
 
   require Logger
 
+  alias Sheetfolio.JobRuns
+  alias Sheetfolio.Positions
   alias Sheetfolio.PricesApi.YahooFinance
+
+  @collection "fx_rates"
+  @job "historical_fx"
 
   # Rates only exist on trading days, so a weekend or holiday operation takes
   # the last rate published before it.
   @max_lookback 7
 
-  def attach([]), do: []
+  @doc "Attaches the rates already stored. Touches Mongo, never Yahoo."
+  def attach_stored(operations), do: pin(operations, stored())
 
-  def attach(operations) do
-    case operations |> Enum.map(&parse_date(&1.fecha)) |> Enum.reject(&is_nil/1) do
-      [] -> operations
-      dates -> attach_over(operations, Enum.min(dates, Date))
+  @doc """
+  Fetches the rates still missing, stores the settled ones, and attaches
+  everything known. Network calls, so this doesn't belong in a GenServer callback.
+  """
+  def refresh(operations) do
+    rates = stored()
+    pinned = pin(operations, rates)
+
+    case missing_dates(pinned) do
+      [] -> finish(pinned)
+      dates -> pin_fetched(pinned, dates)
     end
   end
 
-  defp attach_over(operations, from) do
-    usd = series("EURUSD=X", from)
-    cad = series("EURCAD=X", from)
+  @doc "Attaches `%{date => {usd, cad}}` to the operations it covers."
+  def pin(operations, rates), do: Enum.map(operations, &pin_one(&1, rates))
 
-    if map_size(usd) == 0 or map_size(cad) == 0 do
-      Logger.warning("[HistoricalFx] No FX series available, falling back to current rates")
-      operations
-    else
-      Enum.map(operations, &attach_one(&1, usd, cad))
+  @doc """
+  The `{usd, cad}` rate for each date, from two daily series. A date neither
+  series covers within the lookback is left out.
+  """
+  def resolve(dates, usd, cad) do
+    for date <- dates,
+        rate_usd = nearest(usd, date),
+        rate_cad = nearest(cad, date),
+        into: %{},
+        do: {date, {rate_usd, rate_cad}}
+  end
+
+  defp pin_one(operation, rates) do
+    case Map.get(rates, parse_date(operation.fecha)) do
+      {usd, cad} -> Map.merge(operation, %{fx_usd: usd, fx_cad: cad})
+      nil -> operation
     end
+  end
+
+  defp missing_dates(operations) do
+    operations
+    |> Positions.unpinned()
+    |> Enum.map(&parse_date(&1.fecha))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  defp pin_fetched(operations, dates) do
+    from = Enum.min(dates, Date)
+    fetched = resolve(dates, series("EURUSD=X", from), series("EURCAD=X", from))
+
+    store(fetched)
+    finish(pin(operations, fetched))
+  end
+
+  defp finish(operations) do
+    report(length(Positions.unpinned(operations)))
+    operations
+  end
+
+  defp report(0), do: JobRuns.success(@job)
+
+  defp report(count) do
+    Logger.warning("[HistoricalFx] #{count} operations have no rate of their own")
+    JobRuns.failure(@job, "#{count} operations converted at today's rate")
+  end
+
+  # Today's rate is still moving, so only settled days are worth keeping.
+  defp store(rates) do
+    today = Date.utc_today()
+
+    docs =
+      for {date, {usd, cad}} <- rates, Date.compare(date, today) == :lt do
+        %{_id: Date.to_iso8601(date), usd: usd, cad: cad}
+      end
+
+    if docs != [], do: Mongo.insert_many(:mongo, @collection, docs, ordered: false)
+  end
+
+  defp stored do
+    :mongo
+    |> Mongo.find(@collection, %{})
+    |> Map.new(&{Date.from_iso8601!(&1["_id"]), {&1["usd"], &1["cad"]}})
   end
 
   defp series(pair, from) do
     case YahooFinance.fetch_series(pair, from, Date.utc_today()) do
       {:ok, rates, _currency} -> rates
       _error -> %{}
-    end
-  end
-
-  defp attach_one(operation, usd, cad) do
-    with date when not is_nil(date) <- parse_date(operation.fecha),
-         rate_usd when is_number(rate_usd) <- nearest(usd, date),
-         rate_cad when is_number(rate_cad) <- nearest(cad, date) do
-      Map.merge(operation, %{fx_usd: rate_usd, fx_cad: rate_cad})
-    else
-      _ -> operation
     end
   end
 
