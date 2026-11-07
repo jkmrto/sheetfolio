@@ -91,10 +91,11 @@ defmodule SheetfolioWeb.SummaryLive do
   def render(assigns) do
     ~H"""
     <style>
+      main:has(.summary-table) { max-width: 1400px; }
       .summary-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
       .summary-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 1; box-shadow: 1px 0 0 #1e293b; }
       .summary-table th:not(:first-child) { text-align: right; }
-      .sort-btn { all: unset; cursor: pointer; }
+      .sort-btn { all: unset; cursor: pointer; white-space: nowrap; }
       .sort-btn:hover { text-decoration: underline; }
       .sort-icon { display: inline-block; margin-left: 0.3rem; opacity: 0.55; }
       .sort-icon:not(.current) { font-size: 1.35em; line-height: 1; vertical-align: -0.05em; }
@@ -103,12 +104,13 @@ defmodule SheetfolioWeb.SummaryLive do
       .summary-table td { padding: 0.65rem 1rem; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
       .summary-table td:not(:first-child) { text-align: right; }
       .summary-table th, .summary-table td { padding-left: 0.7rem; padding-right: 0.7rem; }
-      .summary-table th.category-col, .summary-table td.category-col { text-align: left; color: #475569; }
+      .summary-table th.category-col, .summary-table td.category-col { text-align: left; white-space: nowrap; color: #475569; }
       .summary-table th.category-col { color: white; }
       .summary-table tr:last-child td { border-bottom: none; }
       .summary-table tr:hover td { background: #f8fafc; }
       .summary-table tfoot td { background: #f8fafc; font-weight: 600; border-top: 2px solid #e2e8f0; }
       .dividends-note { color: #64748b; font-weight: 400; white-space: nowrap; }
+      @media (max-width: 1200px) { .summary-table { display: block; overflow-x: auto; } }
       .positive { color: #16a34a; font-weight: 600; }
       .negative { color: #dc2626; font-weight: 600; }
       .positions-subtabs { display: flex; gap: 0.5rem; border-bottom: 1px solid #e2e8f0; flex: 1; }
