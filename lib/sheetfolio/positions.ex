@@ -43,6 +43,40 @@ defmodule Sheetfolio.Positions do
     |> elem(0)
   end
 
+  @doc """
+  Every operation as a dated cash flow in EUR, oldest first: money in negative,
+  money out positive.
+
+      %{isin, fecha, amount}
+
+  Units sold beyond the recorded buy history are left out, as in
+  `realized_events/3`: their cost is unknown, so counting the proceeds alone
+  would look like money from nowhere.
+  """
+  def cash_flows(operations, eur_usd, eur_cad) do
+    operations
+    |> Enum.sort_by(&settlement_key/1)
+    |> Enum.map_reduce(%{}, &cash_flow(&1, &2, eur_usd, eur_cad))
+    |> elem(0)
+  end
+
+  defp cash_flow(op, held, eur_usd, eur_cad) do
+    qty = parse_cantidad(op.cantidad)
+    {rate_usd, rate_cad} = rates_for(op, eur_usd, eur_cad)
+    amount = amount_in_eur(op.importe_with_comision, op.precio, qty, rate_usd, rate_cad)
+    units = Map.get(held, op.isin, 0.0)
+    flow = %{isin: op.isin, fecha: op.fecha}
+
+    if buy?(op.tipo) do
+      {Map.put(flow, :amount, -amount), Map.put(held, op.isin, units + qty)}
+    else
+      covered = min(qty, max(units, 0.0))
+      share = if qty > 0, do: covered / qty, else: 0.0
+
+      {Map.put(flow, :amount, amount * share), Map.put(held, op.isin, units - qty)}
+    end
+  end
+
   defp replay(operations, eur_usd, eur_cad) do
     {assets, events, _carried} =
       operations

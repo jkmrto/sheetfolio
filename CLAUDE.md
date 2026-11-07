@@ -53,6 +53,7 @@ Before every commit, run the same checks CI does and fix anything they flag: `mi
 1. `GmailClient` searches MyInvestor confirmation emails; `MyinvestorParser` extracts operations (buys, sells, traspasos).
 2. `SyntheticOperations` (hardcoded ops missing from Gmail) and `OperationOverrides` (per-`{fecha, isin}` corrections, `skip: true` to exclude) patch the parsed history. This is the standard mechanism when an email is missing or wrong — add entries there, don't special-case downstream.
 3. `Positions` replays operations into per-ISIN positions using average-cost basis and computes realized P&L events (sells beyond recorded buy history are "uncovered" and realize nothing).
+   `Returns` turns the same operations (`Positions.cash_flows/3`) plus dividends into XIRR. Its flows should reconcile with realized + unrealized + dividends, which is the check to run if it changes.
 4. `PriceFetcher` resolves ISIN → ticker (Yahoo Finance search, OpenFIGI fallback) and fetches EUR prices; `lib/sheetfolio/prices_api/` holds the Yahoo/Stooq/OpenFIGI clients. Problem ISINs are handled via `@ticker_overrides` / `@stooq_overrides` in `PriceFetcher`.
 5. `GoogleSheetsClient` reads the spreadsheet; `Urbanitae` derives a manual position from spreadsheet columns. ISINs come from the parsed emails, not from the sheet.
 6. `UrbanitaeParser` reads the three transactional Urbanitae emails (investment, funding close, distribution). Distributions never state the amount received, so they can only flag that a Movimientos screenshot is owed — they are never written as transactions.

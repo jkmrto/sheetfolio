@@ -3,10 +3,10 @@ defmodule SheetfolioWeb.SummaryLive do
 
   alias SheetfolioWeb.NumberFormat
 
-  alias Sheetfolio.AssetCategories
+  alias Sheetfolio.{AssetCategories, Returns}
 
   @sort_columns Map.new(
-                  ~w(asset category net_qty invested current_value weight gain gain_pct sold_cost total_received pnl pnl_pct)a,
+                  ~w(asset category net_qty invested current_value weight gain gain_pct xirr sold_cost total_received pnl pnl_pct)a,
                   &{Atom.to_string(&1), &1}
                 )
 
@@ -21,6 +21,7 @@ defmodule SheetfolioWeb.SummaryLive do
         assets: %{},
         categories: AssetCategories.get(),
         dividends: %{},
+        flows: %{},
         sort: default_sort(socket.assigns.live_action),
         eur_usd: eur_usd,
         eur_cad: eur_cad
@@ -39,9 +40,11 @@ defmodule SheetfolioWeb.SummaryLive do
         |> Enum.filter(fn {_, a} -> a.net_qty > 0.001 end)
         |> Enum.each(fn {isin, _} -> Sheetfolio.EarningsServer.request_price(isin, pid) end)
 
-        dividends = Sheetfolio.Dividends.totals_by_isin(Sheetfolio.Dividends.all())
+        dividend_docs = Sheetfolio.Dividends.all()
+        dividends = Sheetfolio.Dividends.totals_by_isin(dividend_docs)
+        flows = operations |> Sheetfolio.Positions.cash_flows(eur_usd, eur_cad) |> Returns.flows_by_isin(dividend_docs)
 
-        {:ok, assign(socket, assets: assets, ops_by_isin: ops_by_isin, dividends: dividends, selected_isin: nil)}
+        {:ok, assign(socket, assets: assets, ops_by_isin: ops_by_isin, dividends: dividends, flows: flows, selected_isin: nil)}
       else
         {:ok, assign(socket, ops_by_isin: %{}, selected_isin: nil)}
       end
@@ -99,6 +102,7 @@ defmodule SheetfolioWeb.SummaryLive do
       .summary-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
       .summary-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 1; box-shadow: 1px 0 0 #1e293b; }
       .summary-table th:not(:first-child) { text-align: right; }
+      .xirr-note { color: #64748b; font-size: 0.85rem; margin-bottom: 1rem; }
       .sort-btn { all: unset; cursor: pointer; white-space: nowrap; }
       .sort-btn:hover { text-decoration: underline; }
       .sort-icon { display: inline-block; margin-left: 0.3rem; opacity: 0.55; }
@@ -139,6 +143,16 @@ defmodule SheetfolioWeb.SummaryLive do
       </button>
     </div>
 
+    <%= if map_size(@assets) > 0 do %>
+      <% overall = overall_xirr(@assets, @flows) %>
+      <p class="xirr-note">
+        Annualized return (XIRR) of everything held or sold:
+        <strong class={earnings_class(overall)}><%= format_pct(overall) %></strong>.
+        It accounts for when each euro went in and came out, dividends included.
+        Excludes Urbanitae, Equito and coins held on exchanges.
+      </p>
+    <% end %>
+
     <%= if @live_action == :active do %>
       <%= render_active(assigns) %>
     <% else %>
@@ -172,10 +186,11 @@ defmodule SheetfolioWeb.SummaryLive do
               <.sort_header sort={@sort} column={:weight} label="Weight (%)" />
               <.sort_header sort={@sort} column={:gain} label="Gain/Loss (€)" />
               <.sort_header sort={@sort} column={:gain_pct} label="Gain/Loss (%)" />
+              <.sort_header sort={@sort} column={:xirr} label="XIRR (%)" />
             </tr>
           </thead>
           <tbody>
-            <%= for a <- active |> Enum.map(&active_row(&1, @categories, @dividends, held_value)) |> sort_rows(@sort) do %>
+            <%= for a <- active |> Enum.map(&active_row(&1, @categories, @dividends, held_value, @flows)) |> sort_rows(@sort) do %>
               <tr>
                 <td><strong><%= a.asset %></strong><br/><small style="color:#94a3b8"><%= a.isin %></small></td>
                 <td class="category-col"><%= a.category %></td>
@@ -188,6 +203,7 @@ defmodule SheetfolioWeb.SummaryLive do
                   <%= if a.dividends > 0 do %><br/><small class="dividends-note">incl. <%= format_eur(a.dividends) %> dividends</small><% end %>
                 </td>
                 <td class={earnings_class(a.gain_pct)}><%= format_pct(a.gain_pct) %></td>
+                <.xirr_cell row={a} />
               </tr>
             <% end %>
           </tbody>
@@ -201,6 +217,8 @@ defmodule SheetfolioWeb.SummaryLive do
               <td><%= NumberFormat.pct(if held_value > 0, do: 100) %></td>
               <td class={earnings_class(total_earnings)}><%= format_abs(total_earnings) %></td>
               <td class={earnings_class(total_pct)}><%= format_pct(total_pct) %></td>
+              <% active_xirr = active_xirr(active, @flows) %>
+              <td class={earnings_class(active_xirr)}><%= format_pct(active_xirr) %></td>
             </tr>
           </tfoot>
         </table>
@@ -223,7 +241,7 @@ defmodule SheetfolioWeb.SummaryLive do
       .ops-sell { color: #dc2626; }
     </style>
     <%= if map_size(@assets) > 0 do %>
-      <% settled = @assets |> Map.values() |> Enum.filter(& &1.total_received > 0) |> Enum.map(&settled_row(&1, @categories)) %>
+      <% settled = @assets |> Map.values() |> Enum.filter(& &1.total_received > 0) |> Enum.map(&settled_row(&1, @categories, @flows)) %>
       <% total_invested = Enum.reduce(settled, 0, fn a, acc -> acc + a.sold_cost end) %>
       <% total_received = Enum.reduce(settled, 0, fn a, acc -> acc + a.total_received end) %>
       <% total_pnl = Float.round(total_received - total_invested, 2) %>
@@ -240,6 +258,7 @@ defmodule SheetfolioWeb.SummaryLive do
               <.sort_header sort={@sort} column={:total_received} label="Received (€)" />
               <.sort_header sort={@sort} column={:pnl} label="Realized P&L (€)" />
               <.sort_header sort={@sort} column={:pnl_pct} label="Realized P&L (%)" />
+              <.sort_header sort={@sort} column={:xirr} label="XIRR (%)" />
             </tr>
           </thead>
           <tbody>
@@ -258,11 +277,12 @@ defmodule SheetfolioWeb.SummaryLive do
                 <td><%= format_eur(a.total_received) %></td>
                 <td class={earnings_class(a.pnl)}><%= format_abs(a.pnl) %></td>
                 <td class={earnings_class(a.pnl_pct)}><%= format_pct(a.pnl_pct) %></td>
+                <.xirr_cell row={a} />
               </tr>
               <%= if expanded do %>
                 <% ops = Map.get(@ops_by_isin, a.isin, []) |> Enum.sort_by(& &1.fecha) %>
                 <tr class="ops-detail">
-                  <td colspan="6" style="padding: 0;">
+                  <td colspan="7" style="padding: 0;">
                     <table style="width:100%; border-collapse: collapse;">
                       <thead>
                         <tr>
@@ -299,6 +319,7 @@ defmodule SheetfolioWeb.SummaryLive do
               <td><%= format_eur(total_received) %></td>
               <td class={earnings_class(total_pnl)}><%= format_abs(total_pnl) %></td>
               <td class={earnings_class(total_pct)}><%= format_pct(total_pct) %></td>
+              <td></td>
             </tr>
           </tfoot>
         </table>
@@ -318,6 +339,38 @@ defmodule SheetfolioWeb.SummaryLive do
     </th>
     """
   end
+
+  defp xirr_cell(assigns) do
+    ~H"""
+    <td class={earnings_class(@row.xirr)}>
+      <%= format_pct(@row.xirr) %>
+      <%= if @row.xirr && @row.xirr_short do %><br/><small class="dividends-note">under 1 year</small><% end %>
+    </td>
+    """
+  end
+
+  # What's held today, for a position's return: nothing once it's sold, and
+  # unknown until a held position has its price.
+  defp held_value(%{net_qty: net_qty} = a) when net_qty > 0.001, do: a.current_value
+  defp held_value(_a), do: 0.0
+
+  defp position_flows(a, flows), do: {Map.get(flows, a.isin, []), held_value(a)}
+
+  defp with_xirr(row, flows) do
+    {asset_flows, value} = position_flows(row, flows)
+    today = Date.utc_today()
+
+    Map.merge(row, %{
+      xirr: Returns.annual_pct(asset_flows, value, today),
+      xirr_short: Returns.under_a_year?(asset_flows, value, today)
+    })
+  end
+
+  defp active_xirr(active, flows) do
+    active |> Enum.map(&position_flows(&1, flows)) |> Returns.combined_pct(Date.utc_today())
+  end
+
+  defp overall_xirr(assets, flows), do: assets |> Map.values() |> active_xirr(flows)
 
   defp aria_sort({column, :asc}, column), do: "ascending"
   defp aria_sort({column, :desc}, column), do: "descending"
@@ -351,9 +404,10 @@ defmodule SheetfolioWeb.SummaryLive do
   defp sort_value(value) when is_binary(value), do: String.downcase(value)
   defp sort_value(value), do: value
 
-  defp active_row(a, categories, dividends, held_value) do
+  defp active_row(a, categories, dividends, held_value, flows) do
     a
     |> gains(Map.get(dividends, a.isin, 0.0))
+    |> with_xirr(flows)
     |> Map.put(:category, AssetCategories.category_for(a.isin, categories))
     |> Map.put(:weight, weight(a.current_value, held_value))
   end
@@ -381,12 +435,14 @@ defmodule SheetfolioWeb.SummaryLive do
     {gain, Float.round(gain / cost_basis * 100, 2)}
   end
 
-  defp settled_row(a, categories) do
+  defp settled_row(a, categories, flows) do
     sold_cost = max(0.0, a.total_bought - max(0.0, a.cost_basis))
     pnl = Float.round(a.total_received - sold_cost, 2)
     pnl_pct = if sold_cost > 0, do: Float.round(pnl / sold_cost * 100, 2), else: nil
 
-    Map.merge(a, %{
+    a
+    |> with_xirr(flows)
+    |> Map.merge(%{
       category: AssetCategories.category_for(a.isin, categories),
       sold_cost: sold_cost,
       pnl: pnl,
