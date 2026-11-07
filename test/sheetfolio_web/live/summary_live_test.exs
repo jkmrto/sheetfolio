@@ -27,6 +27,20 @@ defmodule SheetfolioWeb.SummaryLiveTest do
     end
   end
 
+  describe "with_dividends/3" do
+    test "adds distributions to the gain and its percentage" do
+      assert SummaryLive.with_dividends(-1040.55, 17_098.91, 680.47) == {-360.08, -2.11}
+    end
+
+    test "leaves a position without distributions as it was" do
+      assert SummaryLive.with_dividends(5642.04, 36_521.66, 0.0) == {5642.04, 15.45}
+    end
+
+    test "stays blank until there is a price" do
+      assert SummaryLive.with_dividends(nil, 100.0, 50.0) == {nil, nil}
+    end
+  end
+
   describe "weight/2" do
     test "is the position's share of what's held" do
       assert SummaryLive.weight(25.0, 100.0) == 25.0

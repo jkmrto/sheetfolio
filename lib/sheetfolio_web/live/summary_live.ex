@@ -20,6 +20,7 @@ defmodule SheetfolioWeb.SummaryLive do
         authenticated: true,
         assets: %{},
         categories: AssetCategories.get(),
+        dividends: %{},
         sort: default_sort(socket.assigns.live_action),
         eur_usd: eur_usd,
         eur_cad: eur_cad
@@ -38,7 +39,9 @@ defmodule SheetfolioWeb.SummaryLive do
         |> Enum.filter(fn {_, a} -> a.net_qty > 0.001 end)
         |> Enum.each(fn {isin, _} -> Sheetfolio.EarningsServer.request_price(isin, pid) end)
 
-        {:ok, assign(socket, assets: assets, ops_by_isin: ops_by_isin, selected_isin: nil)}
+        dividends = Sheetfolio.Dividends.totals_by_isin(Sheetfolio.Dividends.all())
+
+        {:ok, assign(socket, assets: assets, ops_by_isin: ops_by_isin, dividends: dividends, selected_isin: nil)}
       else
         {:ok, assign(socket, ops_by_isin: %{}, selected_isin: nil)}
       end
@@ -105,6 +108,7 @@ defmodule SheetfolioWeb.SummaryLive do
       .summary-table tr:last-child td { border-bottom: none; }
       .summary-table tr:hover td { background: #f8fafc; }
       .summary-table tfoot td { background: #f8fafc; font-weight: 600; border-top: 2px solid #e2e8f0; }
+      .dividends-note { color: #64748b; font-weight: 400; white-space: nowrap; }
       .positive { color: #16a34a; font-weight: 600; }
       .negative { color: #dc2626; font-weight: 600; }
       .positions-subtabs { display: flex; gap: 0.5rem; border-bottom: 1px solid #e2e8f0; flex: 1; }
@@ -139,7 +143,8 @@ defmodule SheetfolioWeb.SummaryLive do
       <% meaningful = Enum.filter(active, & &1.cost_basis > 0) %>
       <% total_invested = Enum.reduce(meaningful, 0, fn a, acc -> acc + a.cost_basis end) %>
       <% total_value = meaningful |> Enum.filter(& &1.current_value) |> Enum.reduce(0, fn a, acc -> acc + a.current_value end) %>
-      <% total_earnings = if total_invested > 0, do: Float.round(total_value - total_invested, 2), else: nil %>
+      <% total_dividends = Enum.reduce(meaningful, 0, fn a, acc -> acc + Map.get(@dividends, a.isin, 0.0) end) %>
+      <% total_earnings = if total_invested > 0, do: Float.round(total_value + total_dividends - total_invested, 2), else: nil %>
       <% total_pct = if total_invested > 0 and total_earnings, do: Float.round(total_earnings / total_invested * 100, 2), else: nil %>
       <% held_value = active |> Enum.map(& &1.current_value) |> Enum.reject(&is_nil/1) |> Enum.sum() %>
 
@@ -159,7 +164,7 @@ defmodule SheetfolioWeb.SummaryLive do
             </tr>
           </thead>
           <tbody>
-            <%= for a <- active |> Enum.map(&active_row(&1, @categories, held_value)) |> sort_rows(@sort) do %>
+            <%= for a <- active |> Enum.map(&active_row(&1, @categories, @dividends, held_value)) |> sort_rows(@sort) do %>
               <tr>
                 <td><strong><%= a.asset %></strong><br/><small style="color:#94a3b8"><%= a.isin %></small></td>
                 <td class="category-col"><%= a.category %></td>
@@ -167,7 +172,10 @@ defmodule SheetfolioWeb.SummaryLive do
                 <td><%= format_eur(a.invested) %></td>
                 <td><%= format_eur(a.current_value) %></td>
                 <td><%= NumberFormat.pct(a.weight) %></td>
-                <td class={earnings_class(a.gain)}><%= format_abs(a.gain) %></td>
+                <td class={earnings_class(a.gain)}>
+                  <%= format_abs(a.gain) %>
+                  <%= if a.dividends > 0 do %><br/><small class="dividends-note">incl. <%= format_eur(a.dividends) %> dividends</small><% end %>
+                </td>
                 <td class={earnings_class(a.gain_pct)}><%= format_pct(a.gain_pct) %></td>
               </tr>
             <% end %>
@@ -332,9 +340,9 @@ defmodule SheetfolioWeb.SummaryLive do
   defp sort_value(value) when is_binary(value), do: String.downcase(value)
   defp sort_value(value), do: value
 
-  defp active_row(a, categories, held_value) do
+  defp active_row(a, categories, dividends, held_value) do
     a
-    |> gains()
+    |> gains(Map.get(dividends, a.isin, 0.0))
     |> Map.put(:category, AssetCategories.category_for(a.isin, categories))
     |> Map.put(:weight, weight(a.current_value, held_value))
   end
@@ -344,11 +352,23 @@ defmodule SheetfolioWeb.SummaryLive do
   def weight(_value, held_value) when held_value <= 0, do: nil
   def weight(value, held_value), do: Float.round(value / held_value * 100, 2)
 
-  defp gains(%{cost_basis: cost_basis} = a) when cost_basis > 0 do
-    Map.merge(a, %{invested: cost_basis, gain: a.earnings_abs, gain_pct: a.earnings_pct})
+  defp gains(%{cost_basis: cost_basis} = a, dividends) when cost_basis > 0 do
+    {gain, gain_pct} = with_dividends(a.earnings_abs, cost_basis, dividends)
+    Map.merge(a, %{invested: cost_basis, dividends: dividends, gain: gain, gain_pct: gain_pct})
   end
 
-  defp gains(a), do: Map.merge(a, %{invested: nil, gain: nil, gain_pct: nil})
+  defp gains(a, _dividends), do: Map.merge(a, %{invested: nil, dividends: 0.0, gain: nil, gain_pct: nil})
+
+  @doc """
+  `{gain, gain_pct}` counting the cash distributions received, the same way
+  `/history` does. Blank until the position has a price.
+  """
+  def with_dividends(nil, _cost_basis, _dividends), do: {nil, nil}
+
+  def with_dividends(earnings_abs, cost_basis, dividends) do
+    gain = Float.round(earnings_abs + dividends, 2)
+    {gain, Float.round(gain / cost_basis * 100, 2)}
+  end
 
   defp settled_row(a, categories) do
     sold_cost = max(0.0, a.total_bought - max(0.0, a.cost_basis))
