@@ -114,8 +114,8 @@ defmodule Sheetfolio.MonthlyEarningsTest do
       snapshot("2026-02-28", [position("URBANITAE", 1.0, 950.0, 800.0)])
     ]
 
-    earnings_at = fn date -> if date >= "2026-02-01", do: 25.0, else: 0.0 end
-    result = MonthlyEarnings.build(snapshots, [], [], [{"Urbanitae", earnings_at}])
+    state_at = fn date -> if date >= "2026-02-01", do: {800.0, 25.0}, else: {800.0, 0.0} end
+    result = MonthlyEarnings.build(snapshots, [], [], [{"Urbanitae", state_at}])
 
     assert Enum.map(result.rows, & &1.key) == ["Urbanitae"]
     assert_in_delta earned(result, "Urbanitae", "2026-02"), 25.0, 1.0e-6
@@ -130,6 +130,122 @@ defmodule Sheetfolio.MonthlyEarningsTest do
     ]
 
     assert_in_delta earned(MonthlyEarnings.build(snapshots, history(ops), []), "IE1", "2026-01"), 5.0, 1.0e-6
+  end
+
+  describe "returns" do
+    defp year(snapshots, ops, dividends \\ []) do
+      snapshots |> MonthlyEarnings.build(history(ops), dividends) |> MonthlyEarnings.for_year("2026")
+    end
+
+    test "a month's return is on the value it started with" do
+      ops = [op("15/12/2025", "Compra", "10", "100 EUR")]
+
+      table =
+        year(
+          [
+            snapshot("2025-12-31", [position("IE1", 10.0, 100.0)]),
+            snapshot("2026-01-31", [position("IE1", 10.0, 110.0)]),
+            snapshot("2026-02-28", [position("IE1", 10.0, 99.0)])
+          ],
+          ops
+        )
+
+      [row] = table.rows
+      assert_in_delta row.pcts["2026-01"], 10.0, 1.0e-6
+      assert_in_delta row.pcts["2026-02"], -10.0, 1.0e-6
+    end
+
+    test "the year compounds its months instead of adding them" do
+      ops = [op("15/12/2025", "Compra", "10", "100 EUR")]
+
+      table =
+        year(
+          [
+            snapshot("2025-12-31", [position("IE1", 10.0, 100.0)]),
+            snapshot("2026-01-31", [position("IE1", 10.0, 110.0)]),
+            snapshot("2026-02-28", [position("IE1", 10.0, 99.0)])
+          ],
+          ops
+        )
+
+      assert_in_delta hd(table.rows).pct, -1.0, 1.0e-6
+    end
+
+    test "a position bought during the month is measured on what was paid" do
+      ops = [op("10/01/2026", "Compra", "10", "100 EUR")]
+
+      table =
+        year(
+          [
+            snapshot("2025-12-31", []),
+            snapshot("2026-01-31", [position("IE1", 10.0, 90.0)])
+          ],
+          ops
+        )
+
+      assert_in_delta hd(table.rows).pcts["2026-01"], -10.0, 1.0e-6
+    end
+
+    test "after a position is gone there's no return to show" do
+      ops = [op("15/12/2025", "Compra", "10", "100 EUR"), op("10/01/2026", "Venta", "10", "110 EUR")]
+
+      table =
+        year(
+          [
+            snapshot("2025-12-31", [position("IE1", 10.0, 100.0)]),
+            snapshot("2026-01-31", []),
+            snapshot("2026-02-28", [])
+          ],
+          ops
+        )
+
+      row = hd(table.rows)
+      assert_in_delta row.pcts["2026-01"], 10.0, 1.0e-6
+      assert row.pcts["2026-02"] == nil
+    end
+
+    test "the total row weighs assets by their capital" do
+      ops = [op("15/12/2025", "Compra", "10", "100 EUR"), op("15/12/2025", "Compra", "30", "300 EUR", "IE2")]
+
+      table =
+        year(
+          [
+            snapshot("2025-12-31", [position("IE1", 10.0, 100.0), position("IE2", 30.0, 300.0)]),
+            snapshot("2026-01-31", [position("IE1", 10.0, 120.0), position("IE2", 30.0, 300.0)])
+          ],
+          ops
+        )
+
+      assert_in_delta table.total.pcts["2026-01"], 5.0, 1.0e-6
+    end
+
+    test "a dividend counts towards the return" do
+      ops = [op("15/12/2025", "Compra", "10", "100 EUR")]
+      dividend = %{"date" => "2026-01-10", "isin" => "IE1", "asset" => "FUND IE1", "amount" => 5.0}
+
+      table =
+        year(
+          [
+            snapshot("2025-12-31", [position("IE1", 10.0, 100.0)]),
+            snapshot("2026-01-31", [position("IE1", 10.0, 100.0)])
+          ],
+          ops,
+          [dividend]
+        )
+
+      assert_in_delta hd(table.rows).pcts["2026-01"], 5.0, 1.0e-6
+    end
+
+    test "a ledger is measured on what was outstanding, new money included" do
+      state_at = fn date -> if date >= "2026-01-15", do: {1000.0, 30.0}, else: {800.0, 0.0} end
+
+      table =
+        [snapshot("2025-12-31", []), snapshot("2026-01-31", [])]
+        |> MonthlyEarnings.build([], [], [{"Urbanitae", state_at}])
+        |> MonthlyEarnings.for_year("2026")
+
+      assert_in_delta hd(table.rows).pcts["2026-01"], 3.0, 1.0e-6
+    end
   end
 
   describe "for_year/2" do
@@ -149,6 +265,7 @@ defmodule Sheetfolio.MonthlyEarningsTest do
       year = MonthlyEarnings.for_year(result, "2026")
 
       assert Enum.map(year.rows, & &1.asset) == ["FUND IE2", "FUND IE1"]
+      assert year.total.asset == "Total earnings"
       assert_in_delta year.total.months["2026-01"], 10.0, 1.0e-6
       assert_in_delta year.total.months["2026-02"], 0.0, 1.0e-6
       assert_in_delta year.total.total, 10.0, 1.0e-6

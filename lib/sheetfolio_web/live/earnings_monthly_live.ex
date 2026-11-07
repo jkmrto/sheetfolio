@@ -10,7 +10,7 @@ defmodule SheetfolioWeb.EarningsMonthlyLive do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      socket = assign(socket, authenticated: true, earnings: %{months: [], rows: []}, years: [], year: nil)
+      socket = assign(socket, authenticated: true, earnings: %{months: [], rows: []}, years: [], year: nil, unit: "eur")
 
       if connected?(socket) do
         earnings = load()
@@ -24,6 +24,10 @@ defmodule SheetfolioWeb.EarningsMonthlyLive do
 
   def handle_event("set_year", %{"year" => year}, socket) do
     if year in socket.assigns.years, do: {:noreply, assign(socket, year: year)}, else: {:noreply, socket}
+  end
+
+  def handle_event("set_unit", %{"unit" => unit}, socket) when unit in ~w(eur pct) do
+    {:noreply, assign(socket, unit: unit)}
   end
 
   defp load do
@@ -40,8 +44,8 @@ defmodule SheetfolioWeb.EarningsMonthlyLive do
     equito = EquitoTransactions.all()
 
     [
-      {"Urbanitae", &elem(UrbanitaeTransactions.state_at(urbanitae, &1), 1)},
-      {"Equito", &elem(EquitoTransactions.state_at(equito, &1), 1)}
+      {"Urbanitae", &UrbanitaeTransactions.state_at(urbanitae, &1)},
+      {"Equito", &EquitoTransactions.state_at(equito, &1)}
     ]
   end
 
@@ -55,7 +59,8 @@ defmodule SheetfolioWeb.EarningsMonthlyLive do
       .earnings-page-tabs a { color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
       .earnings-page-tabs a:hover { color: #1e293b; }
       .earnings-page-tabs a.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
-      .monthly-years { display: flex; gap: 0.4rem; margin-bottom: 1rem; }
+      .monthly-controls { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+      .monthly-years { display: flex; gap: 0.4rem; }
       .monthly-years button { border: 1px solid #e2e8f0; background: white; color: #64748b; border-radius: 6px; padding: 0.25rem 0.8rem; font-size: 0.85rem; cursor: pointer; }
       .monthly-years button.active { background: #1e293b; border-color: #1e293b; color: white; font-weight: 600; }
       .monthly-scroll { overflow-x: auto; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
@@ -77,10 +82,16 @@ defmodule SheetfolioWeb.EarningsMonthlyLive do
       <a href="/earnings/monthly" class="active">Monthly</a>
     </div>
 
-    <div class="monthly-years">
-      <button :for={year <- @years} type="button" class={if year == @year, do: "active", else: ""} phx-click="set_year" phx-value-year={year}>
-        {year}
-      </button>
+    <div class="monthly-controls">
+      <div class="monthly-years">
+        <button :for={year <- @years} type="button" class={if year == @year, do: "active", else: ""} phx-click="set_year" phx-value-year={year}>
+          {year}
+        </button>
+      </div>
+      <div class="monthly-years">
+        <button type="button" class={if @unit == "eur", do: "active", else: ""} phx-click="set_unit" phx-value-unit="eur">€</button>
+        <button type="button" class={if @unit == "pct", do: "active", else: ""} phx-click="set_unit" phx-value-unit="pct">%</button>
+      </div>
     </div>
 
     <div class="expand-panel" id="panel-monthly" phx-hook="ExpandPanel">
@@ -93,34 +104,49 @@ defmodule SheetfolioWeb.EarningsMonthlyLive do
             <th>Total</th>
           </tr>
           <tr class="sum">
-            <td>Total earnings</td>
-            <td :for={month <- @table.months} class={cell_class(@table.total.months[month])}>{amount(@table.total.months[month])}</td>
-            <td class={"year #{cell_class(@table.total.total)}"}>{amount(@table.total.total)}</td>
+            <td>{@table.total.asset}</td>
+            <td :for={month <- @table.months} class={cell_class(@unit, month_value(@unit, @table.total, month))}>{show(@unit, month_value(@unit, @table.total, month))}</td>
+            <td class={"year #{cell_class(@unit, year_value(@unit, @table.total))}"}>{show(@unit, year_value(@unit, @table.total))}</td>
           </tr>
           <tr :for={row <- @table.rows}>
             <td title={row.asset}>{row.asset}</td>
-            <td :for={month <- @table.months} class={cell_class(row.months[month])}>{amount(row.months[month])}</td>
-            <td class={"year #{cell_class(row.total)}"}>{amount(row.total)}</td>
+            <td :for={month <- @table.months} class={cell_class(@unit, month_value(@unit, row, month))}>{show(@unit, month_value(@unit, row, month))}</td>
+            <td class={"year #{cell_class(@unit, year_value(@unit, row))}"}>{show(@unit, year_value(@unit, row))}</td>
           </tr>
         </table>
       </div>
     </div>
 
     <div class="monthly-note">
-      In euros. Each month is the change in value less cost, plus sales and dividends, so a sale only adds what
-      the price moved since the month before. The current month runs to the latest snapshot.
+      <%= if @unit == "pct" do %>
+        Each month's earnings over the value it started with plus what was bought during it. The Total column
+        compounds the months. Dividends count, so a fund's return includes what it paid out.
+      <% else %>
+        In euros.
+      <% end %>
+      Each month is the change in value less cost, plus sales and dividends, so a sale only adds what the price
+      moved since the month before. The current month runs to the latest snapshot.
     </div>
     """
   end
 
   defp month_name(month), do: Enum.at(@month_names, String.to_integer(String.slice(month, 5, 2)) - 1)
 
-  defp amount(nil), do: "—"
-  defp amount(value) when abs(value) < 0.5, do: "—"
-  defp amount(value), do: NumberFormat.number(value, 0)
+  defp month_value("pct", row, month), do: row.pcts[month]
+  defp month_value(_unit, row, month), do: row.months[month]
 
-  defp cell_class(nil), do: "zero"
-  defp cell_class(value) when abs(value) < 0.5, do: "zero"
-  defp cell_class(value) when value < 0, do: "neg"
-  defp cell_class(_value), do: "pos"
+  defp year_value("pct", row), do: row.pct
+  defp year_value(_unit, row), do: row.total
+
+  defp show(_unit, nil), do: "—"
+  defp show("pct", value) when abs(value) < 0.05, do: "—"
+  defp show("pct", value), do: "#{NumberFormat.number(value, 1)}%"
+  defp show(_unit, value) when abs(value) < 0.5, do: "—"
+  defp show(_unit, value), do: NumberFormat.number(value, 0)
+
+  defp cell_class(_unit, nil), do: "zero"
+  defp cell_class("pct", value) when abs(value) < 0.05, do: "zero"
+  defp cell_class("eur", value) when abs(value) < 0.5, do: "zero"
+  defp cell_class(_unit, value) when value < 0, do: "neg"
+  defp cell_class(_unit, _value), do: "pos"
 end

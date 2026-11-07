@@ -15,15 +15,25 @@ defmodule Sheetfolio.MonthlyEarnings do
   older cost figures. A snapshot only supplies the unit price of its date. Assets
   with no operations, such as coins held on an exchange, use the snapshot's own
   value and cost. Ledgers like Urbanitae and Equito are passed in as `{label, fun}`,
-  where `fun` gives the cumulative earnings at an ISO date.
+  where `fun` gives `{outstanding, earnings}` at an ISO date.
+
+  A month's return is its earnings over the capital at work: the value it started
+  with plus what was bought during it, so a position bought mid-month still has
+  one. A year's return compounds its months, because the capital changes between
+  them and percentages of different bases don't add up.
   """
 
   alias Sheetfolio.Positions
 
+  # Below this there's nothing to measure a return against: a percentage on the
+  # leftovers of a sold position would only be noise.
+  @min_capital 1.0
+
   @doc """
   `snapshots` oldest first, and `history` from `Positions.history/3`:
 
-      %{months: ["2026-01", ...], rows: [%{key, asset, months: %{"2026-01" => 12.5}}]}
+      %{months: ["2026-01", ...],
+        rows: [%{key, asset, months: %{"2026-01" => 12.5}, bases: %{"2026-01" => 1000.0}}]}
   """
   def build(snapshots, history, dividends, ledgers \\ [])
 
@@ -51,20 +61,21 @@ defmodule Sheetfolio.MonthlyEarnings do
   @doc """
   One year of `build/4`'s result, best earner first, with the totals by month:
 
-      %{months, total: %{months, total}, rows: [%{asset, months, total}]}
+      %{months, total: row, rows: [row]}
+
+  where a row is `%{asset, months, total, pcts, pct}`: euros per month and for
+  the year, then the same as returns in percent, `nil` where no capital was at work.
   """
   def for_year(%{months: months, rows: rows}, year) do
     shown = Enum.filter(months, &String.starts_with?(&1, year))
 
-    rows =
-      rows
-      |> Enum.map(&year_row(&1, shown))
-      |> Enum.reject(&(abs(&1.total) < 0.005 and Enum.all?(Map.values(&1.months), fn v -> abs(v) < 0.005 end)))
-      |> Enum.sort_by(& &1.total, :desc)
+    kept = Enum.map(rows, &year_row(&1.asset, Map.take(&1.months, shown), Map.take(&1.bases, shown)))
 
-    by_month = Map.new(shown, &{&1, Enum.reduce(rows, 0.0, fn row, acc -> acc + Map.get(row.months, &1, 0.0) end)})
-
-    %{months: shown, rows: rows, total: %{months: by_month, total: by_month |> Map.values() |> Enum.sum()}}
+    %{
+      months: shown,
+      total: year_row("Total earnings", sum_by_month(rows, :months, shown), sum_by_month(rows, :bases, shown)),
+      rows: kept |> Enum.reject(&idle?/1) |> Enum.sort_by(& &1.total, :desc)
+    }
   end
 
   @doc "The years covered, newest first."
@@ -72,9 +83,28 @@ defmodule Sheetfolio.MonthlyEarnings do
     months |> Enum.map(&String.slice(&1, 0, 4)) |> Enum.uniq() |> Enum.sort(:desc)
   end
 
-  defp year_row(row, shown) do
-    kept = Map.take(row.months, shown)
-    %{asset: row.asset, months: kept, total: kept |> Map.values() |> Enum.sum()}
+  defp sum_by_month(rows, field, shown) do
+    Map.new(shown, fn month ->
+      {month, Enum.reduce(rows, 0.0, &(Map.get(Map.fetch!(&1, field), month, 0.0) + &2))}
+    end)
+  end
+
+  defp year_row(asset, months, bases) do
+    pcts = Map.new(months, fn {month, earned} -> {month, return(earned, Map.get(bases, month, 0.0))} end)
+
+    %{asset: asset, months: months, total: months |> Map.values() |> Enum.sum(), pcts: pcts, pct: compound(pcts)}
+  end
+
+  defp idle?(row), do: abs(row.total) < 0.005 and Enum.all?(Map.values(row.months), &(abs(&1) < 0.005))
+
+  defp return(earned, base) when base > @min_capital, do: earned / base * 100
+  defp return(_earned, _base), do: nil
+
+  defp compound(pcts) do
+    case pcts |> Map.values() |> Enum.reject(&is_nil/1) do
+      [] -> nil
+      returns -> (Enum.reduce(returns, 1.0, &(&2 * (1 + &1 / 100))) - 1) * 100
+    end
   end
 
   # The first snapshot anchors the first month, then each month's last one.
@@ -137,9 +167,13 @@ defmodule Sheetfolio.MonthlyEarnings do
 
   defp add_replayed(gains, assets, prices) do
     Enum.reduce(assets, gains, fn {isin, asset}, acc ->
-      add(acc, isin, asset.asset, asset.realized + unrealized(asset, prices[isin]))
+      gain = unrealized(asset, prices[isin])
+      add(acc, isin, asset.asset, asset.realized + gain, value(asset, gain), asset.total_bought)
     end)
   end
+
+  defp value(%{net_qty: units}, _unrealized) when units <= 0, do: 0.0
+  defp value(%{cost_basis: cost}, unrealized), do: cost + unrealized
 
   defp unrealized(%{net_qty: units}, _price) when units <= 0, do: 0.0
   defp unrealized(_asset, nil), do: 0.0
@@ -150,7 +184,10 @@ defmodule Sheetfolio.MonthlyEarnings do
     |> positions()
     |> Enum.reject(&MapSet.member?(replayed, &1["isin"]))
     |> Enum.filter(&is_number(&1["value"]))
-    |> Enum.reduce(gains, &add(&2, &1["isin"], &1["asset"], &1["value"] - (&1["invested"] || 0.0)))
+    |> Enum.reduce(gains, fn position, acc ->
+      invested = position["invested"] || 0.0
+      add(acc, position["isin"], position["asset"], position["value"] - invested, position["value"], invested)
+    end)
   end
 
   defp add_dividends(gains, dividends, date) do
@@ -160,14 +197,18 @@ defmodule Sheetfolio.MonthlyEarnings do
   end
 
   defp add_ledgers(gains, ledgers, date) do
-    Enum.reduce(ledgers, gains, fn {label, earnings_at}, acc -> add(acc, label, label, earnings_at.(date)) end)
+    Enum.reduce(ledgers, gains, fn {label, state_at}, acc ->
+      {outstanding, earnings} = state_at.(date)
+      add(acc, label, label, earnings, outstanding, outstanding)
+    end)
   end
 
-  defp add(gains, key, asset, amount) do
-    Map.update(gains, key, %{asset: asset, gain: amount}, &%{&1 | gain: &1.gain + amount})
+  defp add(gains, key, asset, amount, value \\ 0.0, bought \\ 0.0) do
+    entry = %{asset: asset, gain: amount, value: value, bought: bought}
+    Map.update(gains, key, entry, &%{&1 | gain: &1.gain + amount, value: &1.value + value, bought: &1.bought + bought})
   end
 
-  # `[{month, key, asset, earned}]`, each checkpoint against the one before.
+  # `[{month, key, asset, earned, capital}]`, each checkpoint against the one before.
   defp monthly(gains) do
     gains
     |> Enum.chunk_every(2, 1, :discard)
@@ -177,21 +218,24 @@ defmodule Sheetfolio.MonthlyEarnings do
   defp differences(month, was, now) do
     for key <- Enum.uniq(Map.keys(was) ++ Map.keys(now)) do
       asset = (now[key] || was[key]).asset
-      {month, key, asset, gain_of(now[key]) - gain_of(was[key])}
+      {month, key, asset, field(now[key], :gain) - field(was[key], :gain), capital(was[key], now[key])}
     end
   end
 
-  defp gain_of(nil), do: 0.0
-  defp gain_of(%{gain: gain}), do: gain
+  defp capital(was, now), do: field(was, :value) + max(field(now, :bought) - field(was, :bought), 0.0)
+
+  defp field(nil, _name), do: 0.0
+  defp field(entry, name), do: Map.fetch!(entry, name)
 
   defp rows(monthly) do
     monthly
-    |> Enum.group_by(fn {_month, key, _asset, _earned} -> key end)
+    |> Enum.group_by(fn {_month, key, _asset, _earned, _capital} -> key end)
     |> Enum.map(fn {key, entries} ->
       %{
         key: key,
         asset: entries |> List.last() |> elem(2),
-        months: Map.new(entries, fn {month, _key, _asset, earned} -> {month, earned} end)
+        months: Map.new(entries, fn {month, _key, _asset, earned, _capital} -> {month, earned} end),
+        bases: Map.new(entries, fn {month, _key, _asset, _earned, capital} -> {month, capital} end)
       }
     end)
   end
