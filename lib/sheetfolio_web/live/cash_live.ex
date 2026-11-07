@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.CashLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   @sources ["Bankinter", "MyInvestor", "Wise", "Ibercaja"]
   @colors %{
     "Bankinter" => "#2a78d6",
@@ -142,7 +144,7 @@ defmodule SheetfolioWeb.CashLive do
   end
 
   defp placeholder(nil), do: "0"
-  defp placeholder(amount), do: :erlang.float_to_binary(amount / 1, decimals: 2)
+  defp placeholder(amount), do: NumberFormat.number(amount)
 
   # The Wise field prefers the freshly-fetched live balance over whatever was
   # last saved; the other fields only ever have the last saved amount.

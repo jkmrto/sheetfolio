@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.DcaBitcoinLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   alias Sheetfolio.BitcoinDca
   alias Sheetfolio.PriceFetcher
   alias Sheetfolio.PricesApi.YahooFinance
@@ -265,16 +267,8 @@ defmodule SheetfolioWeb.DcaBitcoinLive do
   defp earnings_class(val) when val >= 0, do: "positive"
   defp earnings_class(_), do: "negative"
 
-  defp format_eur(nil), do: "—"
-  defp format_eur(val), do: "#{:erlang.float_to_binary(val * 1.0, decimals: 2)} €"
-
-  defp format_abs(nil), do: "—"
-  defp format_abs(val) when val >= 0, do: "+#{:erlang.float_to_binary(val * 1.0, decimals: 2)} €"
-  defp format_abs(val), do: "#{:erlang.float_to_binary(val * 1.0, decimals: 2)} €"
-
-  defp format_pct(nil), do: "—"
-  defp format_pct(val) when val >= 0, do: "+#{val}%"
-  defp format_pct(val), do: "#{val}%"
-
-  defp format_units(val), do: :erlang.float_to_binary(val * 1.0, decimals: 4)
+  defp format_eur(value), do: NumberFormat.eur(value)
+  defp format_abs(value), do: NumberFormat.signed_eur(value)
+  defp format_pct(value), do: NumberFormat.signed_pct(value)
+  defp format_units(value), do: NumberFormat.number(value, 4)
 end

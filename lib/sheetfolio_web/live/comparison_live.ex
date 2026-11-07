@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.ComparisonLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   alias Sheetfolio.AssetCategories
   alias Sheetfolio.EquitoTransactions
   alias Sheetfolio.Positions
@@ -987,21 +989,11 @@ defmodule SheetfolioWeb.ComparisonLive do
   defp arrow(value) when value >= 0, do: "▲"
   defp arrow(_value), do: "▼"
 
-  defp format_eur(nil), do: "—"
-  defp format_eur(value), do: "#{:erlang.float_to_binary(value * 1.0, decimals: 2)} €"
+  defp format_eur(value), do: NumberFormat.eur(value)
 
-  defp eur(value) do
-    [int, dec] =
-      Float.round(value / 1, 2)
-      |> :erlang.float_to_binary(decimals: 2)
-      |> String.split(".")
+  defp eur(value), do: NumberFormat.eur(value)
 
-    "#{String.replace(int, ~r/(?<=\d)(?=(\d{3})+$)/, ".")},#{dec} €"
-  end
-
-  defp signed(nil), do: "—"
-  defp signed(value) when value >= 0, do: "+" <> eur(value)
-  defp signed(value), do: eur(value)
+  defp signed(value), do: NumberFormat.signed_eur(value)
 
   # Zero contributions or zero earnings are the common case for a held position,
   # so they read as a dash and the rows that actually moved money stand out.
@@ -1009,6 +1001,5 @@ defmodule SheetfolioWeb.ComparisonLive do
   defp signed_or_dash(value), do: signed(value)
 
   defp signed_pct(value) when value == 0, do: "0%"
-  defp signed_pct(value) when value > 0, do: "+#{value}%"
-  defp signed_pct(value), do: "#{value}%"
+  defp signed_pct(value), do: NumberFormat.signed_pct(value)
 end

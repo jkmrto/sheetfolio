@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.EarningsLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   @views ~w(by_asset by_operation)
 
   def mount(_params, session, socket) do
@@ -153,11 +155,11 @@ defmodule SheetfolioWeb.EarningsLive do
                   <span class="broker-tag">Trading212</span>
                 <% end %>
                 <%= if row.uncovered > 0.001 do %>
-                  <div class="warn">⚠ <%= Float.round(row.uncovered, 2) %> units without buy history — excluded</div>
+                  <div class="warn">⚠ <%= NumberFormat.number(row.uncovered) %> units without buy history — excluded</div>
                 <% end %>
               </td>
               <td><%= row.sells %></td>
-              <td><%= Float.round(row.qty, 3) %></td>
+              <td><%= NumberFormat.qty(row.qty) %></td>
               <td><%= eur(row.proceeds) %></td>
               <td><%= eur(row.cost) %></td>
               <td class={sign_class(row.realized)}><%= eur(row.realized) %></td>
@@ -179,7 +181,7 @@ defmodule SheetfolioWeb.EarningsLive do
                         <tr>
                           <td class="left"><%= e.fecha %></td>
                           <td class="left"><%= e.tipo %></td>
-                          <td><%= Float.round(e.qty, 3) %></td>
+                          <td><%= NumberFormat.qty(e.qty) %></td>
                           <td><%= eur(e.proceeds) %></td>
                           <td><%= eur(e.cost) %></td>
                           <td class={sign_class(e.realized)}><%= eur(e.realized) %></td>
@@ -214,11 +216,11 @@ defmodule SheetfolioWeb.EarningsLive do
                   <span class="broker-tag">Trading212</span>
                 <% end %>
                 <%= if e.uncovered > 0.001 do %>
-                  <div class="warn">⚠ <%= Float.round(e.uncovered, 2) %> units without buy history — excluded</div>
+                  <div class="warn">⚠ <%= NumberFormat.number(e.uncovered) %> units without buy history — excluded</div>
                 <% end %>
               </td>
               <td class="left"><%= e.tipo %></td>
-              <td><%= Float.round(e.qty, 3) %></td>
+              <td><%= NumberFormat.qty(e.qty) %></td>
               <td><%= eur(e.proceeds) %></td>
               <td><%= eur(e.cost) %></td>
               <td class={sign_class(e.realized)}><%= eur(e.realized) %></td>
@@ -447,14 +449,7 @@ defmodule SheetfolioWeb.EarningsLive do
     end
   end
 
-  defp eur(value) do
-    [int, dec] =
-      Float.round(value / 1, 2)
-      |> :erlang.float_to_binary(decimals: 2)
-      |> String.split(".")
-
-    "#{String.replace(int, ~r/(?<=\d)(?=(\d{3})+$)/, ".")},#{dec} €"
-  end
+  defp eur(value), do: NumberFormat.eur(value)
 
   defp sign_class(value) when value < 0, do: "neg"
   defp sign_class(_value), do: "pos"

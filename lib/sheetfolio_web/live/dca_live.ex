@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.DcaLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   @base_amount 250.0
   @sp500_isins ~w[IE0032126645 IE00BYX5MX67]
   @ranges ~w(1w 1m 3m 1y ytd all)
@@ -170,7 +172,7 @@ defmodule SheetfolioWeb.DcaLive do
             <div style="display:flex;justify-content:space-between;padding-top:0.4rem;border-top:1px solid #f1f5f9;">
               <span style="color:#64748b;">Below ATH</span>
               <span style={if r.pct_below > 0, do: "font-weight:600;color:#dc2626;", else: "font-weight:600;color:#16a34a;"}>
-                <%= if r.pct_below > 0, do: "-#{:erlang.float_to_binary(r.pct_below, decimals: 2)}%", else: "At ATH" %>
+                <%= if r.pct_below > 0, do: "-#{NumberFormat.pct(r.pct_below)}", else: "At ATH" %>
               </span>
             </div>
           </div>
@@ -426,19 +428,12 @@ defmodule SheetfolioWeb.DcaLive do
   defp earnings_class(val) when val >= 0, do: "positive"
   defp earnings_class(_), do: "negative"
 
-  defp format_eur(nil), do: "—"
-  defp format_eur(val), do: "#{:erlang.float_to_binary(val * 1.0, decimals: 2)} €"
-
-  defp format_abs(nil), do: "—"
-  defp format_abs(val) when val >= 0, do: "+#{:erlang.float_to_binary(val * 1.0, decimals: 2)} €"
-  defp format_abs(val), do: "#{:erlang.float_to_binary(val * 1.0, decimals: 2)} €"
-
-  defp format_pct(nil), do: "—"
-  defp format_pct(val) when val >= 0, do: "+#{val}%"
-  defp format_pct(val), do: "#{val}%"
+  defp format_eur(value), do: NumberFormat.eur(value)
+  defp format_abs(value), do: NumberFormat.signed_eur(value)
+  defp format_pct(value), do: NumberFormat.signed_pct(value)
 
   defp format_usd(nil), do: "—"
-  defp format_usd(val), do: "$#{:erlang.float_to_binary(val * 1.0, decimals: 0)}"
+  defp format_usd(value), do: "$#{NumberFormat.number(value, 0)}"
 
-  defp format_sp500(val), do: :erlang.float_to_binary(val * 1.0, decimals: 2)
+  defp format_sp500(value), do: NumberFormat.number(value)
 end

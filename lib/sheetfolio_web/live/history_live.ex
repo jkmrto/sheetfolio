@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.HistoryLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   alias Sheetfolio.AssetCategories
 
   @palette ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"]
@@ -453,24 +455,10 @@ defmodule SheetfolioWeb.HistoryLive do
   defp earnings_class(value) when value >= 0, do: "positive"
   defp earnings_class(_value), do: "negative"
 
-  defp format_eur(nil), do: "—"
-  defp format_eur(value), do: "#{:erlang.float_to_binary(value * 1.0, decimals: 2)} €"
-
-  defp format_abs(nil), do: "—"
-  defp format_abs(value) when value >= 0, do: "+#{format_eur(value)}"
-  defp format_abs(value), do: format_eur(value)
-
-  defp format_pct(nil), do: "—"
-  defp format_pct(value) when value >= 0, do: "+#{value}%"
-  defp format_pct(value), do: "#{value}%"
-
-  defp format_qty(nil), do: "—"
-
-  defp format_qty(value) do
-    :erlang.float_to_binary(value * 1.0, decimals: 4)
-    |> String.trim_trailing("0")
-    |> String.trim_trailing(".")
-  end
+  defp format_eur(value), do: NumberFormat.eur(value)
+  defp format_abs(value), do: NumberFormat.signed_eur(value)
+  defp format_pct(value), do: NumberFormat.signed_pct(value)
+  defp format_qty(value), do: NumberFormat.qty(value)
 
   defp build_asset_list(snapshots) do
     latest_value =

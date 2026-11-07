@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.OperationsLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   @headers [
     "Fecha", "Asset", "ISIN", "Tipo", "Cantidad", "Precio",
     "Importe", "Comisión", "Importe Neto", "Ganancia (€)", "Ganancia (%)"
@@ -151,9 +153,11 @@ defmodule SheetfolioWeb.OperationsLive do
       |> Enum.with_index()
       |> Enum.reduce({%{}, [], %{}}, fn {data, ref}, {ops, ord, counts} ->
         entry = %{
-          row: [data.fecha, data.asset, data.isin, data.tipo,
-                data.cantidad, data.precio, data.importe_without_comision,
-                data.comision, data.importe_with_comision],
+          row: [data.fecha, data.asset, data.isin, data.tipo] ++
+            Enum.map(
+              [data.cantidad, data.precio, data.importe_without_comision, data.comision, data.importe_with_comision],
+              &NumberFormat.text/1
+            ),
           earnings_abs: nil,
           earnings_pct: nil,
           traspaso: Map.get(data, :traspaso, false)
@@ -204,8 +208,8 @@ defmodule SheetfolioWeb.OperationsLive do
   defp earnings_class(_), do: "negative"
 
   defp format_abs(nil), do: ""
-  defp format_abs(val), do: "#{val} €"
+  defp format_abs(val), do: NumberFormat.eur(val)
 
   defp format_pct(nil), do: ""
-  defp format_pct(val), do: "#{val}%"
+  defp format_pct(val), do: NumberFormat.pct(val)
 end

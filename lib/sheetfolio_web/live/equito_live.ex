@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.EquitoLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   alias Sheetfolio.{EquitoProperties, EquitoTransactions}
 
   @ranges ~w(1w 1m 3m 1y ytd all)
@@ -377,23 +379,7 @@ defmodule SheetfolioWeb.EquitoLive do
   defp pnl_class(amount) when amount < 0, do: "neg"
   defp pnl_class(_amount), do: ""
 
-  defp format_pct(nil), do: "—"
-  defp format_pct(pct), do: "#{:erlang.float_to_binary(pct * 1.0, decimals: 2)}%"
+  defp format_pct(pct), do: NumberFormat.pct(pct)
 
-  defp format_eur(amount) do
-    sign = if amount < 0, do: "-", else: ""
-    abs_amount = abs(amount)
-    whole = trunc(abs_amount)
-    cents = round((abs_amount - whole) * 100)
-
-    whole_str =
-      whole
-      |> Integer.to_string()
-      |> String.reverse()
-      |> String.replace(~r/(\d{3})(?=\d)/, "\\1.")
-      |> String.reverse()
-
-    cents_str = cents |> Integer.to_string() |> String.pad_leading(2, "0")
-    "#{sign}#{whole_str},#{cents_str} €"
-  end
+  defp format_eur(amount), do: NumberFormat.eur(amount)
 end

@@ -8,6 +8,16 @@ const Hooks = {}
 // wraps to three rows once the labels no longer fit side by side. Narrow
 // viewports get a squarer chart and a tighter legend instead.
 const narrow = () => window.innerWidth <= 768
+
+// 1.234.567,89 everywhere. es-ES on its own leaves four-digit numbers ungrouped.
+const number = (v, decimals = 2) => v.toLocaleString("es-ES", {
+  minimumFractionDigits: decimals,
+  maximumFractionDigits: decimals,
+  useGrouping: "always"
+})
+const euros = (v, decimals = 2) => `${number(v, decimals)} €`
+// Axis ticks are usually round, so they only show the decimals they have.
+const tick = (v) => v.toLocaleString("es-ES", {maximumFractionDigits: 2, useGrouping: "always"})
 const chartAspectRatio = () => narrow() ? 1 : 2
 
 // A chart lifted over the viewport fills it, so it drops the aspect ratio that
@@ -55,7 +65,8 @@ Hooks.HistoryChart = {
   render() {
     const payload = JSON.parse(this.el.dataset.chart)
     const isPct = payload.metric === "pct"
-    const fmt = (v) => isPct ? `${v.toLocaleString("es-ES")}%` : `€${v.toLocaleString("es-ES")}`
+    const fmt = (v) => isPct ? `${number(v)}%` : euros(v)
+    const axis = (v) => isPct ? `${tick(v)}%` : `${tick(v)} €`
 
     const datasets = payload.datasets.map((ds) => ({
       label: ds.label,
@@ -120,9 +131,9 @@ Hooks.HistoryChart = {
         scales: {
           x: xScale,
           y: {
-            ticks: {callback: (v) => fmt(v)}
+            ticks: {callback: axis}
           },
-          ...(rightAxis ? {y1: {position: "right", grid: {drawOnChartArea: false}, ticks: {callback: (v) => fmt(v)}}} : {})
+          ...(rightAxis ? {y1: {position: "right", grid: {drawOnChartArea: false}, ticks: {callback: axis}}} : {})
         }
       }
     })
@@ -137,8 +148,6 @@ Hooks.PayoutsChart = {
   destroyed() { if (this.chart) this.chart.destroy() },
   render() {
     const payload = JSON.parse(this.el.dataset.chart)
-    const fmt = (v) => `€${v.toLocaleString("es-ES")}`
-
     if (this.chart) this.chart.destroy()
 
     this.chart = new Chart(this.el.querySelector("canvas").getContext("2d"), {
@@ -164,7 +173,7 @@ Hooks.PayoutsChart = {
         },
         scales: {
           x: {grid: {display: false}, ticks: {autoSkip: true, maxRotation: 0}},
-          y: {beginAtZero: true, ticks: {callback: (v) => fmt(v)}}
+          y: {beginAtZero: true, ticks: {callback: (v) => `${tick(v)} €`}}
         }
       }
     })
@@ -207,8 +216,8 @@ Hooks.CategoryPie = {
             callbacks: {
               label: (ctx) => {
                 const v = ctx.parsed
-                const pct = total > 0 ? (v / total * 100).toFixed(1) : "0.0"
-                return `${ctx.label}: €${v.toLocaleString("es-ES")} (${pct}%)`
+                const pct = total > 0 ? v / total * 100 : 0
+                return `${ctx.label}: ${euros(v)} (${number(pct, 1)}%)`
               }
             }
           }
@@ -224,7 +233,7 @@ Hooks.CategoryHistoryChart = {
   destroyed() { if (this.chart) this.chart.destroy() },
   render() {
     const payload = JSON.parse(this.el.dataset.chart)
-    const fmt = (v) => `€${Math.round(v).toLocaleString("es-ES")}`
+    const fmt = (v) => euros(v, 0)
     // Stacked: filled bands whose heights add up to the portfolio. Unstacked:
     // one line per category read against a shared axis, so the fills would
     // hide each other.
@@ -312,9 +321,9 @@ Hooks.DcaChart = {
             callbacks: {
               label: item => {
                 const v = item.parsed.y
-                if (item.dataset.label === 'S&P500 (USD)') return `S&P500: $${v.toFixed(0)}`
-                if (item.dataset.label === 'Invested (€)') return `Invested: ${v.toFixed(2)} €`
-                return `${item.dataset.label}: ${v.toFixed(2)} €`
+                if (item.dataset.label === 'S&P500 (USD)') return `S&P500: $${number(v, 0)}`
+                if (item.dataset.label === 'Invested (€)') return `Invested: ${euros(v)}`
+                return `${item.dataset.label}: ${euros(v)}`
               }
             }
           }
@@ -327,12 +336,12 @@ Hooks.DcaChart = {
           },
           y: {
             position: 'left',
-            ticks: { callback: v => v.toFixed(0) + ' €' }
+            ticks: { callback: v => euros(v, 0) }
           },
           y1: {
             position: 'right',
             grid: { drawOnChartArea: false },
-            ticks: { callback: v => '$' + v.toFixed(0) }
+            ticks: { callback: v => '$' + number(v, 0) }
           },
           y2: {
             display: false
@@ -409,8 +418,8 @@ Hooks.DcaBitcoinChart = {
             callbacks: {
               label: item => {
                 const v = item.parsed.y
-                if (item.dataset.label === 'Bitcoin (USD)') return `Bitcoin: $${v.toFixed(0)}`
-                return `${item.dataset.label}: ${v.toFixed(2)} €`
+                if (item.dataset.label === 'Bitcoin (USD)') return `Bitcoin: $${number(v, 0)}`
+                return `${item.dataset.label}: ${euros(v)}`
               }
             }
           }
@@ -423,12 +432,12 @@ Hooks.DcaBitcoinChart = {
           },
           y: {
             position: 'left',
-            ticks: { callback: v => v.toFixed(0) + ' €' }
+            ticks: { callback: v => euros(v, 0) }
           },
           y1: {
             position: 'right',
             grid: { drawOnChartArea: false },
-            ticks: { callback: v => '$' + v.toFixed(0) }
+            ticks: { callback: v => '$' + number(v, 0) }
           }
         }
       }

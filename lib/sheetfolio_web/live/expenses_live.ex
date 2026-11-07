@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.ExpensesLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   alias Sheetfolio.WiseExpenses
 
   @month_labels ~w(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec)
@@ -447,5 +449,5 @@ defmodule SheetfolioWeb.ExpensesLive do
   end
 
   defp format(nil), do: "—"
-  defp format(amount), do: "#{:erlang.float_to_binary(amount / 1, decimals: 2)} €"
+  defp format(amount), do: NumberFormat.eur(amount)
 end

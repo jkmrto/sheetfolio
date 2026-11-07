@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.PortfolioLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   alias Sheetfolio.AssetCategories
   alias Sheetfolio.EquitoTransactions
   alias Sheetfolio.UrbanitaeTransactions
@@ -332,7 +334,7 @@ defmodule SheetfolioWeb.PortfolioLive do
               <a class="kpi-sub kpi-mix" href={category_history_path(slice.category)}>
                 <span class="kpi-dot" style={"background: #{category_color(slice.category)}"}></span>
                 <span class="kpi-name"><%= slice.category %></span>
-                <span class="kpi-pct"><%= slice.pct %>% · <%= keur(slice.value) %></span>
+                <span class="kpi-pct"><%= NumberFormat.number(slice.pct, 1) %>% · <%= keur(slice.value) %></span>
               </a>
             <% end %>
           </div>
@@ -392,7 +394,7 @@ defmodule SheetfolioWeb.PortfolioLive do
                           <span class="alloc-dot" style={"background:#{category_color(slice.category)}"}></span><%= slice.category %>
                         </td>
                         <td class="num"><%= format_eur(slice.value) %></td>
-                        <td class="pct"><%= slice.pct %>%</td>
+                        <td class="pct"><%= NumberFormat.number(slice.pct, 1) %>%</td>
                       </tr>
                     <% end %>
                   </tbody>
@@ -460,37 +462,16 @@ defmodule SheetfolioWeb.PortfolioLive do
     }
   end
 
-  defp format_eur(value) do
-    :erlang.float_to_binary(value * 1.0, decimals: 2) <> " €"
-  end
+  defp format_eur(value), do: NumberFormat.eur(value)
 
-  # Thousands-separated, for the headline cards where the numbers are large
-  # enough that the grouping is what makes them readable at a glance.
-  # Thousands with one decimal, es-ES style: 59812.4 → "59,8k".
-  defp keur(value) do
-    (value / 1000)
-    |> :erlang.float_to_binary(decimals: 1)
-    |> String.replace(".", ",")
-    |> Kernel.<>("k")
-  end
+  # Thousands with one decimal: 59812.4 → "59,8k".
+  defp keur(value), do: NumberFormat.number(value / 1000, 1) <> "k"
 
-  defp eur(nil), do: "—"
+  defp eur(value), do: NumberFormat.eur(value)
 
-  defp eur(value) do
-    [int, dec] =
-      Float.round(value / 1, 2)
-      |> :erlang.float_to_binary(decimals: 2)
-      |> String.split(".")
+  defp signed(value), do: NumberFormat.signed_eur(value)
 
-    "#{String.replace(int, ~r/(?<=\d)(?=(\d{3})+$)/, ".")},#{dec} €"
-  end
-
-  defp signed(nil), do: "—"
-  defp signed(value) when value >= 0, do: "+" <> eur(value)
-  defp signed(value), do: eur(value)
-
-  defp signed_pct(value) when value >= 0, do: "+#{value}%"
-  defp signed_pct(value), do: "#{value}%"
+  defp signed_pct(value), do: NumberFormat.signed_pct(value)
 
   defp delta_class(nil), do: ""
   defp delta_class(value) when value >= 0, do: "kpi-up"

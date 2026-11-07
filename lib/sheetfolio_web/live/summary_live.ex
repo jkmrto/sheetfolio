@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.SummaryLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   alias Sheetfolio.AssetCategories
 
   @sort_columns Map.new(
@@ -356,36 +358,8 @@ defmodule SheetfolioWeb.SummaryLive do
   defp earnings_class(val) when val >= 0, do: "positive"
   defp earnings_class(_), do: "negative"
 
-  def format_eur(nil), do: "—"
-  def format_eur(val), do: "#{two_decimals(val)} €"
-
-  def format_abs(nil), do: "—"
-  def format_abs(val) when val >= 0, do: "+#{two_decimals(val)} €"
-  def format_abs(val), do: "#{two_decimals(val)} €"
-
-  def format_pct(nil), do: "—"
-  def format_pct(val) when val >= 0, do: "+#{two_decimals(val)}%"
-  def format_pct(val), do: "#{two_decimals(val)}%"
-
-  def format_qty(val) do
-    :erlang.float_to_binary(val * 1.0, decimals: 4)
-    |> String.trim_trailing("0")
-    |> String.trim_trailing(".")
-    |> localize()
-  end
-
-  defp two_decimals(val), do: val |> Kernel.*(1.0) |> :erlang.float_to_binary(decimals: 2) |> localize()
-
-  # "1234567.89" -> "1.234.567,89"
-  defp localize(number) do
-    [whole | decimals] = String.split(number, ".")
-
-    grouped =
-      whole
-      |> String.reverse()
-      |> String.replace(~r/(\d{3})(?=\d)/, "\\1.")
-      |> String.reverse()
-
-    Enum.join([grouped | decimals], ",")
-  end
+  defp format_eur(value), do: NumberFormat.eur(value)
+  defp format_abs(value), do: NumberFormat.signed_eur(value)
+  defp format_pct(value), do: NumberFormat.signed_pct(value)
+  defp format_qty(value), do: NumberFormat.qty(value)
 end

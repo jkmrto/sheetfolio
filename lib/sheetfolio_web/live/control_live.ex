@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.ControlLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   @poll_ms 800
 
   def mount(_params, session, socket) do
@@ -152,14 +154,5 @@ defmodule SheetfolioWeb.ControlLive do
     """
   end
 
-  defp format_eur(nil), do: "—"
-
-  defp format_eur(value) do
-    [int, dec] =
-      Float.round(value / 1, 2)
-      |> :erlang.float_to_binary(decimals: 2)
-      |> String.split(".")
-
-    "#{String.replace(int, ~r/(?<=\d)(?=(\d{3})+$)/, ".")},#{dec} €"
-  end
+  defp format_eur(value), do: NumberFormat.eur(value)
 end

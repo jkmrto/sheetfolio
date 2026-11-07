@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.RealEstateLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   alias Sheetfolio.{EquitoTransactions, RealEstate, UrbanitaeTransactions}
 
   def mount(_params, session, socket) do
@@ -96,20 +98,5 @@ defmodule SheetfolioWeb.RealEstateLive do
     }
   end
 
-  defp format_eur(amount) do
-    sign = if amount < 0, do: "-", else: ""
-    abs_amount = abs(amount)
-    whole = trunc(abs_amount)
-    cents = round((abs_amount - whole) * 100)
-
-    whole_str =
-      whole
-      |> Integer.to_string()
-      |> String.reverse()
-      |> String.replace(~r/(\d{3})(?=\d)/, "\\1.")
-      |> String.reverse()
-
-    cents_str = cents |> Integer.to_string() |> String.pad_leading(2, "0")
-    "#{sign}#{whole_str},#{cents_str} €"
-  end
+  defp format_eur(amount), do: NumberFormat.eur(amount)
 end

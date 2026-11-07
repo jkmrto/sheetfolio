@@ -1,6 +1,8 @@
 defmodule SheetfolioWeb.BitcoinLive do
   use SheetfolioWeb, :live_view
 
+  alias SheetfolioWeb.NumberFormat
+
   alias Sheetfolio.BitcoinDca
   alias Sheetfolio.BitcoinExposure
   alias Sheetfolio.CryptoHoldings
@@ -306,20 +308,12 @@ defmodule SheetfolioWeb.BitcoinLive do
   defp etp_unrealized(_etp, nil), do: nil
   defp etp_unrealized(etp, price), do: Float.round(etp.net_qty * price - etp.cost_basis, 2)
 
-  defp eur_or_dash(nil), do: "—"
   defp eur_or_dash(value), do: eur(value)
 
-  defp eur(value) do
-    [int, dec] =
-      Float.round(value / 1, 2)
-      |> :erlang.float_to_binary(decimals: 2)
-      |> String.split(".")
+  defp eur(value), do: NumberFormat.eur(value)
 
-    "#{String.replace(int, ~r/(?<=\d)(?=(\d{3})+$)/, ".")},#{dec} €"
-  end
-
-  defp btc(units), do: :erlang.float_to_binary(units * 1.0, decimals: 8)
-  defp units(qty), do: :erlang.float_to_binary(qty * 1.0, decimals: 2)
+  defp btc(units), do: NumberFormat.number(units, 8)
+  defp units(qty), do: NumberFormat.number(qty)
 
   defp sign_class(nil), do: ""
   defp sign_class(value) when value < 0, do: "btc-neg"

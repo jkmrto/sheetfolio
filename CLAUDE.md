@@ -66,3 +66,4 @@ Before every commit, run the same checks CI does and fix anything they flag: `mi
 - Spreadsheet/domain vocabulary is Spanish (`fecha`, `precio`, `cantidad`, `importe`, `traspaso`, "Reembolso"/"Suscripción"); dates are `dd/mm/yyyy` strings. Keep field names consistent with `MyinvestorParser` output.
 - No `try/rescue`; no `with` nested inside `case` — use function clauses instead.
 - Amounts are parsed from strings like `"1499.91 EUR"`; prices are converted to EUR using FX rates from `EarningsServer`.
+- Numbers shown on a page go through `SheetfolioWeb.NumberFormat` (`1.234.567,89`), and chart labels through the `number`/`euros`/`tick` helpers in `app.js`. MCP tools keep plain numbers.
