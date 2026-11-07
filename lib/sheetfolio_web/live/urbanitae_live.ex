@@ -13,12 +13,12 @@ defmodule SheetfolioWeb.UrbanitaeLive do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      {transactions, types, pending, pending_keys} =
+      {transactions, types, pending, pending_keys, forecasts} =
         if connected?(socket) do
           {UrbanitaeTransactions.all(), UrbanitaeProjects.types_by_key(), UrbanitaePending.list(),
-           UrbanitaeProjects.pending_keys()}
+           UrbanitaeProjects.pending_keys(), UrbanitaeProjects.forecasts()}
         else
-          {[], %{}, [], MapSet.new()}
+          {[], %{}, [], MapSet.new(), []}
         end
 
       {:ok,
@@ -28,6 +28,7 @@ defmodule SheetfolioWeb.UrbanitaeLive do
          types_by_key: types,
          pending: pending,
          pending_keys: pending_keys,
+         forecasts: forecasts,
          range: "all",
          tx_range: "all",
          view: "overview"
@@ -115,6 +116,9 @@ defmodule SheetfolioWeb.UrbanitaeLive do
       .u-type-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.5rem; padding-bottom: 0.35rem; border-bottom: 1px solid #e2e8f0; }
       .u-type-header .label { font-size: 0.9rem; font-weight: 600; color: #0f172a; text-transform: uppercase; letter-spacing: 0.03em; }
       .u-type-header .subtotal { font-size: 0.85rem; color: #475569; font-variant-numeric: tabular-nums; }
+      .u-table td.neg { color: #e34948; font-weight: 600; }
+      .u-table td.pos { color: #1baf7a; font-weight: 600; }
+      #panel-payouts td:not(:nth-child(2)):not(:last-child) { white-space: nowrap; }
       .u-project { border: 1px solid #e2e8f0; border-radius: 10px; padding: 0.9rem 1.15rem; margin-bottom: 0.75rem; }
       .u-project-header { display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.65rem; flex-wrap: wrap; }
       .u-project-title { font-size: 1rem; font-weight: 600; color: #0f172a; }
@@ -240,8 +244,66 @@ defmodule SheetfolioWeb.UrbanitaeLive do
         </div>
       </div>
     </div>
+    {render_payouts(assigns)}
     """
   end
+
+  defp render_payouts(assigns) do
+    assigns = assign(assigns, payouts: active_forecasts(assigns.forecasts, assigns.rollup))
+
+    ~H"""
+    <%= if @payouts != [] do %>
+      <div class="u-card">
+        <h2>Expected payouts</h2>
+        <div class="expand-panel" id="panel-payouts" phx-hook="ExpandPanel">
+          <button class="expand-btn" aria-label="Toggle full screen"></button>
+          <table class="u-table">
+            <thead>
+              <tr>
+                <th>Expected</th>
+                <th>Project</th>
+                <th class="num">To receive</th>
+                <th>First estimate</th>
+                <th>Moved</th>
+                <th>Latest by contract</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for p <- @payouts, f = p["forecast"], delay = UrbanitaeProjects.delay_months(f) do %>
+                <tr>
+                  <td>{month_label(f["close_date"])}</td>
+                  <td>{project_label(%{city: p["city"], project: p["project"]})}</td>
+                  <td class="num">{format_eur(f["to_receive"])}</td>
+                  <td>{month_label(f["first_close_date"])}</td>
+                  <td class={delay_class(delay)}>{delay_label(delay)}</td>
+                  <td>{month_label(f["extension_date"])}</td>
+                  <td>{f["note"]}</td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp active_forecasts(forecasts, rollup) do
+    active = for r <- rollup, r.status == "active", into: MapSet.new(), do: r.project_key
+    Enum.filter(forecasts, &MapSet.member?(active, &1["project_key"]))
+  end
+
+  defp month_label(nil), do: "-"
+  defp month_label(iso_date), do: iso_date |> Date.from_iso8601!() |> Calendar.strftime("%b %Y")
+
+  defp delay_label(0), do: "on time"
+  defp delay_label(months) when months > 0, do: "#{months} mo later"
+  defp delay_label(months), do: "#{-months} mo earlier"
+
+  defp delay_class(months) when months > 0, do: "neg"
+  defp delay_class(months) when months < 0, do: "pos"
+  defp delay_class(_), do: ""
 
   # The series is built from the whole history and only then trimmed: both
   # lines are running totals, so dropping the earlier transactions first would

@@ -8,6 +8,7 @@ defmodule Sheetfolio.UrbanitaeProjects do
         project: "Pérez Galdós",
         type: "alquiler",              # plusvalia | alquiler | prestamo
         status: "pending",             # optional: funded, investors not yet given entry
+        forecast: %{...},              # optional: see put_forecast/2
         captured_at: <DateTime> }
 
   Type drives how repayments are interpreted in the rollup: `alquiler` and
@@ -18,6 +19,16 @@ defmodule Sheetfolio.UrbanitaeProjects do
   hasn't yet listed under "Mis inversiones" (the investor entry is still
   being formalized). The money is committed, so it counts as outstanding;
   the page only shows a different pill. Clear it with `status: nil`.
+
+  `forecast` is Urbanitae's payout estimate, copied by hand from the private
+  area (see the urbanitae-ingest skill):
+
+      %{"close_date" => "2027-05-14",        # expected final payout
+        "first_close_date" => "2027-05-27",  # earliest estimate, kept across refreshes
+        "extension_date" => "2027-11-14",    # optional: latest date the contract allows
+        "to_receive" => 1274.4,              # gross, still to be paid out
+        "note" => "...",                     # what the project manager last reported
+        "as_of" => "2026-11-07"}
   """
 
   @collection "urbanitae_projects"
@@ -48,6 +59,52 @@ defmodule Sheetfolio.UrbanitaeProjects do
       }, upsert: true)
 
     :ok
+  end
+
+  @doc """
+  Stores a project's payout forecast, keeping its earliest close date.
+  """
+  def put_forecast(project_key, forecast) do
+    existing = by_key(project_key) || %{}
+
+    {:ok, _} =
+      Mongo.update_one(:mongo, @collection, %{"project_key" => project_key}, %{
+        "$set" => %{
+          "forecast" => merge_forecast(existing["forecast"], forecast),
+          "updated_at" => DateTime.utc_now()
+        }
+      })
+
+    :ok
+  end
+
+  def merge_forecast(nil, forecast) do
+    Map.put_new(forecast, "first_close_date", forecast["close_date"])
+  end
+
+  def merge_forecast(%{"first_close_date" => first}, forecast) do
+    Map.put(forecast, "first_close_date", first)
+  end
+
+  @doc """
+  Projects that have a forecast, soonest payout first.
+  """
+  def forecasts do
+    Mongo.find(:mongo, @collection, %{"forecast" => %{"$exists" => true}})
+    |> Enum.sort_by(& &1["forecast"]["close_date"])
+  end
+
+  @doc """
+  Whole calendar months the expected payout has moved since the first
+  estimate. Positive means later.
+  """
+  def delay_months(%{"close_date" => close, "first_close_date" => first}) do
+    month_index(close) - month_index(first)
+  end
+
+  defp month_index(iso_date) do
+    date = Date.from_iso8601!(iso_date)
+    date.year * 12 + date.month
   end
 
   @doc """

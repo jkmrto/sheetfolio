@@ -107,6 +107,30 @@ signal.
 | `prestamo` | `yield` (interest) | Closure: amount ≈ outstanding principal + last interest tranche. Some loans amortize (each payment is part yield / part principal) but Urbanitae rarely surfaces that split; leave as yield unless user says otherwise. |
 | `plusvalia` | Ambiguous — ask. | Plusvalía projects usually have a single closure event returning principal + capital gain in one payment. Interim distributions are rare but do happen. When you see a Plusvalía repayment, ask the user whether it's interim yield or the closure. |
 
+## Refreshing payout forecasts
+
+The "Expected payouts" table on `/urbanitae` comes from `forecast` in
+`urbanitae_projects`. Urbanitae has no public API, but while the user is
+logged in through Playwright the private area exposes the data:
+
+- `/es/menuPrivado/cartera/` server-action POST responses: a monthly history
+  per project (`updatedExpectedCloseDate`, `nextPaymentExpectedQuarter`) and
+  the amounts (`returnedAmount`, `totalRefunds`). The history stops at the last
+  monthly close, and `expectedReturnedAmount` can be stale, so use
+  `totalRefunds[].amountCashOnCash` minus `returnedAmount` for what's left.
+- `/es/menuPrivado/proyecto/{id}/`: "¿Cuándo recuperaré el dinero invertido?"
+  (plan and extensions), and the Comunicaciones tab (what the manager reports).
+
+Some of those POST responses contain session tokens. Never print or keep
+them, and delete captured bodies once you're done.
+
+Write a JSON list of `{project_key, forecast}` and run the import, dry-run
+first. `first_close_date` already stored is kept, so delays stay measurable:
+
+    export $(sed 's|~/|'$HOME'/|g' .env | xargs)
+    mix run --no-start scripts/import_urbanitae_forecasts.exs forecasts.json
+    mix run --no-start scripts/import_urbanitae_forecasts.exs forecasts.json --commit
+
 ## Anti-patterns
 
 - **Don't ingest INGRESO / TRANSFERENCIA even "for context".** `/cash`
