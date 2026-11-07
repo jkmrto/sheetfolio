@@ -68,6 +68,7 @@ defmodule SheetfolioWeb.Router do
 
     live_session :authenticated, on_mount: [{SheetfolioWeb.LoadingHook, :default}] do
       live "/earnings", EarningsLive
+      live "/earnings/monthly", EarningsMonthlyLive
       live "/operations", OperationsLive
       live "/summary", SummaryLive, :active
       live "/summary/settled", SummaryLive, :settled

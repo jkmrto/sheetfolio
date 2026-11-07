@@ -84,6 +84,10 @@ defmodule SheetfolioWeb.EarningsLive do
 
     ~H"""
     <style>
+      .earnings-page-tabs { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #e2e8f0; }
+      .earnings-page-tabs a { color: #64748b; padding: 0.4rem 1.1rem; font-size: 0.95rem; border-bottom: 2px solid transparent; margin-bottom: -1px; text-decoration: none; }
+      .earnings-page-tabs a:hover { color: #1e293b; }
+      .earnings-page-tabs a.active { color: #1e293b; font-weight: 600; border-bottom-color: #1e293b; }
       .earnings-total { background: white; border-radius: 12px; padding: 1.25rem 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 1.5rem; font-size: 1.05rem; }
       .earnings-total strong { font-size: 1.2rem; }
       .earnings-section { margin: 1.5rem 0 0.5rem; font-size: 1.1rem; font-weight: 600; color: #334155; }
@@ -115,6 +119,11 @@ defmodule SheetfolioWeb.EarningsLive do
       .details-table td { padding: 0.35rem 0.6rem; border-bottom: 1px solid #f1f5f9; text-align: right; }
       .details-table tr:last-child td { border-bottom: none; }
     </style>
+
+    <div class="earnings-page-tabs">
+      <a href="/earnings" class="active">Overview</a>
+      <a href="/earnings/monthly">Monthly</a>
+    </div>
 
     <% total_sum = @realized_sum + @dividends_sum + @urbanitae_sum + @equito_sum + @unrealized_sum %>
     <div class="earnings-total">
