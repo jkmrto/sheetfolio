@@ -27,6 +27,18 @@ defmodule SheetfolioWeb.SummaryLiveTest do
     end
   end
 
+  describe "weight/2" do
+    test "is the position's share of what's held" do
+      assert SummaryLive.weight(25.0, 100.0) == 25.0
+      assert SummaryLive.weight(1.0, 3.0) == 33.33
+    end
+
+    test "stays blank without a price or anything held" do
+      assert SummaryLive.weight(nil, 100.0) == nil
+      assert SummaryLive.weight(10.0, 0) == nil
+    end
+  end
+
   describe "next_sort/2" do
     test "clicking the current column reverses it" do
       assert SummaryLive.next_sort({:gain, :desc}, :gain) == {:gain, :asc}

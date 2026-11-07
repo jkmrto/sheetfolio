@@ -6,7 +6,7 @@ defmodule SheetfolioWeb.SummaryLive do
   alias Sheetfolio.AssetCategories
 
   @sort_columns Map.new(
-                  ~w(asset category net_qty invested current_value gain gain_pct sold_cost total_received pnl pnl_pct)a,
+                  ~w(asset category net_qty invested current_value weight gain gain_pct sold_cost total_received pnl pnl_pct)a,
                   &{Atom.to_string(&1), &1}
                 )
 
@@ -91,7 +91,7 @@ defmodule SheetfolioWeb.SummaryLive do
       .summary-table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
       .summary-table th { background: #1e293b; color: white; padding: 0.75rem 1rem; text-align: left; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 1; box-shadow: 1px 0 0 #1e293b; }
       .summary-table th:not(:first-child) { text-align: right; }
-      .sort-btn { all: unset; cursor: pointer; white-space: nowrap; }
+      .sort-btn { all: unset; cursor: pointer; }
       .sort-btn:hover { text-decoration: underline; }
       .sort-icon { display: inline-block; margin-left: 0.3rem; opacity: 0.55; }
       .sort-icon:not(.current) { font-size: 1.35em; line-height: 1; vertical-align: -0.05em; }
@@ -99,7 +99,8 @@ defmodule SheetfolioWeb.SummaryLive do
       .sort-btn:focus-visible { outline: 2px solid white; outline-offset: 2px; }
       .summary-table td { padding: 0.65rem 1rem; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
       .summary-table td:not(:first-child) { text-align: right; }
-      .summary-table th.category-col, .summary-table td.category-col { text-align: left; white-space: nowrap; color: #475569; }
+      .summary-table th, .summary-table td { padding-left: 0.7rem; padding-right: 0.7rem; }
+      .summary-table th.category-col, .summary-table td.category-col { text-align: left; color: #475569; }
       .summary-table th.category-col { color: white; }
       .summary-table tr:last-child td { border-bottom: none; }
       .summary-table tr:hover td { background: #f8fafc; }
@@ -140,6 +141,7 @@ defmodule SheetfolioWeb.SummaryLive do
       <% total_value = meaningful |> Enum.filter(& &1.current_value) |> Enum.reduce(0, fn a, acc -> acc + a.current_value end) %>
       <% total_earnings = if total_invested > 0, do: Float.round(total_value - total_invested, 2), else: nil %>
       <% total_pct = if total_invested > 0 and total_earnings, do: Float.round(total_earnings / total_invested * 100, 2), else: nil %>
+      <% held_value = active |> Enum.map(& &1.current_value) |> Enum.reject(&is_nil/1) |> Enum.sum() %>
 
       <div class="expand-panel" id="panel-1" phx-hook="ExpandPanel">
         <button class="expand-btn" aria-label="Toggle full screen"></button>
@@ -151,18 +153,20 @@ defmodule SheetfolioWeb.SummaryLive do
               <.sort_header sort={@sort} column={:net_qty} label="Units held" />
               <.sort_header sort={@sort} column={:invested} label="Invested (€)" />
               <.sort_header sort={@sort} column={:current_value} label="Current Value (€)" />
+              <.sort_header sort={@sort} column={:weight} label="Weight (%)" />
               <.sort_header sort={@sort} column={:gain} label="Gain/Loss (€)" />
               <.sort_header sort={@sort} column={:gain_pct} label="Gain/Loss (%)" />
             </tr>
           </thead>
           <tbody>
-            <%= for a <- active |> Enum.map(&active_row(&1, @categories)) |> sort_rows(@sort) do %>
+            <%= for a <- active |> Enum.map(&active_row(&1, @categories, held_value)) |> sort_rows(@sort) do %>
               <tr>
                 <td><strong><%= a.asset %></strong><br/><small style="color:#94a3b8"><%= a.isin %></small></td>
                 <td class="category-col"><%= a.category %></td>
                 <td><%= format_qty(a.net_qty) %></td>
                 <td><%= format_eur(a.invested) %></td>
                 <td><%= format_eur(a.current_value) %></td>
+                <td><%= NumberFormat.pct(a.weight) %></td>
                 <td class={earnings_class(a.gain)}><%= format_abs(a.gain) %></td>
                 <td class={earnings_class(a.gain_pct)}><%= format_pct(a.gain_pct) %></td>
               </tr>
@@ -175,6 +179,7 @@ defmodule SheetfolioWeb.SummaryLive do
               <td></td>
               <td><%= format_eur(total_invested) %></td>
               <td><%= format_eur(total_value) %></td>
+              <td><%= NumberFormat.pct(if held_value > 0, do: 100) %></td>
               <td class={earnings_class(total_earnings)}><%= format_abs(total_earnings) %></td>
               <td class={earnings_class(total_pct)}><%= format_pct(total_pct) %></td>
             </tr>
@@ -327,9 +332,17 @@ defmodule SheetfolioWeb.SummaryLive do
   defp sort_value(value) when is_binary(value), do: String.downcase(value)
   defp sort_value(value), do: value
 
-  defp active_row(a, categories) do
-    a |> gains() |> Map.put(:category, AssetCategories.category_for(a.isin, categories))
+  defp active_row(a, categories, held_value) do
+    a
+    |> gains()
+    |> Map.put(:category, AssetCategories.category_for(a.isin, categories))
+    |> Map.put(:weight, weight(a.current_value, held_value))
   end
+
+  @doc "A position's share of the portfolio, in percent. Blank until it has a price."
+  def weight(nil, _held_value), do: nil
+  def weight(_value, held_value) when held_value <= 0, do: nil
+  def weight(value, held_value), do: Float.round(value / held_value * 100, 2)
 
   defp gains(%{cost_basis: cost_basis} = a) when cost_basis > 0 do
     Map.merge(a, %{invested: cost_basis, gain: a.earnings_abs, gain_pct: a.earnings_pct})
