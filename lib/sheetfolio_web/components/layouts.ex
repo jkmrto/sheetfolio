@@ -7,6 +7,14 @@ defmodule SheetfolioWeb.Layouts do
   def current_path(%{socket: %{view: SheetfolioWeb.OperationsLive}}), do: "/operations"
   def current_path(_), do: "/"
 
+  @doc "The class that marks the gear icon when a data source needs attention."
+  def health_class do
+    case Sheetfolio.HealthMonitor.status() do
+      :ok -> ""
+      status -> " health-#{status}"
+    end
+  end
+
   @doc """
   The bundle URL, carrying a hash of its contents as the version.
 

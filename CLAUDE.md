@@ -41,10 +41,13 @@ Before every commit, run the same checks CI does and fix anything they flag: `mi
 - **Goth** — Google service-account auth for the Sheets API (Gmail uses a separate OAuth refresh-token flow in `GmailClient`).
 - **Mongo** (`:mongo`) — MongoDB Atlas; collections include `portfolio_snapshots`, `cash_snapshots`, `wise_activities`.
 - **`EarningsServer`** — caches current/historical prices and FX rates; LiveViews request computations via `cast` with a `caller_pid` and receive results as messages (async, non-blocking UI).
-- **`OperationsServer`** — at boot, loads the full operation history by fetching and parsing MyInvestor Gmail emails (slow: minutes); serves it from memory afterwards. `get_operations/1` blocks until loaded; `reload/0` refetches.
+- **`OperationsServer`** — at boot, loads the full operation history by fetching and parsing MyInvestor Gmail emails (slow: minutes); serves it from memory afterwards, syncing new emails daily at 21:30 UTC. `get_operations/1` blocks until loaded; `reload/0` refetches.
 - **`SnapshotRecorder`** — writes a per-position portfolio snapshot to Mongo at boot and daily at 22:00 UTC; upserts by date.
 - **`EquitoEmailSync`** — at boot and daily at 12:00 UTC, parses Equito's monthly rent emails (`EquitoParser`) and inserts the RENTA/RET. FISCAL rows `equito_transactions` lacks. Purchases aren't emailed, so they still come from screenshots.
 - **`UrbanitaeEmailSync`** — refreshes the Urbanitae email cache (`urbanitae_emails`) at boot and daily at 23:00 UTC; only unseen Gmail ids are downloaded. `UrbanitaePending` derives what those emails mention but `urbanitae_transactions` lacks, and `/urbanitae` shows it as a banner.
+
+- **`HealthMonitor`** — hourly, runs `DataHealth` over every source and keeps the worst status for the marker on the gear icon; `/control` shows the full table. Syncs report their outcome through `JobRuns`. A new data source should get a row in `DataHealth`.
+- **`LoginThrottle`** — counts wrong passwords in memory and blocks `/login` per address (`fly-client-ip`) and globally.
 
 ### Data flow
 1. `GmailClient` searches MyInvestor confirmation emails; `MyinvestorParser` extracts operations (buys, sells, traspasos).

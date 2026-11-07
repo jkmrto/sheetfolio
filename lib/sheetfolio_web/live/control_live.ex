@@ -1,6 +1,7 @@
 defmodule SheetfolioWeb.ControlLive do
   use SheetfolioWeb, :live_view
 
+  alias Sheetfolio.{DataHealth, HealthMonitor}
   alias SheetfolioWeb.NumberFormat
 
   @poll_ms 800
@@ -14,6 +15,7 @@ defmodule SheetfolioWeb.ControlLive do
       {:ok,
        assign(socket,
          authenticated: true,
+         health: if(connected?(socket), do: HealthMonitor.publish(DataHealth.report()), else: []),
          status: Sheetfolio.OperationsServer.get_status(),
          prices_cleared: false,
          recording: false,
@@ -78,8 +80,53 @@ defmodule SheetfolioWeb.ControlLive do
   defp loading?({:syncing, _, _}), do: true
   defp loading?(_), do: false
 
+  defp status_label(:ok), do: "OK"
+  defp status_label(:warning), do: "Check"
+  defp status_label(:overdue), do: "Overdue"
+
+  defp kind_label(:automatic), do: "Automatic"
+  defp kind_label(:manual), do: "Manual import"
+
+  defp last_label(nil), do: "Never"
+  defp last_label(date), do: Calendar.strftime(date, "%d/%m/%Y")
+
   def render(assigns) do
     ~H"""
+    <style>
+      main:has(.health-card) { max-width: 960px; }
+      .health-card { background: white; border-radius: 12px; padding: 1.5rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); margin-bottom: 2rem; }
+      .health-title { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+      .health-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+      .health-table th { text-align: left; color: #64748b; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.4rem 0.6rem; border-bottom: 1px solid #e2e8f0; }
+      .health-table td { padding: 0.55rem 0.6rem; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+      .health-table tr:last-child td { border-bottom: none; }
+      .health-pill { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+      .health-pill.ok { background: #dcfce7; color: #166534; }
+      .health-pill.warning { background: #fef3c7; color: #92400e; }
+      .health-pill.overdue { background: #fee2e2; color: #991b1b; }
+      .health-muted { color: #64748b; }
+    </style>
+
+    <div class="health-card">
+      <div class="health-title">Data health</div>
+      <table class="health-table">
+        <thead>
+          <tr><th>Source</th><th>Status</th><th>Last update</th><th>Updated by</th><th>Note</th></tr>
+        </thead>
+        <tbody>
+          <%= for row <- @health do %>
+            <tr>
+              <td>{row.label}</td>
+              <td><span class={"health-pill #{row.status}"}>{status_label(row.status)}</span></td>
+              <td>{last_label(row.last)}</td>
+              <td class="health-muted">{kind_label(row.kind)}</td>
+              <td class="health-muted">{row.detail}</td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+
     <div style="display:flex;flex-direction:column;gap:2rem;max-width:480px;">
 
       <div style="background:white;border-radius:12px;padding:1.5rem;box-shadow:0 1px 4px rgba(0,0,0,0.08);">

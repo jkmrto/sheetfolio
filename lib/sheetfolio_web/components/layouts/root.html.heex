@@ -23,6 +23,10 @@
       .nav-gear { margin-left: auto; color: #94a3b8; text-decoration: none; font-size: 1.2rem; line-height: 1; padding: 0.3rem 0.5rem; border-radius: 6px; }
       .nav-gear:hover { color: white; }
       .nav-gear.active { color: white; background: rgba(255,255,255,0.1); }
+      .nav-gear { position: relative; }
+      .nav-gear.health-warning::after, .nav-gear.health-overdue::after { content: ""; position: absolute; top: 0; right: 0.1rem; width: 0.55rem; height: 0.55rem; border-radius: 50%; border: 2px solid #1e293b; }
+      .nav-gear.health-warning::after { background: #f59e0b; }
+      .nav-gear.health-overdue::after { background: #ef4444; }
       main { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
       .chart-container { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
       /* Every table carries a button that lifts it out of the page and over the
@@ -92,8 +96,9 @@
           <a href="/earnings" class={if current_path(assigns) == "/earnings", do: "active", else: ""}>Earnings</a>
         </nav>
         <label for="nav-toggle" class="nav-backdrop" aria-hidden="true"></label>
-        <a href="/control" title="Control" aria-label="Control"
-           class={"nav-gear#{if current_path(assigns) == "/control", do: " active", else: ""}"}>⚙</a>
+        <a href="/control" title={if health_class() == "", do: "Control", else: "Control: data needs attention"}
+           aria-label={if health_class() == "", do: "Control", else: "Control: data needs attention"}
+           class={"nav-gear#{if current_path(assigns) == "/control", do: " active", else: ""}#{health_class()}"}>⚙</a>
       <% end %>
     </header>
     <main><%= @inner_content %></main>

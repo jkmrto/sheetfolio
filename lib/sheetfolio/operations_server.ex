@@ -13,7 +13,12 @@ defmodule Sheetfolio.OperationsServer do
   use GenServer
   require Logger
 
+  # Half an hour before SnapshotRecorder, so the day's snapshot sees new operations.
+  @daily_hour_utc 21
+  @daily_minute_utc 30
+
   alias Sheetfolio.HistoricalFx
+  alias Sheetfolio.JobRuns
   alias Sheetfolio.MyinvestorEmails
   alias Sheetfolio.MyinvestorEmailStore
   alias Sheetfolio.OperationHistory
@@ -26,6 +31,7 @@ defmodule Sheetfolio.OperationsServer do
 
   def init(_) do
     state = %{status: :loading, operations: [], current: 0, total: 0, pending: [], syncing: false}
+    schedule_daily_sync()
     {:ok, state, {:continue, :load}}
   end
 
@@ -64,7 +70,14 @@ defmodule Sheetfolio.OperationsServer do
     {:noreply, %{state | current: current, total: total}}
   end
 
+  def handle_info(:daily_sync, state) do
+    schedule_daily_sync()
+    GenServer.cast(self(), :reload)
+    {:noreply, state}
+  end
+
   def handle_info({:load_done, {:ok, ops}}, state) do
+    JobRuns.success("myinvestor_emails")
     ops = history(ops)
     Enum.each(state.pending, &GenServer.reply(&1, ops))
     {:noreply, %{state | status: :ready, operations: ops, pending: [], syncing: false}}
@@ -72,6 +85,7 @@ defmodule Sheetfolio.OperationsServer do
 
   def handle_info({:load_done, {:error, reason}}, state) do
     Logger.error("[OperationsServer] Gmail sync failed: #{inspect(reason)}")
+    JobRuns.failure("myinvestor_emails", reason)
     Enum.each(state.pending, &GenServer.reply(&1, state.operations))
     {:noreply, %{state | status: :ready, pending: [], syncing: false}}
   end
@@ -103,4 +117,20 @@ defmodule Sheetfolio.OperationsServer do
   # Already loading or syncing — a second concurrent sync would try to store the
   # same new messages twice.
   def handle_cast(:reload, state), do: {:noreply, state}
+
+  defp schedule_daily_sync, do: Process.send_after(self(), :daily_sync, ms_until_next_run())
+
+  defp ms_until_next_run do
+    now = DateTime.utc_now()
+    today_run = %{now | hour: @daily_hour_utc, minute: @daily_minute_utc, second: 0, microsecond: {0, 6}}
+
+    next_run =
+      if DateTime.compare(now, today_run) == :lt do
+        today_run
+      else
+        DateTime.add(today_run, 1, :day)
+      end
+
+    DateTime.diff(next_run, now, :millisecond)
+  end
 end

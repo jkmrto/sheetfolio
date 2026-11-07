@@ -54,6 +54,10 @@ defmodule Sheetfolio.Application do
       Sheetfolio.UrbanitaeEmailSync,
       # Records Equito's monthly rent payouts from Gmail (boot + 12:00 UTC)
       Sheetfolio.EquitoEmailSync,
+      # Counts wrong passwords to slow down guessing at /login
+      Sheetfolio.LoginThrottle,
+      # Checks every data source hourly, for the marker on the gear icon
+      Sheetfolio.HealthMonitor,
       # Phoenix HTTP endpoint
       SheetfolioWeb.Endpoint
     ]

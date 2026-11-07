@@ -13,6 +13,7 @@ defmodule Sheetfolio.UrbanitaeEmailSync do
 
   require Logger
 
+  alias Sheetfolio.JobRuns
   alias Sheetfolio.UrbanitaeEmails
 
   @daily_hour_utc 23
@@ -46,10 +47,12 @@ defmodule Sheetfolio.UrbanitaeEmailSync do
       {:ok, events} ->
         pending = length(Sheetfolio.UrbanitaePending.list())
         Logger.info("[UrbanitaeEmailSync] #{length(events)} events, #{pending} pending")
+        JobRuns.success("urbanitae_emails")
         {:ok, events}
 
       {:error, reason} ->
         Logger.warning("[UrbanitaeEmailSync] Sync failed: #{inspect(reason)}")
+        JobRuns.failure("urbanitae_emails", reason)
         {:error, reason}
     end
   end
