@@ -2,7 +2,7 @@ defmodule SheetfolioWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :sheetfolio
 
   plug Plug.RequestId
-  plug Plug.Logger
+  plug SheetfolioWeb.RequestLogger
 
   # Without max_age the cookie carries no Expires, so the browser drops it when
   # the browsing session ends — which on Chrome for Android means every time the
