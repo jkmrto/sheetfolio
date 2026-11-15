@@ -43,6 +43,10 @@ defmodule SheetfolioWeb.Router do
     post "/", McpController, :handle
     get "/", McpController, :no_stream
     delete "/", McpController, :no_session
+    # The token is in the path, so these routes stay out of the request log.
+    post "/:token", McpController, :handle, log: false
+    get "/:token", McpController, :no_stream, log: false
+    delete "/:token", McpController, :no_session, log: false
   end
 
   scope "/", SheetfolioWeb do

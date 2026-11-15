@@ -1,7 +1,9 @@
 defmodule SheetfolioWeb.McpAuthPlug do
   @moduledoc """
-  Bearer-token check for the MCP endpoint, against `MCP_TOKEN`. With no token
-  configured every request is refused, so the endpoint is off by default.
+  Token check for the MCP endpoint, against `MCP_TOKEN`: a bearer header, or
+  the token as the last path segment (`/mcp/<token>`) for clients such as
+  claude.ai connectors that can't send headers. With no token configured every
+  request is refused, so the endpoint is off by default.
   """
   import Plug.Conn
 
@@ -10,7 +12,7 @@ defmodule SheetfolioWeb.McpAuthPlug do
   def call(conn, _opts) do
     expected = Application.get_env(:sheetfolio, :mcp_token)
 
-    if authorized?(get_req_header(conn, "authorization"), expected) do
+    if authorized?(supplied_token(conn), expected) do
       conn
     else
       conn
@@ -20,7 +22,17 @@ defmodule SheetfolioWeb.McpAuthPlug do
     end
   end
 
-  defp authorized?(["Bearer " <> token], expected) when is_binary(expected) and expected != "" do
+  defp supplied_token(%{path_params: %{"token" => token}}), do: token
+
+  defp supplied_token(conn) do
+    case get_req_header(conn, "authorization") do
+      ["Bearer " <> token] -> token
+      _ -> nil
+    end
+  end
+
+  defp authorized?(token, expected)
+       when is_binary(token) and is_binary(expected) and expected != "" do
     Plug.Crypto.secure_compare(token, expected)
   end
 
