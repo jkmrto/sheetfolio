@@ -3,20 +3,20 @@ defmodule SheetfolioWeb.RealEstateLive do
 
   alias SheetfolioWeb.NumberFormat
 
-  alias Sheetfolio.{EquitoTransactions, RealEstate, UrbanitaeTransactions}
+  alias Sheetfolio.{EquitoTransactions, Homes, RealEstate, UrbanitaeTransactions}
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
       {:ok, push_navigate(socket, to: "/login")}
     else
-      {urbanitae, equito} =
+      {urbanitae, equito, homes} =
         if connected?(socket) do
-          {UrbanitaeTransactions.all(), EquitoTransactions.all()}
+          {UrbanitaeTransactions.all(), EquitoTransactions.all(), Homes.all()}
         else
-          {[], []}
+          {[], [], []}
         end
 
-      {:ok, assign(socket, authenticated: true, urbanitae: urbanitae, equito: equito)}
+      {:ok, assign(socket, authenticated: true, urbanitae: urbanitae, equito: equito, homes: homes)}
     end
   end
 
@@ -26,6 +26,7 @@ defmodule SheetfolioWeb.RealEstateLive do
     assigns =
       assign(assigns,
         summary: RealEstate.summary(assigns.urbanitae, assigns.equito, today),
+        homes: Enum.map(assigns.homes, &Homes.summary(&1, Date.utc_today())),
         chart_payload: chart_payload(RealEstate.time_series(assigns.urbanitae, assigns.equito))
       )
 
@@ -42,6 +43,9 @@ defmodule SheetfolioWeb.RealEstateLive do
       .re-big .stat-value { font-size: 2.4rem; font-weight: 700; color: #0f172a; font-variant-numeric: tabular-nums; line-height: 1.1; }
       .re-big .stat-value.pos { color: #1baf7a; }
       .re-big .stat-split { font-size: 0.82rem; color: #94a3b8; font-variant-numeric: tabular-nums; }
+      .re-big .stat-value.neg { color: #e04848; }
+      .re-home-title { font-size: 1.05rem; font-weight: 600; color: #1e293b; margin-bottom: 1.1rem; }
+      .re-home-title span { font-size: 0.82rem; font-weight: 400; color: #94a3b8; margin-left: 0.5rem; }
     </style>
 
     <div class="re-subtabs">
@@ -64,6 +68,35 @@ defmodule SheetfolioWeb.RealEstateLive do
           <span class="stat-value pos">{format_eur(@summary.total.earnings)}</span>
           <span class="stat-split">
             Urbanitae {format_eur(@summary.urbanitae.earnings)} · Equito {format_eur(@summary.equito.earnings)}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div :for={home <- @homes} class="re-card">
+      <div class="re-home-title">
+        {home.name}<span>my share · valued {home.valuation_date}</span>
+      </div>
+      <div class="re-big">
+        <div class="stat">
+          <span class="stat-label">Equity</span>
+          <span class="stat-value">{format_eur(home.equity)}</span>
+          <span class="stat-split">
+            Value {format_eur(home.value)} · Mortgage {format_eur(home.balance)}
+          </span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Gain since purchase</span>
+          <span class={["stat-value", if(home.gain >= 0, do: "pos", else: "neg")]}>
+            {NumberFormat.signed_eur(home.gain)}
+          </span>
+          <span class="stat-split">Bought for {format_eur(home.purchase_price)}</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Equity built per month</span>
+          <span class="stat-value pos">{NumberFormat.signed_eur(home.monthly_principal)}</span>
+          <span class="stat-split">
+            Payment {format_eur(home.monthly_payment)} · Interest {format_eur(home.monthly_interest)}
           </span>
         </div>
       </div>

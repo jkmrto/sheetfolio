@@ -25,7 +25,8 @@ defmodule Sheetfolio.DataHealthTest do
       urbanitae_last: ~D[2026-10-26],
       urbanitae_pending: 0,
       forecast_as_of: ~D[2026-11-07],
-      forecasts_past_due: 0
+      forecasts_past_due: 0,
+      homes: [%{name: "Piso", last: ~D[2026-10-01]}]
     }
   end
 
@@ -126,5 +127,12 @@ defmodule Sheetfolio.DataHealthTest do
   test "the worst status wins" do
     assert DataHealth.worst([%{status: :ok}, %{status: :warning}]) == :warning
     assert DataHealth.worst([%{status: :warning}, %{status: :overdue}]) == :overdue
+  end
+
+  test "a home asks for a new valuation or statement after a year" do
+    assert row(DataHealth.evaluate(healthy(), @now), "Home: Piso").status == :ok
+
+    stale = %{healthy() | homes: [%{name: "Piso", last: ~D[2025-10-01]}]}
+    assert row(DataHealth.evaluate(stale, @now), "Home: Piso").status == :warning
   end
 end

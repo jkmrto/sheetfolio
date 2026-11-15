@@ -11,7 +11,7 @@ defmodule Sheetfolio.DataHealth do
   only move when someone imports them.
   """
 
-  alias Sheetfolio.{JobRuns, UrbanitaePending, UrbanitaeProjects, UrbanitaeTransactions}
+  alias Sheetfolio.{Homes, JobRuns, UrbanitaePending, UrbanitaeProjects, UrbanitaeTransactions}
 
   @login_window_days 7
 
@@ -43,6 +43,7 @@ defmodule Sheetfolio.DataHealth do
       dated_row("Dividends", :manual, facts.dividends_last, today, 40, 70),
       urbanitae_row(facts.urbanitae_last, facts.urbanitae_pending, today),
       forecast_row(facts.forecast_as_of, facts.forecasts_past_due, today),
+      Enum.map(facts.homes, &home_row(&1, today)),
       login_row(facts.jobs["login"], now)
     ]
     |> List.flatten()
@@ -70,6 +71,12 @@ defmodule Sheetfolio.DataHealth do
     "Urbanitae payout forecasts"
     |> dated_row(:manual, as_of, today, 35, 62)
     |> flag(past_due > 0, "#{past_due} expected #{plural(past_due, "payout")} past due")
+  end
+
+  # A home's figures are as fresh as the older of its valuation and its
+  # mortgage statement; both only need a yearly refresh.
+  defp home_row(%{name: name, last: last}, today) do
+    dated_row("Home: #{name}", :manual, last, today, 365, 540)
   end
 
   # A sync's verdict is its latest run, so a failure counts until a later
@@ -164,7 +171,8 @@ defmodule Sheetfolio.DataHealth do
       urbanitae_last: doc_date(latest("urbanitae_transactions")),
       urbanitae_pending: length(UrbanitaePending.list()),
       forecast_as_of: forecast_as_of(),
-      forecasts_past_due: forecasts_past_due(today)
+      forecasts_past_due: forecasts_past_due(today),
+      homes: Enum.map(Homes.all(), &home_fact/1)
     }
   end
 
@@ -172,6 +180,12 @@ defmodule Sheetfolio.DataHealth do
 
   defp doc_date(%{"date" => <<iso::binary-size(10), _rest::binary>>}), do: Date.from_iso8601!(iso)
   defp doc_date(_doc), do: nil
+
+  defp home_fact(home) do
+    valued = home["valuations"] |> Enum.map(& &1["date"]) |> Enum.max()
+    last = Enum.min([valued, home["mortgage"]["as_of"]])
+    %{name: home["name"], last: Date.from_iso8601!(last)}
+  end
 
   defp stale_positions(nil), do: 0
 
