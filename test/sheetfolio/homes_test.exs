@@ -13,7 +13,7 @@ defmodule Sheetfolio.HomesTest do
   @home %{
     "name" => "Piso",
     "share" => 0.5,
-    "purchase" => %{"date" => "2025-09-01", "price" => 315_000},
+    "purchase" => %{"date" => "2025-09-01", "price" => 315_000, "cash_paid" => 120_000},
     "valuations" => [
       %{"date" => "2025-09-01", "value" => 315_000},
       %{"date" => "2026-11-15", "value" => 320_000}
@@ -43,6 +43,10 @@ defmodule Sheetfolio.HomesTest do
              equity: 54_250.0,
              purchase_price: 157_500.0,
              gain: 2500.0,
+             cash_paid: 60_000.0,
+             principal_repaid: 3500.0,
+             put_in: 63_500.0,
+             result: -9250.0,
              valuation_date: "2026-11-15",
              monthly_payment: 370.0,
              monthly_interest: 120.0,

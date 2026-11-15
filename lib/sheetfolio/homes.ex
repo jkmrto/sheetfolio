@@ -6,7 +6,7 @@ defmodule Sheetfolio.Homes do
 
       { name: "Av. Cruz del Campo 33",
         share: 0.5,
-        purchase: { date: "2025-09-01", price: 315000 },
+        purchase: { date: "2025-09-01", price: 315000, cash_paid: 120000 },
         valuations: [ { date: "2026-11-15", value: 320000, note: "..." } ],
         mortgage: { as_of: "2026-10-01", balance: 212000,
                     monthly_payment: 740, monthly_interest: 240 } }
@@ -16,6 +16,11 @@ defmodule Sheetfolio.Homes do
   monthly_interest` of it. The real split moves a little towards principal
   each month, so recording a newer statement re-anchors the projection.
   The latest valuation is the market value.
+
+  `cash_paid` is everything paid out of pocket at purchase, down payment and
+  purchase costs (taxes, notary, registry) alike. What's been put in is that
+  plus the principal repaid since, so `result` is the equity against it: the
+  purchase costs count against it and the revaluation for it.
   """
 
   @collection "homes"
@@ -40,6 +45,7 @@ defmodule Sheetfolio.Homes do
   My share of a home as of `date` (`Date`):
 
       %{name: _, value: _, balance: _, equity: _, purchase_price: _, gain: _,
+        put_in: _, cash_paid: _, principal_repaid: _, result: _,
         valuation_date: _, monthly_payment: _, monthly_interest: _,
         monthly_principal: _}
   """
@@ -49,7 +55,15 @@ defmodule Sheetfolio.Homes do
     valuation = Enum.max_by(home["valuations"], & &1["date"])
     value = valuation["value"] * share
     balance = balance_at(mortgage, date) * share
-    purchase_price = home["purchase"]["price"] * share
+    purchase = home["purchase"]
+    purchase_price = purchase["price"] * share
+    cash_paid = purchase["cash_paid"] * share
+
+    repaid =
+      (balance_at(mortgage, Date.from_iso8601!(purchase["date"])) - balance_at(mortgage, date)) *
+        share
+
+    put_in = cash_paid + repaid
 
     %{
       name: home["name"],
@@ -58,6 +72,10 @@ defmodule Sheetfolio.Homes do
       equity: round2(value - balance),
       purchase_price: round2(purchase_price),
       gain: round2(value - purchase_price),
+      cash_paid: round2(cash_paid),
+      principal_repaid: round2(repaid),
+      put_in: round2(put_in),
+      result: round2(value - balance - put_in),
       valuation_date: valuation["date"],
       monthly_payment: round2(mortgage["monthly_payment"] * share),
       monthly_interest: round2(mortgage["monthly_interest"] * share),

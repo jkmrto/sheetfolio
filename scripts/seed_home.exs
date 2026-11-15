@@ -8,6 +8,7 @@
 # Bought from Clikalia in September 2025: listed at 325.000 €, agreed at
 # 315.000 €, renovated, 80 m², fourth floor, exterior, lift, and an
 # unnumbered surface parking space. Shared 50/50, as is the mortgage.
+# Out of pocket at purchase, down payment plus costs: 60.000 € each.
 #
 # The November 2026 valuation is an estimate: the Notariado's 41005
 # second-hand flat average (2.914 €/m²), Fotocasa comparables in Nervión
@@ -20,7 +21,7 @@ alias Sheetfolio.Homes
   Homes.upsert(%{
     name: "Av. Cruz del Campo 33",
     share: 0.5,
-    purchase: %{date: "2025-09-01", price: 315_000},
+    purchase: %{date: "2025-09-01", price: 315_000, cash_paid: 120_000},
     valuations: [
       %{date: "2025-09-01", value: 315_000, note: "Purchase price"},
       %{

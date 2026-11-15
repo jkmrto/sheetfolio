@@ -86,11 +86,14 @@ defmodule SheetfolioWeb.RealEstateLive do
           </span>
         </div>
         <div class="stat">
-          <span class="stat-label">Gain since purchase</span>
-          <span class={["stat-value", if(home.gain >= 0, do: "pos", else: "neg")]}>
-            {NumberFormat.signed_eur(home.gain)}
+          <span class="stat-label">Result vs. money put in</span>
+          <span class={["stat-value", if(home.result >= 0, do: "pos", else: "neg")]}>
+            {NumberFormat.signed_eur(home.result)}
           </span>
-          <span class="stat-split">Bought for {format_eur(home.purchase_price)}</span>
+          <span class="stat-split">
+            Put in {format_eur(home.put_in)} (cash {format_eur(home.cash_paid)} · principal {format_eur(home.principal_repaid)})
+            · Revaluation {NumberFormat.signed_eur(home.gain)}
+          </span>
         </div>
         <div class="stat">
           <span class="stat-label">Equity built per month</span>
