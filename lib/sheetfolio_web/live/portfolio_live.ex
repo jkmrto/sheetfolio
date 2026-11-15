@@ -5,6 +5,7 @@ defmodule SheetfolioWeb.PortfolioLive do
 
   alias Sheetfolio.AssetCategories
   alias Sheetfolio.EquitoTransactions
+  alias Sheetfolio.Homes
   alias Sheetfolio.UrbanitaeTransactions
 
   @ranges ~w(1w 1m 3m 1y ytd all)
@@ -36,6 +37,8 @@ defmodule SheetfolioWeb.PortfolioLive do
           cash: [],
           urbanitae_by_date: %{},
           equito_by_date: %{},
+          homes: [],
+          include_home: false,
           dividends: 0.0,
           range: "1m",
           allocation: [],
@@ -74,6 +77,7 @@ defmodule SheetfolioWeb.PortfolioLive do
            cash: cash,
            urbanitae_by_date: urbanitae_by_date(snapshots, transactions),
            equito_by_date: equito_by_date(snapshots, equito),
+           homes: Homes.all(),
            allocation: allocation,
            portfolio_mix: portfolio_mix,
            dividends: Sheetfolio.Dividends.total(Sheetfolio.Dividends.all())
@@ -239,6 +243,10 @@ defmodule SheetfolioWeb.PortfolioLive do
     {:noreply, assign(socket, history_range: range)}
   end
 
+  def handle_event("toggle_home", _params, socket) do
+    {:noreply, assign(socket, include_home: !socket.assigns.include_home)}
+  end
+
   def handle_event("set_history_view", %{"view" => view}, socket) when view in @history_views do
     {:noreply, assign(socket, history_view: view)}
   end
@@ -276,6 +284,9 @@ defmodule SheetfolioWeb.PortfolioLive do
         .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
         .kpi { background: white; border-radius: 12px; padding: 1.1rem 1.25rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
         .kpi-label { font-size: 0.72rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem; }
+        .kpi-label-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+        .kpi-toggle { border: 1px solid #e2e8f0; background: white; color: #94a3b8; border-radius: 999px; padding: 0.1rem 0.55rem; font-size: 0.66rem; text-transform: none; letter-spacing: 0; cursor: pointer; }
+        .kpi-toggle.on { background: #1e293b; border-color: #1e293b; color: white; }
         .kpi-value { font-size: 1.35rem; font-weight: 700; color: #0f172a; }
         .kpi-sub { font-size: 0.78rem; color: #64748b; margin-top: 0.3rem; }
         .kpi-sub + .kpi-sub { margin-top: 0.1rem; }
@@ -296,10 +307,17 @@ defmodule SheetfolioWeb.PortfolioLive do
       <%= if k do %>
         <div class="kpis">
           <div class="kpi">
-            <div class="kpi-label">Net worth</div>
+            <div class="kpi-label kpi-label-row">
+              Net worth
+              <%= if @homes != [] do %>
+                <button class={["kpi-toggle", @include_home && "on"]} phx-click="toggle_home" title="Add my equity in my home">
+                  Include home
+                </button>
+              <% end %>
+            </div>
             <div class="kpi-value"><%= eur(k.net_worth) %></div>
             <%= if k.day_change == nil and k.week_change == nil and k.peak == nil do %>
-              <div class="kpi-sub">portfolio + cash + Urbanitae + Equito</div>
+              <div class="kpi-sub">portfolio + cash + Urbanitae + Equito<%= if @include_home, do: " + home" %></div>
             <% end %>
             <%= for {change, label, period} <- [{k.day_change, "vs yesterday", "1d"}, {k.week_change, "vs last week", "1w"}] do %>
               <%= if change do %>
@@ -367,7 +385,7 @@ defmodule SheetfolioWeb.PortfolioLive do
 
       <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
         <button class="expand-btn" aria-label="Toggle full screen"></button>
-        <div class="chart-container" id="portfolio-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(filter_range(@snapshots, @range), filter_cash_range(@cash, @range), @urbanitae_by_date, @equito_by_date))}>
+        <div class="chart-container" id="portfolio-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(filter_range(@snapshots, @range), filter_cash_range(@cash, @range), @urbanitae_by_date, @equito_by_date, home_by_date(assigns)))}>
           <div id="portfolio-chart-canvas" phx-update="ignore">
             <canvas></canvas>
           </div>
@@ -502,12 +520,12 @@ defmodule SheetfolioWeb.PortfolioLive do
   defp cutoff_date("1y", today), do: Date.shift(today, year: -1)
   defp cutoff_date("ytd", today), do: Date.new!(today.year, 1, 1)
 
-  defp chart_payload(snapshots, cash, urbanitae, equito) do
+  defp chart_payload(snapshots, cash, urbanitae, equito, home) do
     %{
       metric: "value",
       title: "Portfolio Evolution",
       datasets: [
-        %{label: "Net worth (€)", color: "#4a3aa7", data: total_with_cash_points(snapshots, cash, urbanitae, equito)},
+        %{label: "Net worth (€)", color: "#4a3aa7", data: total_with_cash_points(snapshots, cash, urbanitae, equito, home)},
         %{label: "Portfolio (€)", color: "#2a78d6", fill: true, data: total_points(snapshots)},
         %{label: "Invested (€)", color: "#94a3b8", data: invested_points(snapshots)},
         %{label: "Property outstanding (€)", color: "#e34948", data: property_points(snapshots, urbanitae, equito)},
@@ -523,12 +541,27 @@ defmodule SheetfolioWeb.PortfolioLive do
     end
   end
 
-  defp total_with_cash_points(snapshots, cash, urbanitae, equito) do
+  defp total_with_cash_points(snapshots, cash, urbanitae, equito, home) do
     for s <- snapshots, is_number(s["total_value"]), amount = cash_at(cash, s["date"]) do
       {out, _earn} = Map.get(urbanitae, s["date"], {0.0, 0.0})
       {equito_out, _equito_earn} = Map.get(equito, s["date"], {0.0, 0.0})
-      %{x: s["date"], y: Float.round(s["total_value"] + amount + out + equito_out, 2)}
+      home_equity = Map.get(home, s["date"], 0.0)
+      %{x: s["date"], y: Float.round(s["total_value"] + amount + out + equito_out + home_equity, 2)}
     end
+  end
+
+  # My equity in my homes per snapshot date, only when the toggle asks for it:
+  # it isn't money that can be spent, so net worth leaves it out by default.
+  defp home_by_date(%{include_home: false}), do: %{}
+
+  defp home_by_date(%{snapshots: snapshots, homes: homes}) do
+    snapshots
+    |> Enum.map(& &1["date"])
+    |> Enum.uniq()
+    |> Map.new(fn iso ->
+      date = Date.from_iso8601!(iso)
+      {iso, homes |> Enum.map(&Homes.equity_at(&1, date)) |> Enum.sum()}
+    end)
   end
 
   # Headline figures for the top of the page. Everything comes from the same
@@ -545,7 +578,8 @@ defmodule SheetfolioWeb.PortfolioLive do
         assigns.snapshots,
         assigns.cash,
         assigns.urbanitae_by_date,
-        assigns.equito_by_date
+        assigns.equito_by_date,
+        home_by_date(assigns)
       )
     invested = number(latest["total_invested"])
     value = number(latest["total_value"])

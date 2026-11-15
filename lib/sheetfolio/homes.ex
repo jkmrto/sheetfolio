@@ -83,6 +83,23 @@ defmodule Sheetfolio.Homes do
     }
   end
 
+  @doc """
+  My equity on `date` (`Date`): my share of the valuation in force then, less
+  my share of the balance. Zero before the purchase.
+  """
+  def equity_at(home, date) do
+    iso = Date.to_iso8601(date)
+
+    if iso < home["purchase"]["date"] do
+      0.0
+    else
+      valuation =
+        home["valuations"] |> Enum.filter(&(&1["date"] <= iso)) |> Enum.max_by(& &1["date"])
+
+      round2((valuation["value"] - balance_at(home["mortgage"], date)) * home["share"])
+    end
+  end
+
   @doc "The whole outstanding balance on `date`, never below zero."
   def balance_at(mortgage, date) do
     payments = months_between(Date.from_iso8601!(mortgage["as_of"]), date)
