@@ -84,18 +84,17 @@ defmodule Sheetfolio.Homes do
   end
 
   @doc """
-  My equity on `date` (`Date`): my share of the valuation in force then, less
-  my share of the balance. Zero before the purchase.
+  My equity on `date` (`Date`): my share of the latest valuation, less my
+  share of the balance then. Zero before the purchase. Every date takes the
+  latest valuation, so a new one shifts the whole history instead of showing
+  up as a one-day jump: over time, equity only grows with the principal
+  repaid.
   """
   def equity_at(home, date) do
-    iso = Date.to_iso8601(date)
-
-    if iso < home["purchase"]["date"] do
+    if Date.to_iso8601(date) < home["purchase"]["date"] do
       0.0
     else
-      valuation =
-        home["valuations"] |> Enum.filter(&(&1["date"] <= iso)) |> Enum.max_by(& &1["date"])
-
+      valuation = Enum.max_by(home["valuations"], & &1["date"])
       round2((valuation["value"] - balance_at(home["mortgage"], date)) * home["share"])
     end
   end

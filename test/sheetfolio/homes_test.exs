@@ -35,9 +35,9 @@ defmodule Sheetfolio.HomesTest do
     assert Homes.balance_at(@mortgage, ~D[2070-01-01]) == 0
   end
 
-  test "equity_at uses the valuation in force on the date" do
+  test "equity_at moves only with the principal repaid" do
     assert Homes.equity_at(@home, ~D[2025-08-31]) == 0.0
-    assert Homes.equity_at(@home, ~D[2026-11-01]) == 51_750.0
+    assert Homes.equity_at(@home, ~D[2026-10-31]) == 54_000.0
     assert Homes.equity_at(@home, ~D[2026-11-15]) == 54_250.0
   end
 
