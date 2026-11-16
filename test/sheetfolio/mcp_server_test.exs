@@ -45,7 +45,7 @@ defmodule Sheetfolio.Mcp.ServerTest do
     test "lists every tool as a read-only object schema" do
       %{result: %{tools: tools}} = request("tools/list")
 
-      assert length(tools) == 9
+      assert length(tools) == 10
 
       for tool <- tools do
         assert %{inputSchema: %{type: "object"}, annotations: %{readOnlyHint: true}} = tool

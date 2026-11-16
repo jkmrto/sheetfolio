@@ -90,6 +90,7 @@ defmodule SheetfolioWeb.CashLive do
     <div class="money-subtabs">
       <.link navigate="/cash" class="active">Cash</.link>
       <.link navigate="/expenses">Expenses</.link>
+      <.link navigate="/savings">Savings</.link>
     </div>
 
     <div class="cash-form">

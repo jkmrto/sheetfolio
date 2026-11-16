@@ -123,6 +123,7 @@ defmodule SheetfolioWeb.ExpensesLive do
     <div class="money-subtabs">
       <.link navigate="/cash">Cash</.link>
       <.link navigate="/expenses" class="active">Expenses</.link>
+      <.link navigate="/savings">Savings</.link>
     </div>
 
     <%= if @expenses == nil do %>

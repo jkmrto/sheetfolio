@@ -11,7 +11,14 @@ defmodule Sheetfolio.DataHealth do
   only move when someone imports them.
   """
 
-  alias Sheetfolio.{Homes, JobRuns, UrbanitaePending, UrbanitaeProjects, UrbanitaeTransactions}
+  alias Sheetfolio.{
+    Homes,
+    JobRuns,
+    MonthlySavings,
+    UrbanitaePending,
+    UrbanitaeProjects,
+    UrbanitaeTransactions
+  }
 
   @login_window_days 7
 
@@ -44,6 +51,7 @@ defmodule Sheetfolio.DataHealth do
       urbanitae_row(facts.urbanitae_last, facts.urbanitae_pending, today),
       forecast_row(facts.forecast_as_of, facts.forecasts_past_due, today),
       Enum.map(facts.homes, &home_row(&1, today)),
+      dated_row("Monthly savings", :manual, facts.savings_last, today, 20, 50),
       login_row(facts.jobs["login"], now)
     ]
     |> List.flatten()
@@ -100,8 +108,11 @@ defmodule Sheetfolio.DataHealth do
   # until the history or the sheet is corrected.
   defp holdings_row(job, today) do
     case job_row("Holdings vs sheet", job, today) do
-      %{detail: "Last run failed: " <> finding} = row -> %{row | status: :warning, detail: finding}
-      row -> row
+      %{detail: "Last run failed: " <> finding} = row ->
+        %{row | status: :warning, detail: finding}
+
+      row ->
+        row
     end
   end
 
@@ -163,7 +174,10 @@ defmodule Sheetfolio.DataHealth do
     latest_cash = latest("cash_snapshots")
 
     %{
-      snapshot: %{date: doc_date(latest_snapshot), stale_positions: stale_positions(latest_snapshot)},
+      snapshot: %{
+        date: doc_date(latest_snapshot),
+        stale_positions: stale_positions(latest_snapshot)
+      },
       cash: %{date: doc_date(latest_cash), wise_stale: (latest_cash || %{})["wise_stale"] == true},
       jobs: JobRuns.all(),
       equito_last: doc_date(latest("equito_transactions")),
@@ -172,7 +186,8 @@ defmodule Sheetfolio.DataHealth do
       urbanitae_pending: length(UrbanitaePending.list()),
       forecast_as_of: forecast_as_of(),
       forecasts_past_due: forecasts_past_due(today),
-      homes: Enum.map(Homes.all(), &home_fact/1)
+      homes: Enum.map(Homes.all(), &home_fact/1),
+      savings_last: MonthlySavings.last_recorded()
     }
   end
 
@@ -194,7 +209,9 @@ defmodule Sheetfolio.DataHealth do
   end
 
   defp forecast_as_of do
-    case UrbanitaeProjects.forecasts() |> Enum.map(& &1["forecast"]["as_of"]) |> Enum.max(fn -> nil end) do
+    case UrbanitaeProjects.forecasts()
+         |> Enum.map(& &1["forecast"]["as_of"])
+         |> Enum.max(fn -> nil end) do
       nil -> nil
       iso -> Date.from_iso8601!(iso)
     end

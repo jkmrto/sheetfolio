@@ -26,7 +26,8 @@ defmodule Sheetfolio.DataHealthTest do
       urbanitae_pending: 0,
       forecast_as_of: ~D[2026-11-07],
       forecasts_past_due: 0,
-      homes: [%{name: "Piso", last: ~D[2026-10-01]}]
+      homes: [%{name: "Piso", last: ~D[2026-10-01]}],
+      savings_last: ~D[2026-10-31]
     }
   end
 
@@ -34,7 +35,11 @@ defmodule Sheetfolio.DataHealthTest do
 
   test "a difference with the sheet warns and says what differs" do
     jobs =
-      Map.put(healthy().jobs, "holdings_check", job(~U[2026-11-06 09:00:00Z], ~U[2026-11-07 09:00:00Z], "As of 08/03/2026: Quanterix"))
+      Map.put(
+        healthy().jobs,
+        "holdings_check",
+        job(~U[2026-11-06 09:00:00Z], ~U[2026-11-07 09:00:00Z], "As of 08/03/2026: Quanterix")
+      )
 
     holdings = row(DataHealth.evaluate(%{healthy() | jobs: jobs}, @now), "Holdings vs sheet")
 
@@ -44,9 +49,14 @@ defmodule Sheetfolio.DataHealthTest do
 
   test "operations left on today's rate fail the FX row" do
     jobs =
-      Map.put(healthy().jobs, "historical_fx", job(~U[2026-11-06 09:00:00Z], ~U[2026-11-07 09:00:00Z], "2 operations"))
+      Map.put(
+        healthy().jobs,
+        "historical_fx",
+        job(~U[2026-11-06 09:00:00Z], ~U[2026-11-07 09:00:00Z], "2 operations")
+      )
 
-    assert row(DataHealth.evaluate(%{healthy() | jobs: jobs}, @now), "FX rates").status == :overdue
+    assert row(DataHealth.evaluate(%{healthy() | jobs: jobs}, @now), "FX rates").status ==
+             :overdue
   end
 
   test "fresh data is all clear" do
@@ -74,7 +84,11 @@ defmodule Sheetfolio.DataHealthTest do
 
   test "a sync whose latest run failed is overdue and says why" do
     jobs =
-      Map.put(healthy().jobs, "equito_emails", job(~U[2026-11-06 09:00:00Z], ~U[2026-11-07 09:00:00Z], "timeout"))
+      Map.put(
+        healthy().jobs,
+        "equito_emails",
+        job(~U[2026-11-06 09:00:00Z], ~U[2026-11-07 09:00:00Z], "timeout")
+      )
 
     equito = row(DataHealth.evaluate(%{healthy() | jobs: jobs}, @now), "Equito emails")
 
@@ -84,15 +98,21 @@ defmodule Sheetfolio.DataHealthTest do
 
   test "a failure followed by a success is cleared" do
     jobs =
-      Map.put(healthy().jobs, "equito_emails", job(~U[2026-11-07 09:00:00Z], ~U[2026-11-06 09:00:00Z], "timeout"))
+      Map.put(
+        healthy().jobs,
+        "equito_emails",
+        job(~U[2026-11-07 09:00:00Z], ~U[2026-11-06 09:00:00Z], "timeout")
+      )
 
-    assert row(DataHealth.evaluate(%{healthy() | jobs: jobs}, @now), "Equito emails").status == :ok
+    assert row(DataHealth.evaluate(%{healthy() | jobs: jobs}, @now), "Equito emails").status ==
+             :ok
   end
 
   test "a sync that has never reported only warns" do
     jobs = Map.delete(healthy().jobs, "urbanitae_emails")
 
-    assert row(DataHealth.evaluate(%{healthy() | jobs: jobs}, @now), "Urbanitae emails").status == :warning
+    assert row(DataHealth.evaluate(%{healthy() | jobs: jobs}, @now), "Urbanitae emails").status ==
+             :warning
   end
 
   test "fresh data with a known problem still asks for attention" do
@@ -113,7 +133,8 @@ defmodule Sheetfolio.DataHealthTest do
   end
 
   test "a source with no data is overdue" do
-    assert row(DataHealth.evaluate(%{healthy() | dividends_last: nil}, @now), "Dividends").status == :overdue
+    assert row(DataHealth.evaluate(%{healthy() | dividends_last: nil}, @now), "Dividends").status ==
+             :overdue
   end
 
   test "a recent login block appears, then fades after a week" do

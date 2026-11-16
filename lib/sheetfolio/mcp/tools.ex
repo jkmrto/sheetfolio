@@ -10,6 +10,7 @@ defmodule Sheetfolio.Mcp.Tools do
   alias Sheetfolio.AssetCategories
   alias Sheetfolio.Dividends
   alias Sheetfolio.EarningsServer
+  alias Sheetfolio.MonthlySavings
   alias Sheetfolio.OperationsServer
   alias Sheetfolio.Positions
   alias Sheetfolio.UrbanitaeTransactions
@@ -110,6 +111,13 @@ defmodule Sheetfolio.Mcp.Tools do
           description: "Default #{@default_limit}"
         }
       }
+    },
+    %{
+      name: "get_savings",
+      description:
+        "Monthly income (net salary, meal card, IRPF refund estimate), expenses (Wise spending), " <>
+          "savings and savings rate, plus totals for each year. `year` (YYYY) narrows to one year.",
+      properties: %{year: %{type: "string", pattern: "^[0-9]{4}$", description: "YYYY"}}
     }
   ]
 
@@ -245,6 +253,24 @@ defmodule Sheetfolio.Mcp.Tools do
          count: length(expenses),
          transactions: Enum.take(expenses, limit)
        }}
+    end
+  end
+
+  defp run("get_savings", args) do
+    with {:ok, year} <- year(args) do
+      months =
+        Enum.filter(
+          MonthlySavings.all(),
+          &(is_nil(year) or String.starts_with?(&1.month, year <> "-"))
+        )
+
+      years =
+        months
+        |> Enum.map(&String.slice(&1.month, 0, 4))
+        |> Enum.uniq()
+        |> Enum.map(&MonthlySavings.year_totals(months, &1))
+
+      {:ok, %{years: years, months: months}}
     end
   end
 
@@ -415,6 +441,16 @@ defmodule Sheetfolio.Mcp.Tools do
   defp string_value(nil, _key), do: {:ok, nil}
   defp string_value(value, _key) when is_binary(value), do: {:ok, value}
   defp string_value(_value, key), do: {:error, "#{key} must be a string"}
+
+  defp year(args), do: year_value(Map.get(args, "year"))
+
+  defp year_value(nil), do: {:ok, nil}
+
+  defp year_value(value) when is_binary(value) do
+    if value =~ ~r/^\d{4}$/, do: {:ok, value}, else: {:error, "year must be a YYYY string"}
+  end
+
+  defp year_value(_value), do: {:error, "year must be a YYYY string"}
 
   defp boolean(args, key), do: boolean_value(Map.get(args, key), key)
 

@@ -180,6 +180,54 @@ Hooks.PayoutsChart = {
   }
 }
 
+// Income, expenses and savings side by side for each month. Savings can dip
+// below zero, so the axis isn't pinned to it.
+Hooks.SavingsChart = {
+  mounted() { redrawOnExpand(this); this.render() },
+  updated() { this.render() },
+  destroyed() { if (this.chart) this.chart.destroy() },
+  render() {
+    const payload = JSON.parse(this.el.dataset.chart)
+    if (this.chart) this.chart.destroy()
+
+    this.chart = new Chart(this.el.querySelector("canvas").getContext("2d"), {
+      type: "bar",
+      data: {
+        labels: payload.labels,
+        datasets: payload.datasets.map((ds) => ({
+          label: ds.label,
+          data: ds.data,
+          backgroundColor: ds.color,
+          borderColor: "#ffffff",
+          borderWidth: {left: 1, right: 1},
+          borderRadius: 4,
+          maxBarThickness: 22
+        }))
+      },
+      options: {
+        responsive: true,
+        aspectRatio: chartAspectRatio(),
+        maintainAspectRatio: !isExpanded(this.el),
+        interaction: {mode: "index", intersect: false},
+        plugins: {
+          legend: legend("top"),
+          title: {display: true, text: payload.title, font: {size: narrow() ? 14 : 18}},
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${euros(ctx.parsed.y)}`,
+              footer: (items) => `Savings rate: ${number(payload.rates[items[0].dataIndex], 1)}%`
+            }
+          }
+        },
+        scales: {
+          x: {grid: {display: false}, ticks: {autoSkip: true, maxRotation: 0}},
+          y: {grace: "5%", ticks: {callback: (v) => `${tick(v)} €`}}
+        }
+      }
+    })
+  }
+}
+
 Hooks.CategoryPie = {
   mounted() { redrawOnExpand(this); this.render() },
   updated() { this.render() },
