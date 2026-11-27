@@ -4,6 +4,8 @@ defmodule SheetfolioWeb.EarningsLive do
   alias SheetfolioWeb.NumberFormat
 
   @views ~w(by_asset by_operation tax)
+  @palette ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"]
+  @chart_views ~w(category asset)
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
@@ -20,7 +22,13 @@ defmodule SheetfolioWeb.EarningsLive do
           equito: [],
           view: "by_asset",
           expanded_assets: MapSet.new(),
-          expanded_dividends: MapSet.new()
+          expanded_dividends: MapSet.new(),
+          cumulative: [],
+          names: %{},
+          categories: %{},
+          params: %{},
+          chart_view: "category",
+          chart_keys: ["Total"]
         )
 
       if connected?(socket) do
@@ -31,6 +39,8 @@ defmodule SheetfolioWeb.EarningsLive do
           Sheetfolio.Positions.realized_events(operations, eur_usd, eur_cad)
           |> Enum.reverse()
 
+        earnings = monthly_earnings(operations, eur_usd, eur_cad)
+
         {:ok,
          assign(socket,
            realized_events: realized_events,
@@ -38,12 +48,41 @@ defmodule SheetfolioWeb.EarningsLive do
            unrealized: unrealized_positions(),
            dividends: Sheetfolio.Dividends.all(),
            urbanitae: urbanitae_earnings(),
-           equito: equito_earnings()
+           equito: equito_earnings(),
+           cumulative: earnings.cumulative,
+           names: earnings.names,
+           categories: Sheetfolio.AssetCategories.get()
          )}
       else
         {:ok, socket}
       end
     end
+  end
+
+  # The chart's grouping and lines live in `?chart=` and `?show=`, so a
+  # refresh keeps them.
+  def handle_params(params, _uri, socket) do
+    view = if params["chart"] in @chart_views, do: params["chart"], else: "category"
+    keys = (params["show"] || "Total") |> String.split(",", trim: true) |> Enum.uniq() |> Enum.take(length(@palette))
+
+    {:noreply, assign(socket, params: params, chart_view: view, chart_keys: keys)}
+  end
+
+  def handle_event("chart_view", %{"view" => view}, socket) when view in @chart_views do
+    {:noreply, patch_chart(socket, %{"chart" => view, "show" => "Total"})}
+  end
+
+  def handle_event("chart_toggle", %{"key" => key}, socket) do
+    keys = socket.assigns.chart_keys
+
+    keys =
+      cond do
+        key in keys -> keys -- [key]
+        length(keys) >= length(@palette) -> keys
+        true -> keys ++ [key]
+      end
+
+    {:noreply, patch_chart(socket, %{"show" => Enum.join(keys, ",")})}
   end
 
   def handle_event("set_view", %{"view" => view}, socket) when view in @views do
@@ -64,6 +103,78 @@ defmodule SheetfolioWeb.EarningsLive do
   def handle_event("toggle_dividend_asset", %{"asset" => asset}, socket) do
     {:noreply, assign(socket, expanded_dividends: toggle(socket.assigns.expanded_dividends, asset))}
   end
+
+  defp patch_chart(socket, changes) do
+    params = Map.merge(socket.assigns.params, changes)
+    push_patch(socket, to: "/earnings?" <> URI.encode_query(params))
+  end
+
+  defp monthly_earnings(operations, eur_usd, eur_cad) do
+    snapshots = Mongo.find(:mongo, "portfolio_snapshots", %{}, sort: %{date: 1}) |> Enum.to_list()
+    history = Sheetfolio.Positions.history(operations, eur_usd, eur_cad)
+    urbanitae = Sheetfolio.UrbanitaeTransactions.all()
+    equito = Sheetfolio.EquitoTransactions.all()
+
+    ledgers = [
+      {"Urbanitae", &Sheetfolio.UrbanitaeTransactions.state_at(urbanitae, &1)},
+      {"Equito", &Sheetfolio.EquitoTransactions.state_at(equito, &1)}
+    ]
+
+    Sheetfolio.MonthlyEarnings.build(snapshots, history, Sheetfolio.Dividends.all(), ledgers)
+  end
+
+  # Ledgers are keyed by their label ("Urbanitae"), the categories sheet by
+  # upper-case id ("URBANITAE"); ISINs are upper case already.
+  defp category_of(key, categories), do: Sheetfolio.AssetCategories.category_for(String.upcase(key), categories)
+
+  # What can be drawn: the total, then each category or asset, biggest
+  # earner first by what it has made so far.
+  defp chart_options(%{cumulative: []}), do: []
+
+  defp chart_options(assigns) do
+    {_date, latest} = List.last(assigns.cumulative)
+
+    groups =
+      latest
+      |> Enum.group_by(fn {key, _gain} -> group_key(key, assigns) end, &elem(&1, 1))
+      |> Enum.map(fn {group, gains} -> {group, Enum.sum(gains)} end)
+      |> Enum.sort_by(&elem(&1, 1), :desc)
+      |> Enum.map(fn {group, _gain} -> {group, group_name(group, assigns)} end)
+
+    [{"Total", "Total"} | groups]
+  end
+
+  defp group_key(key, %{chart_view: "category", categories: categories}), do: category_of(key, categories)
+  defp group_key(key, _assigns), do: key
+
+  defp group_name(group, %{chart_view: "asset", names: names}), do: Map.get(names, group, group)
+  defp group_name(group, _assigns), do: group
+
+  defp earnings_chart(assigns) do
+    named = Map.new(chart_options(assigns))
+
+    datasets =
+      assigns.chart_keys
+      |> Enum.filter(&Map.has_key?(named, &1))
+      |> Enum.with_index()
+      |> Enum.map(fn {group, slot} ->
+        %{
+          label: named[group],
+          color: Enum.at(@palette, slot),
+          data:
+            for {date, gains} <- assigns.cumulative do
+              y = for({key, gain} <- gains, group == "Total" or group_key(key, assigns) == group, do: gain) |> Enum.sum()
+              %{x: date, y: Float.round(y * 1.0, 2)}
+            end
+        }
+      end)
+
+    %{metric: "value", title: "Cumulative earnings (€)", timeUnit: "month", datasets: datasets}
+  end
+
+  defp chart_slot(assigns, key), do: Enum.find_index(assigns.chart_keys, &(&1 == key))
+
+  defp palette, do: @palette
 
   defp toggle(set, key) do
     if MapSet.member?(set, key), do: MapSet.delete(set, key), else: MapSet.put(set, key)
@@ -118,6 +229,16 @@ defmodule SheetfolioWeb.EarningsLive do
       .details-table th:first-child, .details-table td:first-child, .details-table th.left, .details-table td.left { text-align: left; }
       .details-table td { padding: 0.35rem 0.6rem; border-bottom: 1px solid #f1f5f9; text-align: right; }
       .details-table tr:last-child td { border-bottom: none; }
+      .chart-controls { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 1rem; }
+      .seg { display: inline-flex; align-self: flex-start; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+      .seg button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
+      .seg button.selected { background: #1e293b; color: white; }
+      .chart-keys { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+      .key-btn { border: 1px solid #e2e8f0; background: white; color: #475569; padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; }
+      .key-btn:hover { background: #f1f5f9; }
+      .key-btn.selected { border-color: #1e293b; color: #0b0b0b; font-weight: 600; }
+      .key-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+      .chart-note { margin: 0.5rem 0 1rem; }
     </style>
 
     <div class="earnings-page-tabs">
@@ -134,6 +255,36 @@ defmodule SheetfolioWeb.EarningsLive do
       + Unrealized <strong class={sign_class(@unrealized_sum)}><%= eur(@unrealized_sum) %></strong>
       = <strong class={sign_class(total_sum)}><%= eur(total_sum) %></strong>
     </div>
+
+    <%= if @cumulative != [] do %>
+      <div class="earnings-section">Over time</div>
+      <div class="chart-controls">
+        <div class="seg">
+          <button class={if @chart_view == "category", do: "selected"} phx-click="chart_view" phx-value-view="category">By category</button>
+          <button class={if @chart_view == "asset", do: "selected"} phx-click="chart_view" phx-value-view="asset">By asset</button>
+        </div>
+        <div class="chart-keys">
+          <%= for {key, name} <- chart_options(assigns) do %>
+            <% slot = chart_slot(assigns, key) %>
+            <button class={"key-btn#{if slot, do: " selected"}"} phx-click="chart_toggle" phx-value-key={key}>
+              <span :if={slot} class="key-dot" style={"background: #{Enum.at(palette(), slot)}"}></span><%= name %>
+            </button>
+          <% end %>
+        </div>
+      </div>
+      <div class="expand-panel" id="panel-chart" phx-hook="ExpandPanel">
+        <button class="expand-btn" aria-label="Toggle full screen"></button>
+        <div class="chart-container" id="earnings-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(earnings_chart(assigns))}>
+          <div id="earnings-chart-canvas" phx-update="ignore">
+            <canvas id="earningsChartCanvas"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="muted chart-note">
+        Everything earned up to each month's end: unrealized, realized, dividends and the crowdfunding ledgers. A sold
+        position keeps its result, and the first point carries what was earned before the snapshots began.
+      </div>
+    <% end %>
 
     <div class="earnings-section">Realized</div>
     <div class="earnings-subtabs">

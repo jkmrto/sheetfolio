@@ -33,11 +33,17 @@ defmodule Sheetfolio.MonthlyEarnings do
   `snapshots` oldest first, and `history` from `Positions.history/3`:
 
       %{months: ["2026-01", ...],
-        rows: [%{key, asset, months: %{"2026-01" => 12.5}, bases: %{"2026-01" => 1000.0}}]}
+        rows: [%{key, asset, months: %{"2026-01" => 12.5}, bases: %{"2026-01" => 1000.0}}],
+        cumulative: [{"2026-01-31", %{key => gain so far}}],
+        names: %{key => asset}}
+
+  `cumulative` is the running gain at the first snapshot and each month's
+  last, so it starts from everything earned before the snapshots began and a
+  sold position keeps what it made.
   """
   def build(snapshots, history, dividends, ledgers \\ [])
 
-  def build([], _history, _dividends, _ledgers), do: %{months: [], rows: []}
+  def build([], _history, _dividends, _ledgers), do: %{months: [], rows: [], cumulative: [], names: %{}}
 
   def build(snapshots, history, dividends, ledgers) do
     [first | _] = checkpoints = checkpoints(snapshots)
@@ -54,7 +60,9 @@ defmodule Sheetfolio.MonthlyEarnings do
     %{
       months: checkpoints |> Enum.drop(1) |> Enum.map(&month_of(&1["date"])) |> Enum.uniq(),
       first_date: first["date"],
-      rows: rows(months)
+      rows: rows(months),
+      cumulative: Enum.map(gains, fn {date, entries} -> {date, Map.new(entries, fn {key, e} -> {key, e.gain} end)} end),
+      names: for({_date, entries} <- gains, {key, e} <- entries, into: %{}, do: {key, e.asset})
     }
   end
 

@@ -54,6 +54,21 @@ defmodule Sheetfolio.MonthlyEarningsTest do
     assert_in_delta earned(result, "IE1", "2026-02"), 0.0, 1.0e-6
   end
 
+  test "the running gain keeps a sold position's result" do
+    ops = [op("15/12/2025", "Compra", "10", "100 EUR"), op("10/02/2026", "Venta", "10", "130 EUR")]
+
+    snapshots = [
+      snapshot("2026-01-01", [position("IE1", 10.0, 100.0)]),
+      snapshot("2026-01-31", [position("IE1", 10.0, 130.0)]),
+      snapshot("2026-02-28", [])
+    ]
+
+    result = MonthlyEarnings.build(snapshots, history(ops), [])
+
+    assert Enum.map(result.cumulative, &elem(&1, 0)) == ["2026-01-01", "2026-01-31", "2026-02-28"]
+    assert [0.0, 30.0, 30.0] == Enum.map(result.cumulative, &Float.round(elem(&1, 1)["IE1"], 6))
+  end
+
   test "buying more earns nothing by itself" do
     ops = [op("15/12/2025", "Compra", "10", "100 EUR"), op("10/02/2026", "Compra", "10", "100 EUR")]
 
@@ -277,6 +292,6 @@ defmodule Sheetfolio.MonthlyEarningsTest do
   end
 
   test "no snapshots means an empty table" do
-    assert MonthlyEarnings.build([], [], []) == %{months: [], rows: []}
+    assert MonthlyEarnings.build([], [], []) == %{months: [], rows: [], cumulative: [], names: %{}}
   end
 end
