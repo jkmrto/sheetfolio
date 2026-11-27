@@ -255,8 +255,6 @@ defmodule SheetfolioWeb.HistoryLive do
       .metric-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
       .metric-toggle button.selected { background: #1e293b; color: white; }
       .range-toggle { margin-left: 0; }
-      .line-toggles { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3rem; margin-bottom: 1rem; font-size: 0.82rem; color: #475569; }
-      .line-toggles label { display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
       .view-toggle { margin-left: 0; }
       .empty-note { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); color: #64748b; font-size: 0.9rem; }
       .date-bar { display: flex; align-items: center; gap: 1rem; margin: 2rem 0 1rem; }
@@ -326,6 +324,11 @@ defmodule SheetfolioWeb.HistoryLive do
           <button class={if @metric == "value", do: "selected"} phx-click="set_metric" phx-value-metric="value">Value (€)</button>
           <button class={if @metric == "pct", do: "selected"} phx-click="set_metric" phx-value-metric="pct">Gain/Loss (%)</button>
         </div>
+        <div :if={@metric == "value"} class="metric-toggle range-toggle">
+          <%= for {line, label} <- line_labels() do %>
+            <button class={if line in @lines, do: "selected"} phx-click="toggle_line" phx-value-line={line} aria-pressed={to_string(line in @lines)}><%= label %></button>
+          <% end %>
+        </div>
         <div class="metric-toggle range-toggle">
           <%= for {value, label} <- range_options() do %>
             <button class={if @range == value, do: "selected"} phx-click="set_range" phx-value-range={value}><%= label %></button>
@@ -333,14 +336,6 @@ defmodule SheetfolioWeb.HistoryLive do
         </div>
       </div>
 
-      <div :if={@metric == "value"} class="line-toggles">
-        <%= for {line, label} <- line_labels() do %>
-          <label>
-            <input type="checkbox" checked={line in @lines} phx-click="toggle_line" phx-value-line={line} />
-            <%= label %>
-          </label>
-        <% end %>
-      </div>
       <div class="expand-panel" id="panel-2" phx-hook="ExpandPanel">
         <button class="expand-btn" aria-label="Toggle full screen"></button>
         <div class="chart-container" id="history-chart" phx-hook="HistoryChart" data-chart={Jason.encode!(chart_payload(assigns))}>
