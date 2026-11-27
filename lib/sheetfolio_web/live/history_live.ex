@@ -13,6 +13,8 @@ defmodule SheetfolioWeb.HistoryLive do
   # it cost, and the gain between them. Dashes tell them apart at a glance
   # while the asset keeps one colour across all three.
   @series [{:value, nil, nil}, {:invested, "Invested", [6, 4]}, {:gain, "Earnings", [2, 3]}]
+  @line_names %{"value" => :value, "invested" => :invested, "gain" => :gain}
+  @line_labels [{"value", "Current value"}, {"invested", "Invested"}, {"gain", "Earnings"}]
 
   def mount(_params, session, socket) do
     if session["authenticated"] != true do
@@ -31,6 +33,9 @@ defmodule SheetfolioWeb.HistoryLive do
           view: "asset",
           metric: "value",
           range: "1m",
+          lines: ["value"],
+          params: %{},
+          preselected: nil,
           selected_date: nil
         )
 
@@ -65,12 +70,34 @@ defmodule SheetfolioWeb.HistoryLive do
   # Arriving from a comparison row or a dashboard card: that holding, or that
   # category, is what the page opens on, over the window asked for. Anything it
   # doesn't recognise leaves the default alone.
-  def handle_params(%{"view" => view, "key" => key} = params, _uri, socket)
-      when view in ["asset", "category"] do
-    {:noreply, socket |> preselect(view, key) |> preselect_range(params["range"])}
+  # The lines drawn per holding live in `?lines=`, so a refresh keeps them.
+  # A patch that only changes them must not re-run the preselection, which
+  # would undo whatever was picked since.
+  def handle_params(params, _uri, socket) do
+    socket = assign(socket, params: params, lines: parse_lines(params["lines"]))
+    {:noreply, apply_preselect(socket, Map.take(params, ["view", "key", "range"]))}
   end
 
-  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+  defp apply_preselect(%{assigns: %{preselected: same}} = socket, same), do: socket
+
+  defp apply_preselect(socket, %{"view" => view, "key" => key} = target)
+       when view in ["asset", "category"] do
+    socket
+    |> preselect(view, key)
+    |> preselect_range(target["range"])
+    |> assign(preselected: target)
+  end
+
+  defp apply_preselect(socket, _target), do: socket
+
+  defp parse_lines(nil), do: ["value"]
+
+  defp parse_lines(lines) do
+    case lines |> String.split(",") |> Enum.filter(&Map.has_key?(@line_names, &1)) do
+      [] -> ["value"]
+      known -> Enum.uniq(known)
+    end
+  end
 
   defp preselect_range(socket, range) when range in @ranges, do: assign(socket, range: range)
   defp preselect_range(socket, _range), do: socket
@@ -97,6 +124,22 @@ defmodule SheetfolioWeb.HistoryLive do
   def handle_event("toggle_asset", %{"isin" => isin}, socket) do
     selected = toggle(selection(socket.assigns), isin)
     {:noreply, assign(socket, color_map: Map.put(socket.assigns.color_map, socket.assigns.view, selected))}
+  end
+
+  def handle_event("toggle_line", %{"line" => line}, socket) when is_map_key(@line_names, line) do
+    lines = socket.assigns.lines
+
+    lines =
+      if line in lines,
+        do: lines -- [line],
+        else: for({name, _label} <- @line_labels, name in [line | lines], do: name)
+
+    if lines == [] do
+      {:noreply, socket}
+    else
+      params = Map.put(socket.assigns.params, "lines", Enum.join(lines, ","))
+      {:noreply, push_patch(socket, to: "/history?" <> URI.encode_query(params))}
+    end
   end
 
   def handle_event("set_view", %{"view" => view}, socket) when view in ["asset", "category"] do
@@ -212,6 +255,8 @@ defmodule SheetfolioWeb.HistoryLive do
       .metric-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
       .metric-toggle button.selected { background: #1e293b; color: white; }
       .range-toggle { margin-left: 0; }
+      .line-toggles { display: flex; gap: 0.9rem; font-size: 0.82rem; color: #475569; }
+      .line-toggles label { display: inline-flex; align-items: center; gap: 0.3rem; cursor: pointer; }
       .view-toggle { margin-left: 0; }
       .empty-note { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); color: #64748b; font-size: 0.9rem; }
       .date-bar { display: flex; align-items: center; gap: 1rem; margin: 2rem 0 1rem; }
@@ -280,6 +325,14 @@ defmodule SheetfolioWeb.HistoryLive do
         <div class="metric-toggle">
           <button class={if @metric == "value", do: "selected"} phx-click="set_metric" phx-value-metric="value">Value (€)</button>
           <button class={if @metric == "pct", do: "selected"} phx-click="set_metric" phx-value-metric="pct">Gain/Loss (%)</button>
+        </div>
+        <div :if={@metric == "value"} class="line-toggles">
+          <%= for {line, label} <- line_labels() do %>
+            <label>
+              <input type="checkbox" checked={line in @lines} phx-click="toggle_line" phx-value-line={line} />
+              <%= label %>
+            </label>
+          <% end %>
         </div>
         <div class="metric-toggle range-toggle">
           <%= for {value, label} <- range_options() do %>
@@ -515,7 +568,7 @@ defmodule SheetfolioWeb.HistoryLive do
             nil -> key
           end
 
-        datasets_for(snapshots, series_of(key, assigns), name, Enum.at(palette(), slot), assigns.metric)
+        datasets_for(snapshots, series_of(key, assigns), name, Enum.at(palette(), slot), assigns)
       end)
 
     %{metric: assigns.metric, datasets: datasets, clickEvent: "select_point"}
@@ -524,20 +577,25 @@ defmodule SheetfolioWeb.HistoryLive do
   # The gain view is already one number per holding, so it keeps its single
   # line; the value view splits the holding into what it is worth, what it cost
   # and the gain on top.
-  defp datasets_for(snapshots, isin, name, color, "pct") do
+  defp datasets_for(snapshots, isin, name, color, %{metric: "pct"}) do
     [%{label: name, color: color, axis: "y", data: series_points(snapshots, isin, :pct)}]
   end
 
-  defp datasets_for(snapshots, isin, name, color, "value") do
-    Enum.map(@series, fn {metric, suffix, dash} ->
+  defp datasets_for(snapshots, isin, name, color, %{metric: "value", lines: lines}) do
+    shown = Enum.filter(@series, fn {metric, _suffix, _dash} -> Atom.to_string(metric) in lines end)
+    alone? = length(shown) == 1
+
+    Enum.map(shown, fn {metric, suffix, dash} ->
       %{
         label: label_for(name, suffix),
         color: color,
-        dash: dash,
+        # A line drawn on its own is compared across holdings, not against
+        # its siblings, so it needs no dash to tell it apart.
+        dash: if(alone?, do: nil, else: dash),
         # Markers on all three would bury the dashes that tell them apart, and
         # the value line is the one a click drills the table down to.
-        points: is_nil(suffix),
-        axis: axis_for(metric),
+        points: alone? or is_nil(suffix),
+        axis: if(alone?, do: "y", else: axis_for(metric)),
         data: series_points(snapshots, isin, metric)
       }
     end)
@@ -550,6 +608,8 @@ defmodule SheetfolioWeb.HistoryLive do
   end
 
   defp series_of(isin, _assigns), do: [isin]
+
+  defp line_labels, do: @line_labels
 
   defp label_for(name, nil), do: name
   defp label_for(name, suffix), do: "#{name} · #{suffix}"
