@@ -28,7 +28,8 @@ defmodule SheetfolioWeb.EarningsLive do
           categories: %{},
           params: %{},
           chart_view: "category",
-          chart_keys: ["Total"]
+          chart_keys: ["Total"],
+          opened: MapSet.new()
         )
 
       if connected?(socket) do
@@ -52,7 +53,8 @@ defmodule SheetfolioWeb.EarningsLive do
            cumulative: earnings.cumulative,
            names: earnings.names,
            categories: Sheetfolio.AssetCategories.get()
-         )}
+         )
+         |> open_selected()}
       else
         {:ok, socket}
       end
@@ -65,7 +67,19 @@ defmodule SheetfolioWeb.EarningsLive do
     view = if params["chart"] in @chart_views, do: params["chart"], else: "category"
     keys = (params["show"] || "Total") |> String.split(",", trim: true) |> Enum.uniq() |> Enum.take(length(@palette))
 
-    {:noreply, assign(socket, params: params, chart_view: view, chart_keys: keys)}
+    {:noreply, socket |> assign(params: params, chart_view: view, chart_keys: keys) |> open_selected()}
+  end
+
+  # A category holding a picked asset opens, as it does on /history.
+  defp open_selected(%{assigns: %{chart_view: "asset", categories: categories} = assigns} = socket) do
+    groups = for key <- assigns.chart_keys, key != "Total", do: category_of(key, categories)
+    assign(socket, opened: MapSet.union(assigns.opened, MapSet.new(groups)))
+  end
+
+  defp open_selected(socket), do: socket
+
+  def handle_event("chart_group", %{"group" => group}, socket) do
+    {:noreply, assign(socket, opened: toggle(socket.assigns.opened, group))}
   end
 
   def handle_event("chart_view", %{"view" => view}, socket) when view in @chart_views do
@@ -144,6 +158,30 @@ defmodule SheetfolioWeb.EarningsLive do
     [{"Total", "Total"} | groups]
   end
 
+  # The asset view's buttons under their categories, both biggest earner first.
+  defp asset_groups(%{cumulative: []}), do: []
+
+  defp asset_groups(assigns) do
+    {_date, latest} = List.last(assigns.cumulative)
+
+    latest
+    |> Enum.group_by(fn {key, _gain} -> category_of(key, assigns.categories) end)
+    |> Enum.map(fn {group, entries} ->
+      assets = entries |> Enum.sort_by(&elem(&1, 1), :desc) |> Enum.map(fn {key, _gain} -> {key, Map.get(assigns.names, key, key)} end)
+      {group, assets, entries |> Enum.map(&elem(&1, 1)) |> Enum.sum()}
+    end)
+    |> Enum.sort_by(&elem(&1, 2), :desc)
+    |> Enum.map(fn {group, assets, _gain} -> {group, assets} end)
+  end
+
+  defp group_state(assets, keys) do
+    case {Enum.count(assets, &(elem(&1, 0) in keys)), length(assets)} do
+      {0, _total} -> {"none", "○", 0}
+      {same, same} -> {"all", "●", same}
+      {some, _total} -> {"some", "◐", some}
+    end
+  end
+
   defp group_key(key, %{chart_view: "category", categories: categories}), do: category_of(key, categories)
   defp group_key(key, _assigns), do: key
 
@@ -175,6 +213,14 @@ defmodule SheetfolioWeb.EarningsLive do
   defp chart_slot(assigns, key), do: Enum.find_index(assigns.chart_keys, &(&1 == key))
 
   defp palette, do: @palette
+
+  defp key_btn(assigns) do
+    ~H"""
+    <button class={"key-btn#{if @slot, do: " selected"}"} phx-click="chart_toggle" phx-value-key={@key}>
+      <span :if={@slot} class="key-dot" style={"background: #{Enum.at(palette(), @slot)}"}></span><%= @name %>
+    </button>
+    """
+  end
 
   defp toggle(set, key) do
     if MapSet.member?(set, key), do: MapSet.delete(set, key), else: MapSet.put(set, key)
@@ -233,7 +279,18 @@ defmodule SheetfolioWeb.EarningsLive do
       .seg { display: inline-flex; align-self: flex-start; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
       .seg button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
       .seg button.selected { background: #1e293b; color: white; }
-      .chart-keys { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+      .chart-keys { display: flex; flex-wrap: wrap; gap: 0.4rem; flex: 1; }
+      .filter-groups { display: flex; flex-direction: column; gap: 0.4rem; }
+      .filter-group { display: flex; align-items: baseline; gap: 0.75rem; }
+      .filter-group + .filter-group { border-top: 1px solid #f1f5f9; padding-top: 0.4rem; }
+      .cat-header { flex: 0 0 16rem; display: flex; align-items: center; gap: 0.45rem; border: none; background: none; cursor: pointer; padding: 0.2rem 0; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #94a3b8; text-align: left; }
+      .cat-header:hover { color: #475569; }
+      .cat-chevron { display: inline-block; width: 0.7rem; font-size: 0.6rem; color: #cbd5e1; }
+      .cat-state { font-size: 1.05rem; line-height: 1; }
+      .cat-state.none { color: #cbd5e1; }
+      .cat-state.some { color: #2a78d6; }
+      .cat-state.all { color: #1e293b; }
+      .cat-count { margin-left: auto; font-weight: 600; color: #cbd5e1; font-variant-numeric: tabular-nums; }
       .key-btn { border: 1px solid #e2e8f0; background: white; color: #475569; padding: 0.35rem 0.75rem; border-radius: 6px; font-size: 0.82rem; cursor: pointer; display: inline-flex; align-items: center; gap: 0.4rem; }
       .key-btn:hover { background: #f1f5f9; }
       .key-btn.selected { border-color: #1e293b; color: #0b0b0b; font-weight: 600; }
@@ -263,14 +320,38 @@ defmodule SheetfolioWeb.EarningsLive do
           <button class={if @chart_view == "category", do: "selected"} phx-click="chart_view" phx-value-view="category">By category</button>
           <button class={if @chart_view == "asset", do: "selected"} phx-click="chart_view" phx-value-view="asset">By asset</button>
         </div>
-        <div class="chart-keys">
-          <%= for {key, name} <- chart_options(assigns) do %>
-            <% slot = chart_slot(assigns, key) %>
-            <button class={"key-btn#{if slot, do: " selected"}"} phx-click="chart_toggle" phx-value-key={key}>
-              <span :if={slot} class="key-dot" style={"background: #{Enum.at(palette(), slot)}"}></span><%= name %>
-            </button>
-          <% end %>
-        </div>
+        <%= if @chart_view == "category" do %>
+          <div class="chart-keys">
+            <%= for {key, name} <- chart_options(assigns) do %>
+              <.key_btn key={key} name={name} slot={chart_slot(assigns, key)} />
+            <% end %>
+          </div>
+        <% else %>
+          <div class="chart-keys">
+            <.key_btn key="Total" name="Total" slot={chart_slot(assigns, "Total")} />
+          </div>
+          <div class="filter-groups">
+            <%= for {group, assets} <- asset_groups(assigns) do %>
+              <% open? = MapSet.member?(@opened, group) %>
+              <% {state, icon, count} = group_state(assets, @chart_keys) %>
+              <div class="filter-group">
+                <button class="cat-header" phx-click="chart_group" phx-value-group={group}>
+                  <span class="cat-chevron"><%= if open?, do: "▼", else: "▶" %></span>
+                  <span class={"cat-state #{state}"}><%= icon %></span>
+                  <span><%= group %></span>
+                  <span class="cat-count"><%= count %>/<%= length(assets) %></span>
+                </button>
+                <div class="chart-keys">
+                  <%= if open? do %>
+                    <%= for {key, name} <- assets do %>
+                      <.key_btn key={key} name={name} slot={chart_slot(assigns, key)} />
+                    <% end %>
+                  <% end %>
+                </div>
+              </div>
+            <% end %>
+          </div>
+        <% end %>
       </div>
       <div class="expand-panel" id="panel-chart" phx-hook="ExpandPanel">
         <button class="expand-btn" aria-label="Toggle full screen"></button>
