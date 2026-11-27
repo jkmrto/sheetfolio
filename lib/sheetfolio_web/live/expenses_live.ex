@@ -349,8 +349,9 @@ defmodule SheetfolioWeb.ExpensesLive do
                     <td class="left">
                       <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= if @reg_category == @discard do %><%= row.category %> <button type="button" class="restore" phx-click="restore" phx-value-activity={row.id}>Restore</button><% else %><%= if @editing or row.uncategorized or row.guessed do %><form phx-change="categorize" class={"categorize#{if row.uncategorized, do: " uncategorized"}"} title={if row.guessed, do: "Guessed from the transfer note"}><input type="hidden" name="activity" value={row.id} /><select name="category" aria-label="Category">
                             <option :if={row.uncategorized} value="" selected>Uncategorized</option>
+                            <option :if={row.guessed} value="" selected><%= row.category %>?</option>
                             <%= for category <- assignable_categories() do %>
-                              <option value={category} selected={not row.uncategorized and category == row.category}><%= category %><%= if row.guessed and category == row.category, do: "?" %></option>
+                              <option value={category} selected={not row.uncategorized and not row.guessed and category == row.category}><%= category %></option>
                             <% end %>
                             <option disabled>──────</option>
                             <option value={@discard}>Discard (not an expense)</option>
