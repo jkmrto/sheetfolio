@@ -255,6 +255,7 @@ defmodule SheetfolioWeb.HistoryLive do
       .metric-toggle button { border: none; background: white; color: #475569; padding: 0.35rem 0.8rem; font-size: 0.82rem; cursor: pointer; }
       .metric-toggle button.selected { background: #1e293b; color: white; }
       .range-toggle { margin-left: 0; }
+      .line-toggle { margin-left: 0; }
       .view-toggle { margin-left: 0; }
       .empty-note { background: white; border-radius: 12px; padding: 2rem; box-shadow: 0 1px 4px rgba(0,0,0,0.08); color: #64748b; font-size: 0.9rem; }
       .date-bar { display: flex; align-items: center; gap: 1rem; margin: 2rem 0 1rem; }
@@ -320,14 +321,14 @@ defmodule SheetfolioWeb.HistoryLive do
       <% end %>
 
       <div class="filter-row">
-        <div class="metric-toggle">
-          <button class={if @metric == "value", do: "selected"} phx-click="set_metric" phx-value-metric="value">Value (€)</button>
-          <button class={if @metric == "pct", do: "selected"} phx-click="set_metric" phx-value-metric="pct">Gain/Loss (%)</button>
-        </div>
-        <div :if={@metric == "value"} class="metric-toggle range-toggle">
+        <div :if={@metric == "value"} class="metric-toggle line-toggle">
           <%= for {line, label} <- line_labels() do %>
             <button class={if line in @lines, do: "selected"} phx-click="toggle_line" phx-value-line={line} aria-pressed={to_string(line in @lines)}><%= label %></button>
           <% end %>
+        </div>
+        <div class="metric-toggle">
+          <button class={if @metric == "value", do: "selected"} phx-click="set_metric" phx-value-metric="value">Value (€)</button>
+          <button class={if @metric == "pct", do: "selected"} phx-click="set_metric" phx-value-metric="pct">Gain/Loss (%)</button>
         </div>
         <div class="metric-toggle range-toggle">
           <%= for {value, label} <- range_options() do %>
