@@ -6,6 +6,7 @@ defmodule SheetfolioWeb.ExpensesLive do
   alias Sheetfolio.WiseExpenses
 
   @month_labels ~w(Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec)
+  @discard "Discarded"
   @year_colors ["#2a78d6", "#eda100", "#1baf7a", "#4a3aa7", "#e34948", "#e87ba4"]
 
   def mount(_params, session, socket) do
@@ -20,6 +21,7 @@ defmodule SheetfolioWeb.ExpensesLive do
          authenticated: true,
          expenses: nil,
          registry: [],
+         discarded: [],
          editing: false,
          year: year,
          view: "months",
@@ -42,7 +44,7 @@ defmodule SheetfolioWeb.ExpensesLive do
   end
 
   def handle_info(:load, socket) do
-    {:noreply, assign(socket, expenses: WiseExpenses.monthly_by_category(), registry: WiseExpenses.list())}
+    {:noreply, socket |> assign(expenses: WiseExpenses.monthly_by_category()) |> assign_registry()}
   end
 
   def handle_event("select_year", %{"year" => year}, socket) do
@@ -55,10 +57,22 @@ defmodule SheetfolioWeb.ExpensesLive do
 
   # Wise no longer hands out categories, so a new merchant arrives
   # uncategorized and a transfer's category is a guess; either can be filed
-  # here, and in edit mode so can any other row Wise filed wrong.
+  # here, and in edit mode so can any other row Wise filed wrong. A row that
+  # isn't spending at all (income sent out to be saved, a refund) is
+  # discarded from the same menu, and restored from the Discarded filter.
+  def handle_event("categorize", %{"activity" => id, "category" => @discard}, socket) do
+    WiseExpenses.discard(id, true)
+    {:noreply, refresh(socket)}
+  end
+
   def handle_event("categorize", %{"activity" => id, "category" => category}, socket) do
     if category in assignable_categories(), do: WiseExpenses.categorize(id, category)
-    {:noreply, assign(socket, expenses: WiseExpenses.stored_monthly_by_category(), registry: WiseExpenses.list())}
+    {:noreply, refresh(socket)}
+  end
+
+  def handle_event("restore", %{"activity" => id}, socket) do
+    WiseExpenses.discard(id, false)
+    {:noreply, refresh(socket)}
   end
 
   def handle_event("toggle_edit", _params, socket) do
@@ -67,13 +81,22 @@ defmodule SheetfolioWeb.ExpensesLive do
 
   defp assignable_categories, do: WiseExpenses.categories()
 
+  defp refresh(socket) do
+    socket |> assign(expenses: WiseExpenses.stored_monthly_by_category()) |> assign_registry()
+  end
+
+  defp assign_registry(socket) do
+    assign(socket, registry: WiseExpenses.list(), discarded: WiseExpenses.list_discarded())
+  end
+
   def render(assigns) do
     assigns =
       assign(assigns,
         categories: WiseExpenses.categories(),
         years: WiseExpenses.years(),
         registry_rows:
-          filtered_registry(assigns.registry, assigns.reg_year, assigns.reg_month, assigns.reg_category)
+          filtered_registry(assigns, assigns.reg_year, assigns.reg_month, assigns.reg_category),
+        discard: @discard
       )
 
     ~H"""
@@ -101,6 +124,7 @@ defmodule SheetfolioWeb.ExpensesLive do
       .expenses-table form.categorize { display: inline; }
       .expenses-table form.categorize select { font: inherit; color: inherit; border: 1px dashed #cbd5e1; border-radius: 6px; padding: 0.1rem 0.3rem; background: white; }
       .expenses-table form.categorize.uncategorized select { color: #9c8400; }
+      .expenses-table button.restore { margin-left: 0.5rem; border: 1px solid #cbd5e1; background: white; color: #1e293b; border-radius: 6px; padding: 0.05rem 0.5rem; font-size: 0.8rem; cursor: pointer; }
       .registry-toolbar { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.35rem; }
       .registry-toolbar .expand-btn { margin: 0 0 0 auto; }
       .edit-toggle { display: inline-flex; align-items: center; gap: 0.45rem; border: 0; background: none; color: #64748b; font-size: 0.8rem; padding: 0.2rem 0; cursor: pointer; }
@@ -296,6 +320,9 @@ defmodule SheetfolioWeb.ExpensesLive do
               <%= category %>
             </.link>
           <% end %>
+          <.link :if={@discarded != [] or @reg_category == @discard} patch={registry_path(@reg_year, @discard)} class={if @reg_category == @discard, do: "active", else: ""}>
+            <%= @discard %> (<%= length(@discarded) %>)
+          </.link>
         </div>
 
         <div class="expenses-table" style="margin-top: 0;">
@@ -320,12 +347,14 @@ defmodule SheetfolioWeb.ExpensesLive do
                   <tr>
                     <td><%= row.date %></td>
                     <td class="left">
-                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= if @editing or row.uncategorized or row.guessed do %><form phx-change="categorize" class={"categorize#{if row.uncategorized, do: " uncategorized"}"} title={if row.guessed, do: "Guessed from the transfer note"}><input type="hidden" name="activity" value={row.id} /><select name="category" aria-label="Category">
+                      <span class="expenses-dot" style={"background: #{WiseExpenses.color(row.category)}"}></span><%= if @reg_category == @discard do %><%= row.category %> <button type="button" class="restore" phx-click="restore" phx-value-activity={row.id}>Restore</button><% else %><%= if @editing or row.uncategorized or row.guessed do %><form phx-change="categorize" class={"categorize#{if row.uncategorized, do: " uncategorized"}"} title={if row.guessed, do: "Guessed from the transfer note"}><input type="hidden" name="activity" value={row.id} /><select name="category" aria-label="Category">
                             <option :if={row.uncategorized} value="" selected>Uncategorized</option>
                             <%= for category <- assignable_categories() do %>
                               <option value={category} selected={not row.uncategorized and category == row.category}><%= category %><%= if row.guessed and category == row.category, do: "?" %></option>
                             <% end %>
-                          </select></form><% else %><%= row.category %><% end %>
+                            <option disabled>──────</option>
+                            <option value={@discard}>Discard (not an expense)</option>
+                          </select></form><% else %><%= row.category %><% end %><% end %>
                     </td>
                     <td class="left"><%= if row.note != "", do: row.note, else: row.title %></td>
                     <td><%= format(row.amount) %></td>
@@ -334,7 +363,7 @@ defmodule SheetfolioWeb.ExpensesLive do
               </tbody>
               <tfoot>
                 <tr>
-                  <td colspan="3"><%= length(@registry_rows) %> expenses</td>
+                  <td colspan="3"><%= length(@registry_rows) %> <%= if @reg_category == @discard, do: "discarded", else: "expenses" %></td>
                   <td><%= format(@registry_rows |> Enum.map(& &1.amount) |> Enum.sum() |> Kernel./(1)) %></td>
                 </tr>
               </tfoot>
@@ -394,8 +423,16 @@ defmodule SheetfolioWeb.ExpensesLive do
     "/expenses?" <> URI.encode_query(query)
   end
 
-  defp filtered_registry(registry, year, month, category) do
-    Enum.filter(registry, fn row ->
+  defp filtered_registry(assigns, year, month, @discard) do
+    filtered_registry(assigns.discarded, year, month, "All")
+  end
+
+  defp filtered_registry(%{registry: registry}, year, month, category) do
+    filtered_registry(registry, year, month, category)
+  end
+
+  defp filtered_registry(rows, year, month, category) do
+    Enum.filter(rows, fn row ->
       (year == "All" or String.starts_with?(row.date, year)) and
         (month == "All" or String.starts_with?(row.date, month)) and
         (category == "All" or row.category == category)

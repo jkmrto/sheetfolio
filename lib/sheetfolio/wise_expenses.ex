@@ -5,7 +5,7 @@ defmodule Sheetfolio.WiseExpenses do
   is fetched once and cached in Mongo; a cached activity is refetched when its
   listed status changes (e.g. PENDING -> COMPLETED). Incoming amounts and
   activities Wise excludes from insights (own-account transfers, investments)
-  are ignored.
+  are ignored, as are those discarded by hand on /expenses.
   """
 
   alias Sheetfolio.WiseClient
@@ -70,11 +70,23 @@ defmodule Sheetfolio.WiseExpenses do
 
   def color(category), do: @colors[category]
 
+  # Sync rewrites every other field, but never `discarded`, so a hand
+  # discard survives a refetch.
+  @spending %{status: "COMPLETED", excluded: false, positive: false}
+
   @doc "All spending activities, most recent first."
-  def list do
-    Mongo.find(:mongo, @collection, %{status: "COMPLETED", excluded: false, positive: false},
-      sort: %{date: -1}
-    )
+  def list, do: find_rows(Map.put(@spending, :discarded, %{"$ne" => true}))
+
+  @doc "The spending activities discarded by hand, most recent first."
+  def list_discarded, do: find_rows(Map.put(@spending, :discarded, true))
+
+  @doc "Stops an activity counting as an expense, or with `false` restores it."
+  def discard(id, discarded) when is_boolean(discarded) do
+    Mongo.update_one(:mongo, @collection, %{_id: id}, %{"$set" => %{discarded: discarded}})
+  end
+
+  defp find_rows(filter) do
+    Mongo.find(:mongo, @collection, filter, sort: %{date: -1})
     |> Enum.map(fn doc ->
       %{
         id: doc["_id"],
@@ -105,7 +117,7 @@ defmodule Sheetfolio.WiseExpenses do
   @doc "`monthly_by_category/0` from what is already stored, without asking Wise."
   def stored_monthly_by_category do
     totals =
-      Mongo.find(:mongo, @collection, %{status: "COMPLETED", excluded: false, positive: false})
+      Mongo.find(:mongo, @collection, Map.put(@spending, :discarded, %{"$ne" => true}))
       |> Enum.group_by(&{&1["month"], Map.get(@labels, &1["category"], "Other")}, & &1["amount"])
       |> Map.new(fn {key, amounts} -> {key, amounts |> Enum.sum() |> Float.round(2)} end)
 
